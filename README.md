@@ -19,6 +19,7 @@ Chan Chee Wei (34073981) - Developer
 
 Update this section as your project grows.
 
+```
 src/
 ├── components/
 │   ├── avatar.html
@@ -28,6 +29,7 @@ src/
     ├── login.html
     └── signup.html
 README.md
+```
 
 ## Notes
 
