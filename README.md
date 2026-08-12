@@ -6,6 +6,8 @@ FIT2101 S2 2026 group repository.
 
 Add your team members and roles here.
 
+Chan Chee Wei (34073981) - Developer
+
 ## Getting Started
 
 1. Clone this repository.
@@ -16,6 +18,16 @@ Add your team members and roles here.
 ## Repository Structure
 
 Update this section as your project grows.
+
+src/
+├── components/
+│   ├── avatar.html
+├── styles/
+│   ├── auth.css
+└── views/
+    ├── login.html
+    └── signup.html
+README.md
 
 ## Notes
 
