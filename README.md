@@ -23,13 +23,20 @@ Update this section as your project grows.
 src/
 ├── backend/
 │   ├── auth.py
+│   ├── layout.py
 │   ├── login.py
-│   ├── signup.py
+│   └── signup.py
 ├── components/
 │   ├── avatar.html
+│   ├── sidebar.html
+│   └── topbar.html
 ├── styles/
 │   ├── auth.css
+│   ├── dashboard.css
+│   ├── layout.css
+│   └── snackbar.css
 ├── views/
+│   ├── dashboard.html
 │   ├── login.html
 │   └── signup.html
 ├── index.html
