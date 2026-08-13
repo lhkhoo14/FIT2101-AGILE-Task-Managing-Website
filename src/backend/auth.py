@@ -1,5 +1,6 @@
 import re
-from pyscript import web
+import asyncio
+from pyscript import web, when
 
 
 def validate_email(email: str) -> tuple[bool, str]:
@@ -63,8 +64,29 @@ def clear_errors(field_ids: list[str]):
             error_element.classList.remove("show")
 
 # --- SUCCESS SNACKBAR ---
-def show_snackbar(message: str):
+async def show_snackbar(message: str):
     snackbar = web.page["snackbar"]
     if snackbar is not None:
         snackbar.textContent = message
         snackbar.classList.add("show")
+        
+        # Wait for duration seconds, then hide snackbar
+        await asyncio.sleep(2.5)
+        snackbar.classList.remove("show")
+
+def toggle_password_mask(input_id: str, eye_id: str, eye_off_id: str):
+    password_input = web.page[input_id]
+    eye_icon = web.page[eye_id]
+    eye_off_icon = web.page[eye_off_id]
+
+    if not password_input:
+        return
+
+    if password_input.type == "password":
+        password_input.type = "text"
+        if eye_icon: eye_icon.classList.add("hidden")
+        if eye_off_icon: eye_off_icon.classList.remove("hidden")
+    else:
+        password_input.type = "password"
+        if eye_icon: eye_icon.classList.remove("hidden")
+        if eye_off_icon: eye_off_icon.classList.add("hidden")
