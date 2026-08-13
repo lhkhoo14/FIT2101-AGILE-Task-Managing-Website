@@ -21,14 +21,21 @@ Update this section as your project grows.
 
 ```
 src/
+├── backend/
+│   ├── auth.py
+│   ├── login.py
+│   ├── signup.py
 ├── components/
 │   ├── avatar.html
 ├── styles/
 │   ├── auth.css
-└── views/
-    ├── login.html
-    └── signup.html
-README.md
+├── views/
+│   ├── login.html
+│   └── signup.html
+├── index.html
+├── PYSCRIPT_TUTORIAL.md
+├── README.md
+└── settings.json
 ```
 
 ## Notes
