@@ -4,7 +4,7 @@ import asyncio
 if "." not in sys.path:
     sys.path.append(".")
 
-from pyscript import when, web
+from pyscript import when, web, window
 from auth import validate_email, validate_signup_passwords, \
     clear_errors, show_feedback, show_snackbar, \
     toggle_password_mask
@@ -33,7 +33,8 @@ async def handle_signup(event):
         return
 
     await show_snackbar("Account Created! Redirecting...")
-    await asyncio.sleep(2)
+
+    window.location.href = "login.html"
 
 # 1. Main Password Field
 @when("click", "#toggle-password")

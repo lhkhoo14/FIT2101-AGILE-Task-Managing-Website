@@ -4,7 +4,7 @@ import asyncio
 if "." not in sys.path:
     sys.path.append(".")
 
-from pyscript import when, web
+from pyscript import when, web, window
 from auth import validate_email, validate_password, clear_errors, \
     show_feedback, show_snackbar, \
     toggle_password_mask
@@ -32,8 +32,9 @@ async def handle_login(event):
     if not is_email_valid or not is_pass_valid:
         return
 
-    await show_snackbar("Login Successful! Redirecting...")
-    await asyncio.sleep(2)
+    await show_snackbar("Logging in...")
+
+    window.location.href = "dashboard.html"
 
 @when("click", "#toggle-password")
 def handle_password_toggle(event):
