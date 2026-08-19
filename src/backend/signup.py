@@ -1,10 +1,12 @@
 import sys
 import asyncio
 
+from models import User, ServerData
+
 if "." not in sys.path:
     sys.path.append(".")
 
-from pyscript import when, web, window
+from pyscript import when, web, window # type: ignore
 from auth import validate_email, validate_signup_passwords, \
     clear_errors, show_feedback, show_snackbar, \
     toggle_password_mask
@@ -32,9 +34,24 @@ async def handle_signup(event):
     if not is_email_valid or not is_pass_valid:
         return
 
+    db = ServerData()
+    if db.find_user_by_email(email) is not None:
+        show_feedback("email", "Email is already registered.")
+        return
+
+    await save_new_user("", email, password)
     await show_snackbar("Account Created! Redirecting...")
 
     window.location.href = "login.html"
+
+async def save_new_user(username: str, email: str, password: str):
+    db = ServerData()
+    new_user = User(db.next_user_id, username, email, password)
+
+    db.users.append(new_user.to_dict())
+    db.next_user_id += 1
+
+    db.save_data()
 
 # 1. Main Password Field
 @when("click", "#toggle-password")

@@ -22,6 +22,10 @@ Update this section as your project grows.
 ```
 src/
 ├── backend/
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── server_data.py
+│   │   └── user.py
 │   ├── auth.py
 │   ├── layout.py
 │   ├── login.py

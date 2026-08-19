@@ -1,7 +1,6 @@
 import re
 import asyncio
-from pyscript import web, when
-
+from pyscript import web, when # type: ignore
 
 def validate_email(email: str) -> tuple[bool, str]:
     """Validates email format using regex."""

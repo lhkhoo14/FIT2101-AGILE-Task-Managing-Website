@@ -9,6 +9,24 @@
     <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
     <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
 
+    <script>
+      const CONFIG = {
+        STORAGE_KEY_APP_DATA: "pyscript_app_data",
+        STORAGE_KEY_ACTIVE_SESSION: "session_user_id",
+        VIEW_LOGIN: "login.html",
+        VIEW_DASHBOARD: "dashboard.html"
+      };
+
+      (function () {
+        const activeSession = localStorage.getItem(CONFIG.STORAGE_KEY_ACTIVE_SESSION);
+
+        // If on dashboard and NO session exists, redirect to login
+        if (!activeSession || activeSession.trim() === "") {
+          window.location.replace(CONFIG.VIEW_LOGIN);
+        }
+      })();
+    </script>
+
     <!-- Layout Stylesheet -->
     <link rel="stylesheet" href="../styles/layout.css">
     <!-- Page Stylesheet -->
