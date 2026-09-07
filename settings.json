@@ -1,0 +1,11 @@
+{
+  "files": {
+    "./src/backend/auth.py": "./auth.py",
+    "./src/backend/login.py": "./login.py",
+    "./src/backend/signup.py": "./signup.py",
+    "./src/backend/constants.py": "./constants.py",
+    "./src/backend/models/__init__.py": "./models/__init__.py",
+    "./src/backend/models/user.py": "./models/user.py",
+    "./src/backend/models/server_data.py": "./models/server_data.py"
+  }
+}

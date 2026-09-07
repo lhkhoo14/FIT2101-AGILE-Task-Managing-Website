@@ -1,0 +1,163 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+    background-color: #4747D4;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+.auth-container {
+    background-color: #ffffff;
+    padding: 40px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 380px;
+    text-align: center;
+}
+
+.brand-name {
+    font-size: 24px;
+    font-weight: bold;
+    color: #333333;
+    margin-bottom: 20px;
+}
+
+.profile-pic {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background-color: #e0e0e0;
+    margin: 0 auto 24px auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.profile-pic svg {
+    width: 48px;
+    height: 48px;
+    fill: #9e9e9e;
+}
+
+.input-group {
+    margin-bottom: 16px;
+    text-align: left;
+}
+
+.input-group label {
+    display: block;
+    font-size: 14px;
+    color: #555555;
+    margin-bottom: 6px;
+}
+
+.input-group input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #cccccc;
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.input-group input:focus {
+  background-color: #ffffff;
+    border-color: #4747D4;
+}
+
+/* Custom invalid class applied via Python, only styled when not empty */
+.input-group input.is-invalid:not(:placeholder-shown) {
+  background-color: #ffaaaa;
+  border: 1px solid #d9534f;
+}
+
+.error-message {
+  color: #d9534f;
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+  min-height: 1.2rem; /* Prevents form layout jump when text is inserted */
+}
+
+.btn-submit {
+    width: 100%;
+    padding: 12px;
+    background-color: #4747D4;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: background-color 0.2s;
+}
+
+.btn-submit:hover {
+    background-color: #8080FF;
+}
+
+.auth-link {
+    text-align: left;
+    margin-top: 20px;
+    font-size: 14px;
+    color: #666666;
+}
+
+.auth-link a {
+    color: #4747D4;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.auth-link a:hover {
+    text-decoration: underline;
+}
+
+/* Password field wrapper */
+.password-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-wrapper input {
+  padding-right: 40px; /* Leave room for the toggle button */
+}
+
+/* Toggle Button Styling */
+.toggle-password-btn {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+}
+
+.eye-icon {
+  width: 20px;
+  height: 20px;
+  fill: #777777;
+  transition: fill 0.2s;
+}
+
+.toggle-password-btn:hover .eye-icon {
+  fill: #4747D4;
+}
+
+.eye-icon.hidden {
+  display: none;
+}
