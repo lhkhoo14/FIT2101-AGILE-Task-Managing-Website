@@ -1,24 +1,22 @@
 import json
 import time
 from pyscript import when, web, window, document  # type: ignore[reportMissingImports]
+from constants import DEFAULT_SPRINTS, DEFAULT_BACKLOG_ITEMS
 
 BACKLOG_STORAGE_KEY = "product_backlog_items"
 SPRINT_BACKLOG_KEY_PREFIX = "sprint_backlog_"  # + sprint_id
+SPRINTS_STORAGE_KEY = "sprints_list"
 
-DEFAULT_BACKLOG_ITEMS = [
-    {"id": "1", "title": "Add dark mode toggle", "tag": "frontend", "priority": "low"},
-    {"id": "2", "title": "Rate-limit login attempts", "tag": "backend", "priority": "high"},
-    {"id": "3", "title": "Redesign empty states", "tag": "frontend", "priority": "medium"},
-]
-
-_dragged_backlog_id = None  # only ever holds an id while a drag is in progress on THIS page
+_dragged_backlog_id = None
 
 
 # --- Storage helpers ---
 def load_backlog_items():
     raw = window.localStorage.getItem(BACKLOG_STORAGE_KEY)
     if not raw:
-        return list(DEFAULT_BACKLOG_ITEMS)
+        seeded = list(DEFAULT_BACKLOG_ITEMS)
+        save_backlog_items(seeded)   # persist immediately so every page sees the same data
+        return seeded
     try:
         return json.loads(raw)
     except (ValueError, TypeError):
@@ -97,7 +95,7 @@ def _refresh_all_card_badges():
 def handle_drag_start(event):
     global _dragged_backlog_id
     card = event.target.closest(".task-card")
-    if not card:                              # was: if card is None
+    if not card:
         return
     backlog_id = card.getAttribute("data-backlog-id")
     if not backlog_id:
@@ -112,7 +110,7 @@ def handle_drag_start(event):
 def handle_drag_end(event):
     global _dragged_backlog_id
     card = event.target.closest(".task-card")
-    if card:                                  # was: if card is not None
+    if card:
         card.classList.remove("dragging")
     _dragged_backlog_id = None
 
@@ -122,14 +120,14 @@ def handle_card_drag_over(event):
     event.preventDefault()
     event.dataTransfer.dropEffect = "move"
     card = event.target.closest(".sprint-card")
-    if card:                                  # was: if card is not None
+    if card:
         card.classList.add("card-drop-target")
 
 
 @when("dragleave", ".sprints-grid")
 def handle_card_drag_leave(event):
     card = event.target.closest(".sprint-card")
-    if card:                                  # was: if card is not None  <- this one crashed
+    if card:
         card.classList.remove("card-drop-target")
 
 
@@ -137,10 +135,10 @@ def handle_card_drag_leave(event):
 def handle_card_drop(event):
     event.preventDefault()
     card = event.target.closest(".sprint-card")
-    if not card:                              # was: if card is None
+    if not card:
         return
     card.classList.remove("card-drop-target")
-    if _dragged_backlog_id is None:           # fine: this is a plain Python var, real None
+    if _dragged_backlog_id is None:
         return
     sprint_id = card.getAttribute("data-sprint-id")
     if not sprint_id:
@@ -156,29 +154,24 @@ def handle_card_drop(event):
     add_item_to_sprint_backlog(sprint_id, matching)
 
     dragged_el = web.page[f"backlog-item-{_dragged_backlog_id}"]
-    if dragged_el is not None:                # web.page[...] returns real Python None if missing, so this one's actually fine
+    if dragged_el is not None:
         dragged_el.remove()
     web.page["count-product-backlog"].textContent = str(len(remaining))
     _refresh_card_badge(sprint_id)
-
-SPRINTS_STORAGE_KEY = "sprints_list"
-
-DEFAULT_SPRINTS = [
-    {"id": "1", "name": "Sprint 1", "details": "Employee info / description", "status": "active"},
-    {"id": "2", "name": "Sprint 2", "details": "Employee info / description", "status": "ended"},
-    {"id": "3", "name": "Sprint 3", "details": "Employee info / description", "status": "active"},
-]
 
 
 # --- Sprint storage + rendering ---
 def load_sprints():
     raw = window.localStorage.getItem(SPRINTS_STORAGE_KEY)
     if not raw:
-        return list(DEFAULT_SPRINTS)
+        seeded = list(DEFAULT_SPRINTS)
+        save_sprints(seeded)   # persist immediately, closes the race condition with sprint-page.py
+        return seeded
     try:
         return json.loads(raw)
     except (ValueError, TypeError):
         return list(DEFAULT_SPRINTS)
+
 
 def save_sprints(items):
     window.localStorage.setItem(SPRINTS_STORAGE_KEY, json.dumps(items))
@@ -235,7 +228,6 @@ def handle_cancel_modal(event):
 
 @when("click", ".modal-overlay")
 def handle_backdrop_click(event):
-    # Only close if the backdrop itself was clicked, not something inside the box
     if event.target.id == event.currentTarget.id:
         _close_modal(event.currentTarget.id)
 
@@ -282,9 +274,9 @@ def handle_create_task_submit(event):
     event.currentTarget.reset()
     _close_modal("create-task-modal")
 
+
 @when("click", ".sprints-grid")
 def handle_sprint_card_click(event):
-    # Don't navigate if the click was on the burndown button (or inside it)
     if event.target.closest(".burndown-button"):
         return
 

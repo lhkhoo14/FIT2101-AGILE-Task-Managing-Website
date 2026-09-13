@@ -8,32 +8,14 @@ if "." not in sys.path:
 
 from pyscript import when, web, window, document  # type: ignore
 from auth import show_snackbar
+from constants import DEFAULT_SPRINTS  # fallback only — see _load_sprints below
 import js  # type: ignore
 
 COLUMN_ORDER = ["backlog", "active", "review", "completed"]
 
 SPRINTS_STORAGE_KEY = "sprints_list"
-SPRINT_BACKLOG_KEY_PREFIX = "sprint_backlog_"   # handoff from dashboard's product backlog
-KANBAN_STATE_KEY_PREFIX = "kanban_state_"       # this sprint's own board
-
-# Seeds sprint "1" the first time its board is opened, so the demo isn't empty.
-# Any other sprint starts with empty columns.
-DEFAULT_KANBAN_STATE_SPRINT_1 = {
-    "backlog": [
-        {"id": "task-1", "title": "Design login page wireframe", "tag": "frontend", "priority": "medium", "assignee": "Chee Wei"},
-        {"id": "task-2", "title": "Set up Oracle DB schema", "tag": "backend", "priority": "high", "assignee": "Ken Yit"},
-    ],
-    "active": [
-        {"id": "task-3", "title": "Build kanban board UI", "tag": "frontend", "priority": "high", "assignee": "Wei Ho"},
-    ],
-    "review": [
-        {"id": "task-4", "title": "Login form validation logic", "tag": "backend", "priority": "medium", "assignee": "Chee Wei"},
-    ],
-    "completed": [
-        {"id": "task-5", "title": "Set up PyScript project", "tag": "backend", "priority": "low", "assignee": "Lip Hong"},
-        {"id": "task-6", "title": "Create ServerData class", "tag": "backend", "priority": "medium", "assignee": "Chee Wei"},
-    ],
-}
+SPRINT_BACKLOG_KEY_PREFIX = "sprint_backlog_"
+KANBAN_STATE_KEY_PREFIX = "kanban_state_"
 
 _sprint_id = None
 _sprint_ended = False
@@ -50,11 +32,14 @@ def _get_sprint_id_from_url():
 def _load_sprints():
     raw = window.localStorage.getItem(SPRINTS_STORAGE_KEY)
     if not raw:
-        return []
+        # Belt-and-suspenders: only matters if someone opens sprint-page.html
+        # directly via URL before ever visiting the dashboard. Doesn't save —
+        # the dashboard owns seeding sprints_list into localStorage.
+        return list(DEFAULT_SPRINTS)
     try:
         return json.loads(raw)
     except ValueError:
-        return []
+        return list(DEFAULT_SPRINTS)
 
 
 def _save_sprints(sprints):
@@ -64,14 +49,19 @@ def _save_sprints(sprints):
 def _find_sprint(sprints, sprint_id):
     return next((s for s in sprints if s["id"] == sprint_id), None)
 
-
 # --- kanban_state helpers ---
 def _load_kanban_state(sprint_id):
+    from constants import DEFAULT_KANBAN_STATES  # local import keeps top-level imports lean
+
     raw = window.localStorage.getItem(f"{KANBAN_STATE_KEY_PREFIX}{sprint_id}")
     if not raw:
-        if sprint_id == "1":
-            return copy.deepcopy(DEFAULT_KANBAN_STATE_SPRINT_1)
-        return {col: [] for col in COLUMN_ORDER}
+        seed = DEFAULT_KANBAN_STATES.get(sprint_id)
+        if seed is not None:
+            state = copy.deepcopy(seed)
+        else:
+            state = {col: [] for col in COLUMN_ORDER}
+        _save_kanban_state(sprint_id, state)  # persist so this sprint's data is stable going forward
+        return state
     try:
         state = json.loads(raw)
     except ValueError:
@@ -146,9 +136,6 @@ def _make_task_card(task, column_key):
 
 
 def _render_board(state):
-    # Rebuilds every column's children from scratch. This is the single
-    # place cards are created — the JS drag listeners never touch DOM
-    # nodes directly, so recreating them here on every load/move is safe.
     for column_key in COLUMN_ORDER:
         body = web.page[f"column-{column_key}"]
         body.innerHTML = ""
@@ -211,11 +198,7 @@ def _init_page():
     _render_board(state)
 
 
-# --- DROP: the only drag/drop entry point on the Python side.
-# JS has already handled the raw HTML5 events (dragstart/dragover/dragleave/
-# drop) synchronously and dispatched this custom event with plain string
-# data once a card is actually released over a column — so `detail` never
-# goes stale here, even though @when defers dispatch.
+# --- DROP ---
 @when("app:card-drop", "body")
 async def handle_card_drop(event):
     if _sprint_ended:
@@ -242,25 +225,16 @@ async def handle_card_drop(event):
     if task is None or source_column == target_column:
         return
 
-    # Enforce forward-only movement across the board.
     if _column_index(target_column) < _column_index(source_column):
         asyncio.ensure_future(
             show_snackbar("Tasks can only be pushed forward on the board.")
         )
         return
 
-    target_body = document.getElementById(f"column-{target_column}")
-    if not target_body:
-        return
-
     state[source_column] = [t for t in state[source_column] if t["id"] != card_id]
     state[target_column].append(task)
     _save_kanban_state(_sprint_id, state)
 
-    # Re-render from the saved state rather than reparenting the existing
-    # DOM node — sidesteps the "web.page[...] wrapper isn't a real Node for
-    # appendChild" pitfall entirely, and keeps the DOM always in sync with
-    # what's persisted.
     _render_board(state)
 
 
@@ -274,7 +248,7 @@ async def handle_end_sprint(event):
     sprint = _find_sprint(sprints, _sprint_id)
     if sprint:
         sprint["status"] = "ended"
-        _save_sprints(sprints)  # dashboard's status badge picks this up too
+        _save_sprints(sprints)
 
     board = web.page["kanban-board"]
     if board is not None:
