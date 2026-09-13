@@ -1,4 +1,5 @@
 import sys
+import asyncio
 
 if "." not in sys.path:
     sys.path.append(".")
@@ -65,8 +66,12 @@ def handle_drag_leave(event):
 
 
 # --- DROP: move the card, but only forward ---
+# NOTE: this must stay a plain (non-async) function. event.currentTarget is
+# only valid while the event is still dispatching — an `async def` handler
+# lets the browser finish dispatch (nulling currentTarget) before our code
+# runs, which throws "'JsNull' object has no attribute 'classList'".
 @when("drop", ".kanban-column-body")
-async def handle_drop(event):
+def handle_drop(event):
     event.preventDefault()
     target_body = event.currentTarget
     target_body.classList.remove("drag-over")
@@ -87,7 +92,11 @@ async def handle_drop(event):
 
     # Enforce forward-only movement across the board.
     if _column_index(target_column) < _column_index(source_column):
-        await show_snackbar("Tasks can only be pushed forward on the board.")
+        # Fire-and-forget: don't await inside a sync handler, and don't make
+        # this handler async (see note above).
+        asyncio.ensure_future(
+            show_snackbar("Tasks can only be pushed forward on the board.")
+        )
         return
 
     target_body.appendChild(card)
@@ -98,8 +107,9 @@ async def handle_drop(event):
 
 
 # --- END SPRINT: lock the board ---
+# Kept synchronous for the same reason as handle_drop, above.
 @when("click", "#end-sprint-btn")
-async def handle_end_sprint(event):
+def handle_end_sprint(event):
     global sprint_ended
     sprint_ended = True
 
@@ -112,7 +122,7 @@ async def handle_end_sprint(event):
         end_btn.textContent = "Sprint Ended"
         end_btn.disabled = True
 
-    await show_snackbar("Sprint ended. Board is now locked.")
+    asyncio.ensure_future(show_snackbar("Sprint ended. Board is now locked."))
 
 
 _refresh_all_counts()
