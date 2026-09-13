@@ -4,7 +4,7 @@ import asyncio
 if "." not in sys.path:
     sys.path.append(".")
 
-from pyscript import when, web  # type: ignore
+from pyscript import when, web, document  # type: ignore
 from auth import show_snackbar
 
 # Columns in left-to-right (forward) order.
@@ -32,71 +32,59 @@ def _refresh_all_counts():
         _update_column_count(key)
 
 
-# --- DRAG START: remember which card is being moved ---
-@when("dragstart", ".task-card")
-def handle_drag_start(event):
-    if sprint_ended:
-        event.preventDefault()
-        return
-
-    card = event.currentTarget
-    event.dataTransfer.setData("text/plain", card.id)
-    event.dataTransfer.effectAllowed = "move"
-    card.classList.add("dragging")
-
-
-@when("dragend", ".task-card")
-def handle_drag_end(event):
-    event.currentTarget.classList.remove("dragging")
-
-
-# --- DRAG OVER A COLUMN: allow the drop + highlight the column ---
-@when("dragover", ".kanban-column-body")
-def handle_drag_over(event):
-    if sprint_ended:
-        return
-    event.preventDefault()
-    event.dataTransfer.dropEffect = "move"
-    event.currentTarget.classList.add("drag-over")
-
-
-@when("dragleave", ".kanban-column-body")
-def handle_drag_leave(event):
-    event.currentTarget.classList.remove("drag-over")
-
-
-# --- DROP: move the card, but only forward ---
-# NOTE: this must stay a plain (non-async) function. event.currentTarget is
-# only valid while the event is still dispatching — an `async def` handler
-# lets the browser finish dispatch (nulling currentTarget) before our code
-# runs, which throws "'JsNull' object has no attribute 'classList'".
-@when("drop", ".kanban-column-body")
-def handle_drop(event):
-    event.preventDefault()
-    target_body = event.currentTarget
-    target_body.classList.remove("drag-over")
-
+# NOTE ON DRAG-AND-DROP ARCHITECTURE:
+# The raw HTML5 drag events (dragstart/dragover/dragleave/drop) and all the
+# purely visual bits (the "dragging"/"drag-over" CSS classes) are handled by
+# plain vanilla JS in sprint-page.html, NOT here.
+#
+# Why: PyScript's @when decorator always defers execution through its own
+# internal async dispatcher, regardless of whether your handler is written
+# as `def` or `async def`. By the time our Python code runs, the browser has
+# already finished dispatching the event and reset event.currentTarget /
+# event.dataTransfer to null — accessing them here throws
+# "'JsNull' object has no attribute '...'".
+#
+# So instead, the JS in sprint-page.html reads the dragged card's id and the
+# drop target's column key synchronously (while they're still valid), then
+# fires a custom "app:card-drop" event carrying only plain strings in
+# event.detail. Plain data survives the async handoff fine — only live
+# DOM/event object references go stale. This handler does all the actual
+# business logic (forward-only rule, moving the card, updating counts).
+@when("app:card-drop", "body")
+def handle_card_drop(event):
     if sprint_ended:
         return
 
-    card_id = event.dataTransfer.getData("text/plain")
-    card = web.page[card_id]
-    if card is None:
+    detail = event.detail
+    card_id = detail.cardId
+    target_column = detail.targetColumn
+
+    if not card_id or not target_column:
+        return
+
+    # Use document.getElementById here (not web.page[...]) — appendChild
+    # needs a real raw DOM Node. web.page[...] returns a Python-side
+    # wrapper that works fine for .classList/.getAttribute (those just
+    # forward calls) but isn't accepted by appendChild's strict type check,
+    # which throws "parameter 1 is not of type 'Node'".
+    card = document.getElementById(card_id)
+    if not card:
         return
 
     source_column = card.getAttribute("data-column")
-    target_column = target_body.getAttribute("data-column")
 
     if source_column == target_column:
         return
 
     # Enforce forward-only movement across the board.
     if _column_index(target_column) < _column_index(source_column):
-        # Fire-and-forget: don't await inside a sync handler, and don't make
-        # this handler async (see note above).
         asyncio.ensure_future(
             show_snackbar("Tasks can only be pushed forward on the board.")
         )
+        return
+
+    target_body = document.getElementById(f"column-{target_column}")
+    if not target_body:
         return
 
     target_body.appendChild(card)
@@ -107,7 +95,8 @@ def handle_drop(event):
 
 
 # --- END SPRINT: lock the board ---
-# Kept synchronous for the same reason as handle_drop, above.
+# This one never touched event.currentTarget (only web.page[...] lookups by
+# id), which is why it worked correctly even before the fix above.
 @when("click", "#end-sprint-btn")
 def handle_end_sprint(event):
     global sprint_ended

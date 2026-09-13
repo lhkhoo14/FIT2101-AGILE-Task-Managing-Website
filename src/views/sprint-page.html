@@ -255,6 +255,48 @@
     </div>
 
     <div id="snackbar">Some text some message..</div>
+
+    <!-- Plain JS handles the raw HTML5 drag events synchronously (no PyScript
+         involved here). PyScript's event dispatch always defers through an
+         internal async wrapper, which nulls out event.currentTarget /
+         event.dataTransfer by the time Python code runs. So JS extracts the
+         card id + target column immediately, then hands Python only plain
+         strings via a custom event, which never go stale. -->
+    <script>
+      (function () {
+        document.querySelectorAll(".task-card").forEach((card) => {
+          card.addEventListener("dragstart", (e) => {
+            e.dataTransfer.setData("text/plain", card.id);
+            e.dataTransfer.effectAllowed = "move";
+            card.classList.add("dragging");
+          });
+          card.addEventListener("dragend", () => {
+            card.classList.remove("dragging");
+          });
+        });
+
+        document.querySelectorAll(".kanban-column-body").forEach((col) => {
+          col.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            col.classList.add("drag-over");
+          });
+          col.addEventListener("dragleave", () => {
+            col.classList.remove("drag-over");
+          });
+          col.addEventListener("drop", (e) => {
+            e.preventDefault();
+            col.classList.remove("drag-over");
+            const cardId = e.dataTransfer.getData("text/plain");
+            const targetColumn = col.getAttribute("data-column");
+            document.body.dispatchEvent(new CustomEvent("app:card-drop", {
+              detail: { cardId: cardId, targetColumn: targetColumn }
+            }));
+          });
+        });
+      })();
+    </script>
+
     <!-- Link settings.json for PyScript backend -->
     <script type="py" config="../../settings.json" src="../backend/layout.py"></script>
     <script type="py" config="../../settings.json" src="../backend/sprint-page.py"></script>
