@@ -1,6 +1,7 @@
 import sys
 import json
 import copy
+import asyncio
 
 if "." not in sys.path:
     sys.path.append(".")
