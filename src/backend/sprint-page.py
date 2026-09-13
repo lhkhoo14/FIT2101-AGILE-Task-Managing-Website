@@ -243,7 +243,13 @@ async def handle_card_drop(event):
 
     # Enforce forward-only movement across the board.
     if _column_index(target_column) < _column_index(source_column):
-        await show_snackbar("Tasks can only be pushed forward on the board.")
+        asyncio.ensure_future(
+            show_snackbar("Tasks can only be pushed forward on the board.")
+        )
+        return
+
+    target_body = document.getElementById(f"column-{target_column}")
+    if not target_body:
         return
 
     state[source_column] = [t for t in state[source_column] if t["id"] != card_id]
@@ -278,7 +284,7 @@ async def handle_end_sprint(event):
         end_btn.textContent = "Sprint Ended"
         end_btn.disabled = True
 
-    await show_snackbar("Sprint ended. Board is now locked.")
+    asyncio.ensure_future(show_snackbar("Sprint ended. Board is now locked."))
 
 
 _init_page()
