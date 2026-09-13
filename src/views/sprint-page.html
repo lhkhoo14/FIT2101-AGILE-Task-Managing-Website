@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sprint #1 - Brand Name</title>
+    <title>Sprint - Brand Name</title>
 
     <!-- PyScript Core CDN -->
     <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
@@ -19,8 +19,6 @@
 
       (function () {
         const activeSession = localStorage.getItem(CONFIG.STORAGE_KEY_ACTIVE_SESSION);
-
-        // If on sprint page and NO session exists, redirect to login
         if (!activeSession || activeSession.trim() === "") {
           window.location.replace(CONFIG.VIEW_LOGIN);
         }
@@ -40,27 +38,22 @@
     <header class="top-app-bar">
       <div class="app-bar-left">
         <button type="button" id="toggle-sidebar-btn" class="icon-btn" aria-label="Toggle Sidebar">
-          <!-- Hamburger Menu Icon -->
           <svg viewBox="0 0 24 24" class="icon"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
         </button>
         <span class="brand-title">Brand Name</span>
       </div>
 
-      <!-- Rounded Search Bar (Middle) -->
       <div class="search-container">
         <svg viewBox="0 0 24 24" class="search-icon"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
         <input type="text" id="global-search" class="search-input" placeholder="Search tasks...">
       </div>
 
-      <!-- Profile Picture & Dropdown Menu -->
       <div class="profile-menu-container">
         <button type="button" id="profile-menu-btn" class="profile-btn" aria-label="User Profile">
           <div class="profile-avatar">
             <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
           </div>
         </button>
-
-        <!-- Profile Dropdown Menu -->
         <div id="profile-dropdown" class="dropdown-menu hidden">
           <div class="dropdown-header">
             <span class="user-name">User Name</span>
@@ -75,9 +68,7 @@
     <!-- Main Layout -->
     <div class="dashboard-layout">
 
-      <!-- Left Sidebar (shared chrome) -->
       <aside id="sidebar" class="sidebar">
-
         <div class="sidebar-action">
           <button type="button" id="back-to-project-btn" class="btn-create">
             <svg viewBox="0 0 24 24" class="icon"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
@@ -92,26 +83,10 @@
           </button>
 
           <div class="nav-section-title">Board Legend</div>
-
-          <div class="nav-item filter-item">
-            <span class="status-dot dot-todo"></span>
-            <span>Sprint Backlog</span>
-          </div>
-
-          <div class="nav-item filter-item">
-            <span class="status-dot dot-wip"></span>
-            <span>Active</span>
-          </div>
-
-          <div class="nav-item filter-item">
-            <span class="status-dot dot-review"></span>
-            <span>Review</span>
-          </div>
-
-          <div class="nav-item filter-item">
-            <span class="status-dot dot-completed"></span>
-            <span>Completed</span>
-          </div>
+          <div class="nav-item filter-item"><span class="status-dot dot-todo"></span><span>Sprint Backlog</span></div>
+          <div class="nav-item filter-item"><span class="status-dot dot-wip"></span><span>Active</span></div>
+          <div class="nav-item filter-item"><span class="status-dot dot-review"></span><span>Review</span></div>
+          <div class="nav-item filter-item"><span class="status-dot dot-completed"></span><span>Completed</span></div>
         </nav>
 
         <div class="sidebar-footer">
@@ -120,133 +95,61 @@
             <span>Settings</span>
           </button>
         </div>
-
       </aside>
 
       <!-- Main Content Area -->
       <main class="main-content">
 
-        <!-- Sprint Header -->
         <div class="content-header sprint-header">
           <div class="sprint-title-group">
-            <h1 class="page-title" id="sprint-name">Sprint #1</h1>
+            <h1 class="page-title" id="sprint-name">Sprint</h1>
             <span class="kanban-badge">Kanban View</span>
           </div>
           <button type="button" id="end-sprint-btn" class="btn-end-sprint">End Sprint</button>
         </div>
 
-        <!-- Kanban Board -->
+        <!--
+          Kanban Board: #kanban-board and each .kanban-column-body / column-count
+          element are the ONLY permanent nodes here. Python's _render_board()
+          wipes and rebuilds the task-card children on every load and every
+          drag/drop move — so the drag listeners below are attached to
+          #kanban-board itself (event delegation via closest()), never to
+          individual .task-card / .kanban-column-body nodes, or they'd go
+          stale the moment the board re-renders.
+        -->
         <div class="kanban-board" id="kanban-board">
 
-          <!-- SPRINT BACKLOG -->
           <div class="kanban-column" data-column="backlog">
             <div class="kanban-column-header column-accent-backlog">
               <h2 class="column-title">Sprint Backlog</h2>
-              <span class="column-count" id="count-backlog">2</span>
+              <span class="column-count" id="count-backlog">0</span>
             </div>
             <p class="column-subtitle">Items added from product backlog</p>
-            <div class="kanban-column-body" id="column-backlog" data-column="backlog">
-
-              <div class="task-card" id="task-1" draggable="true" data-column="backlog">
-                <div class="task-card-header">
-                  <span class="tag-badge tag-frontend">Frontend</span>
-                </div>
-                <p class="task-card-title">Design login page wireframe</p>
-                <div class="task-card-footer">
-                  <span class="priority-badge priority-medium">Medium</span>
-                  <div class="assignee-avatar" title="Chee Wei">CW</div>
-                </div>
-              </div>
-
-              <div class="task-card" id="task-2" draggable="true" data-column="backlog">
-                <div class="task-card-header">
-                  <span class="tag-badge tag-backend">Backend</span>
-                </div>
-                <p class="task-card-title">Set up Oracle DB schema</p>
-                <div class="task-card-footer">
-                  <span class="priority-badge priority-high">High</span>
-                  <div class="assignee-avatar" title="Ken Yit">KY</div>
-                </div>
-              </div>
-
-            </div>
+            <div class="kanban-column-body" id="column-backlog" data-column="backlog"></div>
           </div>
 
-          <!-- ACTIVE -->
           <div class="kanban-column" data-column="active">
             <div class="kanban-column-header column-accent-active">
               <h2 class="column-title">Active</h2>
-              <span class="column-count" id="count-active">1</span>
+              <span class="column-count" id="count-active">0</span>
             </div>
-            <div class="kanban-column-body" id="column-active" data-column="active">
-
-              <div class="task-card" id="task-3" draggable="true" data-column="active">
-                <div class="task-card-header">
-                  <span class="tag-badge tag-frontend">Frontend</span>
-                </div>
-                <p class="task-card-title">Build kanban board UI</p>
-                <div class="task-card-footer">
-                  <span class="priority-badge priority-high">High</span>
-                  <div class="assignee-avatar" title="Wei Ho">WH</div>
-                </div>
-              </div>
-
-            </div>
+            <div class="kanban-column-body" id="column-active" data-column="active"></div>
           </div>
 
-          <!-- REVIEW -->
           <div class="kanban-column" data-column="review">
             <div class="kanban-column-header column-accent-review">
               <h2 class="column-title">Review</h2>
-              <span class="column-count" id="count-review">1</span>
+              <span class="column-count" id="count-review">0</span>
             </div>
-            <div class="kanban-column-body" id="column-review" data-column="review">
-
-              <div class="task-card" id="task-4" draggable="true" data-column="review">
-                <div class="task-card-header">
-                  <span class="tag-badge tag-backend">Backend</span>
-                </div>
-                <p class="task-card-title">Login form validation logic</p>
-                <div class="task-card-footer">
-                  <span class="priority-badge priority-medium">Medium</span>
-                  <div class="assignee-avatar" title="Chee Wei">CW</div>
-                </div>
-              </div>
-
-            </div>
+            <div class="kanban-column-body" id="column-review" data-column="review"></div>
           </div>
 
-          <!-- COMPLETED -->
           <div class="kanban-column" data-column="completed">
             <div class="kanban-column-header column-accent-completed">
               <h2 class="column-title">Completed</h2>
-              <span class="column-count" id="count-completed">2</span>
+              <span class="column-count" id="count-completed">0</span>
             </div>
-            <div class="kanban-column-body" id="column-completed" data-column="completed">
-
-              <div class="task-card" id="task-5" draggable="true" data-column="completed">
-                <div class="task-card-header">
-                  <span class="tag-badge tag-backend">Backend</span>
-                </div>
-                <p class="task-card-title">Set up PyScript project</p>
-                <div class="task-card-footer">
-                  <span class="priority-badge priority-low">Low</span>
-                  <div class="assignee-avatar" title="Lip Hong">LH</div>
-                </div>
-              </div>
-
-              <div class="task-card" id="task-6" draggable="true" data-column="completed">
-                <div class="task-card-header">
-                  <span class="tag-badge tag-backend">Backend</span>
-                </div>
-                <p class="task-card-title">Create ServerData class</p>
-                <div class="task-card-footer">
-                  <span class="priority-badge priority-medium">Medium</span>
-                  <div class="assignee-avatar" title="Chee Wei">CW</div>
-                </div>
-              </div>
-
-            </div>
+            <div class="kanban-column-body" id="column-completed" data-column="completed"></div>
           </div>
 
         </div>
@@ -255,6 +158,59 @@
     </div>
 
     <div id="snackbar">Some text some message..</div>
+
+    <!--
+      Plain JS owns the raw HTML5 drag events. It reads the dragged card's id
+      and the drop target's column key SYNCHRONOUSLY (before the browser can
+      null them out), then hands Python only plain strings via a custom
+      "app:card-drop" event. Listeners are bound to the permanent #kanban-board
+      wrapper with closest() lookups, not to individual cards/columns, so they
+      keep working after Python rebuilds the column contents.
+    -->
+    <script>
+      (function () {
+        const board = document.getElementById("kanban-board");
+
+        board.addEventListener("dragstart", (e) => {
+          const card = e.target.closest(".task-card");
+          if (!card) return;
+          e.dataTransfer.setData("text/plain", card.id);
+          e.dataTransfer.effectAllowed = "move";
+          card.classList.add("dragging");
+        });
+
+        board.addEventListener("dragend", (e) => {
+          const card = e.target.closest(".task-card");
+          if (card) card.classList.remove("dragging");
+        });
+
+        board.addEventListener("dragover", (e) => {
+          const col = e.target.closest(".kanban-column-body");
+          if (!col) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          col.classList.add("drag-over");
+        });
+
+        board.addEventListener("dragleave", (e) => {
+          const col = e.target.closest(".kanban-column-body");
+          if (col) col.classList.remove("drag-over");
+        });
+
+        board.addEventListener("drop", (e) => {
+          const col = e.target.closest(".kanban-column-body");
+          if (!col) return;
+          e.preventDefault();
+          col.classList.remove("drag-over");
+          const cardId = e.dataTransfer.getData("text/plain");
+          const targetColumn = col.getAttribute("data-column");
+          document.body.dispatchEvent(new CustomEvent("app:card-drop", {
+            detail: { cardId: cardId, targetColumn: targetColumn }
+          }));
+        });
+      })();
+    </script>
+
     <!-- Link settings.json for PyScript backend -->
     <script type="py" config="../../settings.json" src="../backend/layout.py"></script>
     <script type="py" config="../../settings.json" src="../backend/sprint-page.py"></script>

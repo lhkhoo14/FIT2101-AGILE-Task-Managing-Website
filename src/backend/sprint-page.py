@@ -145,6 +145,9 @@ def _make_task_card(task, column_key):
 
 
 def _render_board(state):
+    # Rebuilds every column's children from scratch. This is the single
+    # place cards are created — the JS drag listeners never touch DOM
+    # nodes directly, so recreating them here on every load/move is safe.
     for column_key in COLUMN_ORDER:
         body = web.page[f"column-{column_key}"]
         body.innerHTML = ""
@@ -207,90 +210,54 @@ def _init_page():
     _render_board(state)
 
 
-# --- DRAG START --- bound to the stable #kanban-board container, not .task-card,
-# since _render_board() destroys/recreates card nodes on every load/move.
-@when("dragstart", "#kanban-board")
-def handle_drag_start(event):
-    if _sprint_ended:
-        event.preventDefault()
-        return
-    card = event.target.closest(".task-card")
-    if not card:
-        return
-    event.dataTransfer.setData("text/plain", card.id)
-    event.dataTransfer.effectAllowed = "move"
-    card.classList.add("dragging")
-
-
-@when("dragend", "#kanban-board")
-def handle_drag_end(event):
-    card = event.target.closest(".task-card")
-    if card:
-        card.classList.remove("dragging")
-
-
-@when("dragover", "#kanban-board")
-def handle_drag_over(event):
-    if _sprint_ended:
-        return
-    body = event.target.closest(".kanban-column-body")
-    if not body:
-        return
-    event.preventDefault()
-    event.dataTransfer.dropEffect = "move"
-    body.classList.add("drag-over")
-
-
-@when("dragleave", "#kanban-board")
-def handle_drag_leave(event):
-    body = event.target.closest(".kanban-column-body")
-    if body:
-        body.classList.remove("drag-over")
-
-
-@when("drop", "#kanban-board")
-async def handle_drop(event):
-    event.preventDefault()
-    target_body = event.target.closest(".kanban-column-body")
-    if not target_body:
-        return
-    target_body.classList.remove("drag-over")
-
+# --- DROP: the only drag/drop entry point on the Python side.
+# JS has already handled the raw HTML5 events (dragstart/dragover/dragleave/
+# drop) synchronously and dispatched this custom event with plain string
+# data once a card is actually released over a column — so `detail` never
+# goes stale here, even though @when defers dispatch.
+@when("app:card-drop", "body")
+async def handle_card_drop(event):
     if _sprint_ended:
         return
 
-    card_id = event.dataTransfer.getData("text/plain")
-    card = web.page[card_id]
-    if not card:
+    detail = event.detail
+    card_id = detail.cardId
+    target_column = detail.targetColumn
+
+    if not card_id or not target_column:
         return
 
-    source_column = card.getAttribute("data-column")
-    target_column = target_body.getAttribute("data-column")
+    state = _load_kanban_state(_sprint_id)
 
-    if source_column == target_column:
+    source_column = None
+    task = None
+    for col in COLUMN_ORDER:
+        match = next((t for t in state[col] if t["id"] == card_id), None)
+        if match is not None:
+            source_column = col
+            task = match
+            break
+
+    if task is None or source_column == target_column:
         return
 
+    # Enforce forward-only movement across the board.
     if _column_index(target_column) < _column_index(source_column):
         await show_snackbar("Tasks can only be pushed forward on the board.")
-        return
-
-    # Persist the move, not just the DOM change.
-    state = _load_kanban_state(_sprint_id)
-    task = next((t for t in state[source_column] if t["id"] == card_id), None)
-    if task is None:
         return
 
     state[source_column] = [t for t in state[source_column] if t["id"] != card_id]
     state[target_column].append(task)
     _save_kanban_state(_sprint_id, state)
 
-    target_body.appendChild(card)
-    card.setAttribute("data-column", target_column)
+    # Re-render from the saved state rather than reparenting the existing
+    # DOM node — sidesteps the "web.page[...] wrapper isn't a real Node for
+    # appendChild" pitfall entirely, and keeps the DOM always in sync with
+    # what's persisted.
+    _render_board(state)
 
-    _update_column_count(source_column)
-    _update_column_count(target_column)
 
-
+# --- END SPRINT: lock the board and persist status ---
 @when("click", "#end-sprint-btn")
 async def handle_end_sprint(event):
     global _sprint_ended
@@ -300,7 +267,7 @@ async def handle_end_sprint(event):
     sprint = _find_sprint(sprints, _sprint_id)
     if sprint:
         sprint["status"] = "ended"
-        _save_sprints(sprints)  # so the dashboard's status badge reflects it too
+        _save_sprints(sprints)  # dashboard's status badge picks this up too
 
     board = web.page["kanban-board"]
     if board is not None:
