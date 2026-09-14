@@ -1,8 +1,10 @@
 from pyscript import window # type: ignore
+from pyodide.http import pyfetch # type: ignore
 import json
 
 from models import User
 from constants import STORAGE_KEY_APP_DATA
+API_URL = "http://localhost:8000/api"
 
 class ServerData:
     def __init__(self):
@@ -105,3 +107,51 @@ class ServerData:
     def clear_session(self):
         self.logged_in_user_id = None
         window.localStorage.removeItem("session_user_id")
+
+    async def create_project(self, name: str, description: str):
+        """Creates a project through the FastAPI server."""
+        user_id = self.get_active_session()
+
+        if user_id is None:
+            return False, "No user is currently logged in."
+
+        try:
+            response = await pyfetch(
+                f"{API_URL}/projects",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({
+                    "user_id": int(user_id),
+                    "name": name,
+                    "description": description
+                })
+            )
+
+            if response.status == 201:
+                data = await response.json()
+                return True, data["project"]
+
+            error_data = await response.json()
+            return False, error_data.get("detail", "Failed to create project.")
+
+        except Exception as e:
+            print(f"[API Error] {e}")
+            return False, "Unable to connect to the server."
+
+    async def get_projects(self):
+        """Gets all projects from the FastAPI server."""
+        try:
+            response = await pyfetch(
+                f"{API_URL}/projects",
+                method="GET"
+            )
+
+            if response.status == 200:
+                data = await response.json()
+                return data.get("projects", [])
+
+            return []
+
+        except Exception as e:
+            print(f"[API Error] {e}")
+            return []

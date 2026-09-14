@@ -14,7 +14,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_PATH = "./data/server_database.json"
+DB_PATH = os.path.join(
+    os.path.dirname(__file__),
+    "data",
+    "server_database.json"
+)
 
 def read_db() -> dict:
     if not os.path.exists(DB_PATH):
@@ -147,6 +151,22 @@ def get_projects():
 
     return {
         "projects": list(db.get("projects", {}).values())
+    }
+
+@app.get("/api/projects/{project_id}")
+def get_project(project_id: int):
+    db = read_db()
+
+    project = db.get("projects", {}).get(str(project_id))
+
+    if project is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Project not found"
+        )
+
+    return {
+        "project": project
     }
 
 @app.get("/api/users/{user_id}")

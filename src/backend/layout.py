@@ -64,3 +64,7 @@ def toggle_sidebar(event):
         sidebar.classList.toggle("collapsed")
 
 validate_session()
+
+@when("click", "#create-project-btn")
+def handle_create_project(event):
+    window.location.href = "create-project.html"
