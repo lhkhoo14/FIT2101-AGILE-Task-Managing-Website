@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sprint - Brand Name</title>
+
+    <!-- PyScript Core CDN -->
+    <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
+    <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
+
+    <script>
+      const CONFIG = {
+        STORAGE_KEY_APP_DATA: "pyscript_app_data",
+        STORAGE_KEY_ACTIVE_SESSION: "session_user_id",
+        VIEW_LOGIN: "login.html",
+        VIEW_DASHBOARD: "dashboard.html"
+      };
+
+      (function () {
+        const activeSession = localStorage.getItem(CONFIG.STORAGE_KEY_ACTIVE_SESSION);
+        if (!activeSession || activeSession.trim() === "") {
+          window.location.replace(CONFIG.VIEW_LOGIN);
+        }
+      })();
+    </script>
+
+    <!-- Layout Stylesheet -->
+    <link rel="stylesheet" href="../styles/layout.css">
+    <!-- Page Stylesheet -->
+    <link rel="stylesheet" href="../styles/sprint-page.css">
+    <!-- Snackbar Stylesheet -->
+    <link rel="stylesheet" href="../styles/snackbar.css">
+  </head>
+  <body>
+
+    <!-- Top App Bar -->
+    <header class="top-app-bar">
+      <div class="app-bar-left">
+        <button type="button" id="toggle-sidebar-btn" class="icon-btn" aria-label="Toggle Sidebar">
+          <svg viewBox="0 0 24 24" class="icon"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+        </button>
+        <span class="brand-title">Brand Name</span>
+      </div>
+
+      <div class="search-container">
+        <svg viewBox="0 0 24 24" class="search-icon"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        <input type="text" id="global-search" class="search-input" placeholder="Search tasks...">
+      </div>
+
+      <div class="profile-menu-container">
+        <button type="button" id="profile-menu-btn" class="profile-btn" aria-label="User Profile">
+          <div class="profile-avatar">
+            <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+          </div>
+        </button>
+        <div id="profile-dropdown" class="dropdown-menu hidden">
+          <div class="dropdown-header">
+            <span class="user-name">User Name</span>
+            <span class="user-email">user@example.com</span>
+          </div>
+          <hr>
+          <button type="button" id="signout-btn" class="dropdown-item">Sign Out</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="dashboard-layout">
+
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-action">
+          <button type="button" id="back-to-project-btn" class="btn-create">
+            <svg viewBox="0 0 24 24" class="icon"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+            <span>Back to Project</span>
+          </button>
+        </div>
+
+        <nav class="sidebar-nav">
+          <button type="button" id="nav-all-projects" class="nav-item">
+            <svg viewBox="0 0 24 24" class="icon"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+            <span>All Projects</span>
+          </button>
+
+          <div class="nav-section-title">Board Legend</div>
+          <div class="nav-item filter-item"><span class="status-dot dot-todo"></span><span>Sprint Backlog</span></div>
+          <div class="nav-item filter-item"><span class="status-dot dot-wip"></span><span>Active</span></div>
+          <div class="nav-item filter-item"><span class="status-dot dot-review"></span><span>Review</span></div>
+          <div class="nav-item filter-item"><span class="status-dot dot-completed"></span><span>Completed</span></div>
+        </nav>
+
+        <div class="sidebar-footer">
+          <button type="button" id="settings-btn" class="nav-item">
+            <svg viewBox="0 0 24 24" class="icon"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+            <span>Settings</span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <main class="main-content">
+
+        <div class="content-header sprint-header">
+          <div class="sprint-title-group">
+            <h1 class="page-title" id="sprint-name">Sprint</h1>
+            <span class="kanban-badge">Kanban View</span>
+          </div>
+          <button type="button" id="end-sprint-btn" class="btn-end-sprint">End Sprint</button>
+        </div>
+
+        <!--
+          Kanban Board: #kanban-board and each .kanban-column-body / column-count
+          element are the ONLY permanent nodes here. Python's _render_board()
+          wipes and rebuilds the task-card children on every load and every
+          drag/drop move — so the drag listeners below are attached to
+          #kanban-board itself (event delegation via closest()), never to
+          individual .task-card / .kanban-column-body nodes, or they'd go
+          stale the moment the board re-renders.
+        -->
+        <div class="kanban-board" id="kanban-board">
+
+          <div class="kanban-column" data-column="backlog">
+            <div class="kanban-column-header column-accent-backlog">
+              <h2 class="column-title">Sprint Backlog</h2>
+              <span class="column-count" id="count-backlog">0</span>
+            </div>
+            <p class="column-subtitle">Items added from product backlog</p>
+            <div class="kanban-column-body" id="column-backlog" data-column="backlog"></div>
+          </div>
+
+          <div class="kanban-column" data-column="active">
+            <div class="kanban-column-header column-accent-active">
+              <h2 class="column-title">Active</h2>
+              <span class="column-count" id="count-active">0</span>
+            </div>
+            <div class="kanban-column-body" id="column-active" data-column="active"></div>
+          </div>
+
+          <div class="kanban-column" data-column="review">
+            <div class="kanban-column-header column-accent-review">
+              <h2 class="column-title">Review</h2>
+              <span class="column-count" id="count-review">0</span>
+            </div>
+            <div class="kanban-column-body" id="column-review" data-column="review"></div>
+          </div>
+
+          <div class="kanban-column" data-column="completed">
+            <div class="kanban-column-header column-accent-completed">
+              <h2 class="column-title">Completed</h2>
+              <span class="column-count" id="count-completed">0</span>
+            </div>
+            <div class="kanban-column-body" id="column-completed" data-column="completed"></div>
+          </div>
+
+        </div>
+
+      </main>
+    </div>
+
+    <div id="snackbar">Some text some message..</div>
+
+    <!--
+      Plain JS owns the raw HTML5 drag events. It reads the dragged card's id
+      and the drop target's column key SYNCHRONOUSLY (before the browser can
+      null them out), then hands Python only plain strings via a custom
+      "app:card-drop" event. Listeners are bound to the permanent #kanban-board
+      wrapper with closest() lookups, not to individual cards/columns, so they
+      keep working after Python rebuilds the column contents.
+    -->
+    <script>
+      (function () {
+        const board = document.getElementById("kanban-board");
+
+        board.addEventListener("dragstart", (e) => {
+          const card = e.target.closest(".task-card");
+          if (!card) return;
+          e.dataTransfer.setData("text/plain", card.id);
+          e.dataTransfer.effectAllowed = "move";
+          card.classList.add("dragging");
+        });
+
+        board.addEventListener("dragend", (e) => {
+          const card = e.target.closest(".task-card");
+          if (card) card.classList.remove("dragging");
+        });
+
+        board.addEventListener("dragover", (e) => {
+          const col = e.target.closest(".kanban-column-body");
+          if (!col) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          col.classList.add("drag-over");
+        });
+
+        board.addEventListener("dragleave", (e) => {
+          const col = e.target.closest(".kanban-column-body");
+          if (col) col.classList.remove("drag-over");
+        });
+
+        board.addEventListener("drop", (e) => {
+          const col = e.target.closest(".kanban-column-body");
+          if (!col) return;
+          e.preventDefault();
+          col.classList.remove("drag-over");
+          const cardId = e.dataTransfer.getData("text/plain");
+          const targetColumn = col.getAttribute("data-column");
+          document.body.dispatchEvent(new CustomEvent("app:card-drop", {
+            detail: { cardId: cardId, targetColumn: targetColumn }
+          }));
+        });
+      })();
+    </script>
+
+    <!-- Link settings.json for PyScript backend -->
+    <script type="py" config="../../settings.json" src="../backend/layout.py"></script>
+    <script type="py" config="../../settings.json" src="../backend/sprint-page.py"></script>
+  </body>
+</html>
