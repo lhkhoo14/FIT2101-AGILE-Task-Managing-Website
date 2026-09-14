@@ -1,4 +1,4 @@
-from pyscript import window  # type: ignore
+from pyscript import when, window  # type: ignore
 from models.server_data import ServerData
 
 # 1. Instantiate database manager
@@ -31,3 +31,11 @@ if current_session_id:
     # 4. Initialize dashboard-specific UI & data
     # e.g., render_projects_grid(server_data.projects)
     # e.g., update_profile_header(current_user)
+
+@when("click", ".projects-grid")
+def handle_project_card_click(event):
+    card = event.target.closest(".project-card")
+    if not card:
+        return
+
+    window.location.href = "sprint-dashboard.html"
