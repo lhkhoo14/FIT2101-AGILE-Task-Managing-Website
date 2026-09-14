@@ -3,6 +3,8 @@ import json
 import copy
 import asyncio
 
+
+# Ensure the current directory is in the system path for local module imports
 if "." not in sys.path:
     sys.path.append(".")
 
@@ -11,6 +13,9 @@ from auth import show_snackbar
 from constants import DEFAULT_SPRINTS  # fallback only — see _load_sprints below
 import js  # type: ignore
 
+# ==========================================
+# CONSTANTS & GLOBAL STATE
+# ==========================================
 COLUMN_ORDER = ["backlog", "active", "review", "completed"]
 
 SPRINTS_STORAGE_KEY = "sprints_list"
@@ -21,14 +26,19 @@ _sprint_id = None
 _sprint_ended = False
 
 
-# --- URL ---
+# ==========================================
+# URL HELPERS
+# ==========================================
+
 def _get_sprint_id_from_url():
     params = js.URLSearchParams.new(window.location.search)
     sid = params.get("sprint_id")
     return sid if sid else None
 
 
-# --- sprints_list helpers (shared shape with dashboard) ---
+# ==========================================
+# SPRINT STORAGE HELPERS
+# ==========================================
 def _load_sprints():
     raw = window.localStorage.getItem(SPRINTS_STORAGE_KEY)
     if not raw:
@@ -49,7 +59,10 @@ def _save_sprints(sprints):
 def _find_sprint(sprints, sprint_id):
     return next((s for s in sprints if s["id"] == sprint_id), None)
 
-# --- kanban_state helpers ---
+# ==========================================
+# KANBAN BOARD STATE HELPERS
+# ==========================================
+
 def _load_kanban_state(sprint_id):
     from constants import DEFAULT_KANBAN_STATES  # local import keeps top-level imports lean
 
@@ -75,7 +88,10 @@ def _save_kanban_state(sprint_id, state):
     window.localStorage.setItem(f"{KANBAN_STATE_KEY_PREFIX}{sprint_id}", json.dumps(state))
 
 
-# --- absorb items dropped onto this sprint's card from the dashboard ---
+# ==========================================
+# BACKLOG HANDOFF HELPERS
+# ==========================================
+
 def _load_backlog_handoff(sprint_id):
     raw = window.localStorage.getItem(f"{SPRINT_BACKLOG_KEY_PREFIX}{sprint_id}")
     if not raw:
@@ -107,7 +123,9 @@ def _merge_handoff_into_backlog_column(sprint_id, state):
     return state
 
 
-# --- rendering ---
+# ==========================================
+# RENDERING & UI HELPERS
+# ==========================================
 def _make_task_card(task, column_key):
     card = document.createElement("div")
     card.className = "task-card"
@@ -160,7 +178,9 @@ def _column_index(column_key):
     return COLUMN_ORDER.index(column_key)
 
 
-# --- page bootstrap ---
+# ==========================================
+# PAGE INITIALIZATION & BOOTSTRAP
+# ==========================================
 def _apply_header_and_lock_state(sprint):
     web.page["sprint-name"].textContent = sprint["name"]
 
@@ -198,7 +218,9 @@ def _init_page():
     _render_board(state)
 
 
-# --- DROP ---
+# ==========================================
+# EVENT HANDLERS
+# ==========================================
 @when("app:card-drop", "body")
 async def handle_card_drop(event):
     if _sprint_ended:
@@ -225,6 +247,7 @@ async def handle_card_drop(event):
     if task is None or source_column == target_column:
         return
 
+    # Restrict backward movement across columns
     if _column_index(target_column) < _column_index(source_column):
         asyncio.ensure_future(
             show_snackbar("Tasks can only be pushed forward on the board.")
