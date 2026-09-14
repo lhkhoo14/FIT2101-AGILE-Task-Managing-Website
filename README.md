@@ -6,7 +6,13 @@ FIT2101 S2 2026 group repository.
 
 Add your team members and roles here.
 
-Chan Chee Wei (34073981) - Developer
+- Chan Chee Wei (34073981) - Developer
+- Agasti Ngoh Cheng Che (36791407) - Project Owner, Developer
+- Lye Wei Ho - Scrum Master, Developer
+- Izaan - Secretary, Developer
+- Lip Khoo - Developer
+- Ken Yit - Deputy Scrum Master, Developer
+
 
 ## Getting Started
 
