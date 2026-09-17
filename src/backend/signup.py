@@ -5,7 +5,7 @@ if "." not in sys.path:
     sys.path.append(".")
 
 from pyscript import when, web, window  # type: ignore
-from backend.server_data import ServerData
+from server_data import ServerData
 from auth import (
     validate_email,
     validate_password,

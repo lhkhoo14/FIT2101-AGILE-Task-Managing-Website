@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 import json, os
 
-app = FastAPI()
+app = FastAPI() # To run the server, place `uvicorn main:app --reload` in the terminal.
 
 # Enable CORS so PyScript running in the browser can communicate with FastAPI
 app.add_middleware(
@@ -21,6 +21,8 @@ DB_PATH = os.path.join(
 )
 
 def read_db() -> dict:
+    default_structure = {"next_user_id": 1, "users": []}
+    
     if not os.path.exists(DB_PATH):
         return {
             "next_user_id": 1,
@@ -49,12 +51,7 @@ def read_db() -> dict:
             return data
 
     except (json.JSONDecodeError, Exception):
-        return {
-            "next_user_id": 1,
-            "next_project_id": 1,
-            "users": [],
-            "projects": {}
-        }
+        return default_structure
 
 def write_db(data: dict):
     dir_name = os.path.dirname(DB_PATH)
@@ -176,4 +173,3 @@ def get_user(user_id: int):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return {"user_id": user["user_id"], "username": user["username"], "email": user["email"]}
-

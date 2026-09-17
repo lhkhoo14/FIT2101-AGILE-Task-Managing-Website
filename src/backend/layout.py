@@ -1,41 +1,32 @@
 import sys
 import asyncio
-
-from models import ServerData
+from server_data import ServerData
 
 if "." not in sys.path:
     sys.path.append(".")
 
-from pyscript import when, web, window # type: ignore
+from pyscript import when, web, window  # type: ignore
 from auth import show_snackbar
-
-def validate_session():
-    db = ServerData()
-    if db.get_active_session() is None:
-        window.location.href = "login.html"
-        return
-    else:
-        return
 
 # --- 1. TOGGLE PROFILE DROPDOWN MENU ---
 @when("click", "#profile-menu-btn")
 def toggle_profile_dropdown(event):
-    # Prevent click from immediately closing the dropdown via global click listener
     if event:
         event.stopPropagation()
 
-    dropdown = web.page["profile-dropdown"]
-    if dropdown is not None:
-        dropdown.classList.toggle("hidden")
-
+    dropdown = web.page["#profile-dropdown"]
+    if dropdown:
+        if "hidden" in dropdown.classes:
+            dropdown.classes.remove("hidden")
+        else:
+            dropdown.classes.add("hidden")
 
 # --- 2. CLOSE DROPDOWN WHEN CLICKING OUTSIDE ---
 @when("click", "body")
 def close_dropdown_on_outside_click(event):
-    dropdown = web.page["profile-dropdown"]
-    if dropdown is not None and not dropdown.classList.contains("hidden"):
-        dropdown.classList.add("hidden")
-
+    dropdown = web.page["#profile-dropdown"]
+    if dropdown and "hidden" not in dropdown.classes:
+        dropdown.classes.add("hidden")
 
 # --- 3. HANDLE SIGN OUT ---
 @when("click", "#signout-btn")
@@ -43,28 +34,61 @@ async def handle_signout(event):
     if event:
         event.stopPropagation()
 
-    # Hide dropdown menu immediately
-    dropdown = web.page["profile-dropdown"]
-    if dropdown is not None:
-        dropdown.classList.add("hidden")
+    dropdown = web.page["#profile-dropdown"]
+    if dropdown:
+        dropdown.classes.add("hidden")
 
-    # (Optional) Perform any session cleanup/token clearing here
     db = ServerData()
     db.clear_session()
     
-    # Notify user and redirect to login page
     await show_snackbar("Signing out...")
-    window.location.href = "login.html"
+    window.location.replace("login.html")
 
-# --- 4. TOGGLE SIDEBAR (COLLAPSE / EXPAND) ---
+# --- 4. TOGGLE SIDEBAR ---
 @when("click", "#toggle-sidebar-btn")
 def toggle_sidebar(event):
-    sidebar = web.page["sidebar"]
-    if sidebar is not None:
-        sidebar.classList.toggle("collapsed")
+    sidebar = web.page["#sidebar"]
+    if sidebar:
+        if "collapsed" in sidebar.classes:
+            sidebar.classes.remove("collapsed")
+        else:
+            sidebar.classes.add("collapsed")
 
-validate_session()
+def render_user_profile(user: dict):
+    name_elem = web.page["#user-display-name"]
+    email_elem = web.page["#user-display-email"]
 
-@when("click", "#create-project-btn")
-def handle_create_project(event):
-    window.location.href = "create-project.html"
+    if name_elem:
+        name_elem.innerText = user.get("username", "Username")
+    if email_elem:
+        email_elem.innerText = user.get("email", "Email")
+
+async def guard_session(server_data: ServerData) -> dict | None:
+    """Validates session asynchronously against FastAPI backend."""
+    session_id = server_data.get_active_session()
+
+    if session_id is None:
+        window.location.replace("login.html")
+        return None
+
+    # Query FastAPI endpoint for user details
+    user = await server_data.get_user_by_id(session_id)
+    if user is None:
+        print("[Auth Guard] Invalid session or user not found. Redirecting...")
+        server_data.clear_session()
+        window.location.replace("login.html")
+        return None
+
+    return user
+
+async def init_topbar():
+    server_data = ServerData()
+    current_user = await guard_session(server_data)
+
+    if current_user:
+        print(f"Authenticated as: {current_user.get('username')}")
+
+        # Update UI elements with logged-in user details if present
+        render_user_profile(current_user)
+
+asyncio.ensure_future(init_topbar())
