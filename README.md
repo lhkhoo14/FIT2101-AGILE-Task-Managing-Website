@@ -22,14 +22,12 @@ Update this section as your project grows.
 ```
 src/
 ├── backend/
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── server_data.py
-│   │   └── user.py
+│   ├── server_data.py
 │   ├── auth.py
 │   ├── layout.py
 │   ├── login.py
-│   └── signup.py
+│   ├── signup.py
+│   └── dashboard.py
 ├── components/
 │   ├── avatar.html
 │   ├── sidebar.html
