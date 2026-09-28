@@ -1,5 +1,6 @@
 {
   "files": {
+    "./src/backend/layout.py": "./layout.py",
     "./src/backend/auth.py": "./auth.py",
     "./src/backend/login.py": "./login.py",
     "./src/backend/signup.py": "./signup.py",
