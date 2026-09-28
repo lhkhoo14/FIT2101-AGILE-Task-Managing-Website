@@ -7,6 +7,11 @@ FIT2101 S2 2026 group repository.
 Add your team members and roles here.
 
 Chan Chee Wei (34073981) - Developer
+Loh Ken Yit (35731958) - Deputy Scrum Master, Developer
+Agasti Ngoh Cheng Che (36791407) Product Owner, Developer
+Lye Wei Ho (36286761) Scrum Master, Developer
+Izaan (36784478) secretary, Developer
+Khoo Lip Hong (36391948) Developer
 
 ## Getting Started
 
@@ -29,7 +34,12 @@ src/
 │   ├── auth.py
 │   ├── layout.py
 │   ├── login.py
-│   └── signup.py
+│   ├── constants.py
+│   ├── sprint-page.py
+│   ├── sprint-dashboard.py
+│   ├── signup.py
+│   └── dashboard.html
+
 ├── components/
 │   ├── avatar.html
 │   ├── sidebar.html
@@ -38,10 +48,14 @@ src/
 │   ├── auth.css
 │   ├── dashboard.css
 │   ├── layout.css
+│   ├── sprint-dashboard.css
+│   ├── sprint-page.css
 │   └── snackbar.css
 ├── views/
 │   ├── dashboard.html
 │   ├── login.html
+│   ├── sprint-dashboard.html
+│   ├── sprint-page.html
 │   └── signup.html
 ├── index.html
 ├── PYSCRIPT_TUTORIAL.md
