@@ -1,7 +1,7 @@
 import sys
 import asyncio
 
-from models import ServerData
+from server_data import ServerData
 
 if "." not in sys.path:
     sys.path.append(".")
@@ -35,16 +35,13 @@ async def handle_login(event):
         return
 
     db = ServerData()
-    if db.find_user_by_email(email) is None:
-        show_feedback("email", "No user found with this email.")
-        return
-    elif db.validate_login(email, password) is False:
-        show_feedback("password", "Incorrect password. Please try again.")
-        return
+    is_authenticated = await db.validate_login(email, password)
 
-    await show_snackbar("Logging in...")
-
-    window.location.href = "dashboard.html"
+    if is_authenticated:
+        await show_snackbar("Logging in...")
+        window.location.href = "dashboard.html"
+    else:
+        show_feedback("password", "Invalid email or password.")
 
 @when("click", "#toggle-password")
 def handle_password_toggle(event):
