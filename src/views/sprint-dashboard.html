@@ -146,9 +146,9 @@
           <div class="sort-container">
             <label for="sort-select" class="sort-label">Sort:</label>
             <select id="sort-select" class="sort-dropdown">
-              <option value="date">Date</option>
-              <option value="priority">Priority</option>
-              <option value="name">Name</option>
+              <option value="date">Creation date (newest)</option>
+              <option value="priority">Priority (high to low)</option>
+              <option value="name">Name (A-Z)</option>
             </select>
           </div>
         </div>
@@ -173,11 +173,16 @@
             <label class="modal-label" for="sprint-details-input">Details</label>
             <input type="text" id="sprint-details-input" class="modal-input" placeholder="Short description">
 
-            <label class="modal-label" for="sprint-status-input">Status</label>
-            <select id="sprint-status-input" class="modal-input">
-              <option value="active">Active</option>
-              <option value="ended">Ended</option>
+            <label class="modal-label" for="sprint-priority-input">Priority</label>
+            <select id="sprint-priority-input" class="modal-input">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
             </select>
+
+            <span class="modal-label">Assign Members</span>
+            <div id="sprint-members-list" class="members-list"></div>
+            <p class="members-hint">Only assigned members can open this sprint or drag tasks into it. You are always included.</p>
 
             <div class="modal-actions">
               <button type="button" class="modal-btn-cancel" data-modal="create-sprint-modal">Cancel</button>

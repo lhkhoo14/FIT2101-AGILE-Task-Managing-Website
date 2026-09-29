@@ -12,6 +12,7 @@ if "." not in sys.path:
 from pyscript import when, web, window, document  # type: ignore
 from auth import show_snackbar
 from constants import DEFAULT_SPRINTS  # fallback only — see _load_sprints below
+from sprint_access import is_sprint_member
 import js  # type: ignore
 
 from models.server_data import ServerData
@@ -32,6 +33,8 @@ KANBAN_STATE_KEY_PREFIX = "kanban_state_"
 
 _sprint_id = None
 _sprint_ended = False
+_has_access = False  # True only once the current user is confirmed as an assigned member
+FLASH_KEY = "flash_snackbar"  # shown by sprint-dashboard.html after a redirect
 
 
 # ==========================================
@@ -236,6 +239,15 @@ def _init_page():
         window.location.href = "dashboard.html"
         return
 
+    # Only members assigned to this sprint may open its page (this also covers
+    # anyone who types the sprint_id into the URL directly).
+    global _has_access
+    if not is_sprint_member(sprint, current_user.user_id if current_user else None):
+        window.sessionStorage.setItem(FLASH_KEY, "You are not assigned to that sprint.")
+        window.location.href = "sprint-dashboard.html"
+        return
+    _has_access = True
+
     _apply_header_and_lock_state(sprint)
 
     state = _load_kanban_state(_sprint_id)
@@ -248,7 +260,7 @@ def _init_page():
 # ==========================================
 @when("app:card-drop", "body")
 async def handle_card_drop(event):
-    if _sprint_ended:
+    if _sprint_ended or not _has_access:
         return
 
     detail = event.detail
