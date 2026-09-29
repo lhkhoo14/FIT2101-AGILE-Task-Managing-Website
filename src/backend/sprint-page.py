@@ -189,6 +189,43 @@ def _make_task_card(task, column_key):
     return card
 
 
+def _current_actor():
+    # Resolve the signed-in user's display name for sprint-board events.
+    try:
+        raw = window.localStorage.getItem("pyscript_app_data")
+        data = json.loads(raw) if raw else {}
+        active_id = str(window.localStorage.getItem("session_user_id") or "")
+        user = next(
+            (item for item in data.get("users", []) if str(item.get("user_id")) == active_id),
+            None,
+        )
+        return user.get("username") or user.get("email") if user else "Unknown user"
+    except (ValueError, TypeError):
+        return "Unknown user"
+
+
+async def _record_change(action, sprint, task=None, from_status=None, to_status=None):
+    # Persist a timestamped sprint-board event in the shared IndexedDB store.
+    entry = {
+        "action": action,
+        "message": (
+            f"{_current_actor()} moved {task.get('title', 'a task')} from "
+            f"{from_status} to {to_status} in {sprint.get('name', 'a sprint')}"
+            if action == "moved"
+            else f"{_current_actor()} ended {sprint.get('name', 'a sprint')}"
+        ),
+        "sprint_id": _sprint_id,
+        "sprint_name": sprint.get("name", "Sprint"),
+        "task_id": task.get("id") if task else None,
+        "task_title": task.get("title") if task else None,
+        "from_status": from_status,
+        "to_status": to_status,
+        "actor": _current_actor(),
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+    }
+    await window.sprintHistoryDb.add(js.JSON.parse(json.dumps(entry)))
+
+
 def _render_board(state):
     for column_key in COLUMN_ORDER:
         body = web.page[f"column-{column_key}"]
@@ -259,6 +296,7 @@ def _init_page():
 # ==========================================
 @when("app:card-drop", "body")
 async def handle_card_drop(event):
+    # Persist a forward-only column move and record it in the shared event database.
     if _sprint_ended:
         return
 
@@ -303,6 +341,7 @@ async def handle_card_drop(event):
 # --- END SPRINT: lock the board and persist status ---
 @when("click", "#end-sprint-btn")
 async def handle_end_sprint(event):
+    # Lock the board, persist the ended state, and record the sprint event.
     global _sprint_ended
     if _sprint_ended:
         return

@@ -35,6 +35,7 @@
   <link rel="stylesheet" href="../styles/sprint-page.css">
   <!-- Snackbar Stylesheet -->
   <link rel="stylesheet" href="../styles/snackbar.css">
+  <!-- Shared IndexedDB API for reading and recording sprint change history. -->
   <script src="../backend/history-db.js"></script>
 </head>
 
@@ -110,6 +111,7 @@
 
       <div class="nav-section-title">Additional Features</div>
 
+      <!-- Buttons switch the main panel between contribution, history, and member views. -->
       <button type="button" id="nav-contributions" class="nav-item section-item">
         <span class="additional-label"></span>
         <span>Member Contributions</span>
@@ -183,6 +185,7 @@
       </div>
     </section>
 
+    <!-- Sprint roster grouped by project role; data attributes provide future contact fields. -->
     <section id="members-view" class="members-view hidden" aria-labelledby="members-title">
       <div class="content-header">
         <h1 id="members-title" class="page-title">Sprint Members</h1>
@@ -246,6 +249,7 @@
       </div>
     </section>
 
+    <!-- Change events are populated from the shared IndexedDB history store. -->
     <section id="history-view" class="feature-view hidden" aria-labelledby="history-title">
       <div class="content-header">
         <h1 id="history-title" class="page-title">Change History</h1>
@@ -253,6 +257,7 @@
       <ol id="history-list" class="activity-list"></ol>
     </section>
 
+    <!-- Assigned task totals and status-specific task rows are rendered from sprint board state. -->
     <section id="contributions-view" class="feature-view hidden" aria-labelledby="contributions-title">
       <div class="content-header">
         <h1 id="contributions-title" class="page-title">Member Contributions</h1>
@@ -265,6 +270,7 @@
 
 <div id="snackbar">Some text some message..</div>
 
+<!-- Contact dialog filled from the selected member's data attributes. -->
 <div id="member-details-modal" class="modal-overlay hidden">
   <section class="modal-box member-details-modal" role="dialog" aria-modal="true" aria-labelledby="member-modal-title">
     <div class="member-modal-header">

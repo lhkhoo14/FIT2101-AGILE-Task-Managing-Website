@@ -7,6 +7,7 @@
     let databasePromise;
     let migrationPromise;
 
+    // Keep sprint change events in a browser database shared by dashboard and sprint pages.
     function openDatabase() {
         if (databasePromise) return databasePromise;
 
@@ -33,6 +34,7 @@
     }
 
     async function migrateLegacyHistory(database) {
+        // Import old localStorage events once so existing activity remains visible.
         if (localStorage.getItem(MIGRATION_FLAG_KEY) === "1") return;
         if (migrationPromise) return migrationPromise;
 
@@ -70,6 +72,7 @@
     }
 
     async function getDatabase() {
+        // Finish the one-time migration before reading or writing change events.
         const database = await openDatabase();
         await migrateLegacyHistory(database);
         return database;
@@ -77,6 +80,7 @@
 
     window.sprintHistoryDb = {
         async add(entry) {
+            // Save one event and return its generated IndexedDB key.
             const database = await getDatabase();
             return new Promise((resolve, reject) => {
                 const transaction = database.transaction(STORE_NAME, "readwrite");
@@ -87,6 +91,7 @@
         },
 
         async getAll() {
+            // Read all stored events for the dashboard history view.
             const database = await getDatabase();
             return new Promise((resolve, reject) => {
                 const request = database.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).getAll();

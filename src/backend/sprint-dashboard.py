@@ -1,13 +1,14 @@
+import asyncio
 import json
 import time
-import asyncio
 from datetime import datetime
+
 from pyscript import when, web, window, document  # type: ignore[reportMissingImports]
 from constants import DEFAULT_SPRINTS, DEFAULT_BACKLOG_ITEMS, DEFAULT_KANBAN_STATES
 import js  # type: ignore[reportMissingImports]
 
 BACKLOG_STORAGE_KEY = "product_backlog_items"
-SPRINT_BACKLOG_KEY_PREFIX = "sprint_backlog_"  # + sprint_id
+SPRINT_BACKLOG_KEY_PREFIX = "sprint_backlog_"
 SPRINTS_STORAGE_KEY = "sprints_list"
 KANBAN_STATE_KEY_PREFIX = "kanban_state_"
 COLUMN_ORDER = ["backlog", "active", "review", "completed"]
@@ -15,12 +16,12 @@ COLUMN_ORDER = ["backlog", "active", "review", "completed"]
 _dragged_backlog_id = None
 
 
-# --- Storage helpers ---
+# Load persisted product-backlog tasks, seeding the starter tasks on first visit.
 def load_backlog_items():
     raw = window.localStorage.getItem(BACKLOG_STORAGE_KEY)
     if not raw:
         seeded = list(DEFAULT_BACKLOG_ITEMS)
-        save_backlog_items(seeded)   # persist immediately so every page sees the same data
+        save_backlog_items(seeded)
         return seeded
     try:
         return json.loads(raw)
@@ -28,10 +29,12 @@ def load_backlog_items():
         return list(DEFAULT_BACKLOG_ITEMS)
 
 
+# Save product-backlog tasks in browser storage.
 def save_backlog_items(items):
     window.localStorage.setItem(BACKLOG_STORAGE_KEY, json.dumps(items))
 
 
+# Read and write the backlog handoff associated with an individual sprint.
 def load_sprint_backlog(sprint_id):
     raw = window.localStorage.getItem(f"{SPRINT_BACKLOG_KEY_PREFIX}{sprint_id}")
     if not raw:
@@ -53,14 +56,13 @@ def add_item_to_sprint_backlog(sprint_id, item):
     return len(items)
 
 
-# --- Rendering the pool sidebar ---
+# Build one draggable product-backlog task card.
 def _make_backlog_card(item):
     card = document.createElement("div")
     card.className = "task-card"
     card.id = f"backlog-item-{item['id']}"
     card.setAttribute("draggable", "true")
     card.setAttribute("data-backlog-id", item["id"])
-
     card.innerHTML = f"""
         <div class="task-card-header">
             <span class="tag-badge tag-{item['tag']}">{item['tag'].capitalize()}</span>
@@ -73,6 +75,7 @@ def _make_backlog_card(item):
     return card
 
 
+# Render all product-backlog cards and update their displayed count.
 def render_backlog_list():
     items = load_backlog_items()
     list_el = web.page["backlog-list"]
@@ -82,6 +85,7 @@ def render_backlog_list():
     web.page["count-product-backlog"].textContent = str(len(items))
 
 
+# Refresh one sprint card's count of items waiting to enter its Kanban board.
 def _refresh_card_badge(sprint_id):
     badge = web.page[f"backlog-count-{sprint_id}"]
     if badge is not None:
@@ -98,6 +102,7 @@ def _refresh_all_card_badges():
 
 @when("dragstart", "#backlog-list")
 def handle_drag_start(event):
+    # Store the dragged task ID so a sprint-card drop can find its backlog record.
     global _dragged_backlog_id
     card = event.target.closest(".task-card")
     if not card:
@@ -113,6 +118,7 @@ def handle_drag_start(event):
 
 @when("dragend", "#backlog-list")
 def handle_drag_end(event):
+    # Remove the drag highlight and clear the active task ID.
     global _dragged_backlog_id
     card = event.target.closest(".task-card")
     if card:
@@ -122,6 +128,7 @@ def handle_drag_end(event):
 
 @when("dragover", ".sprints-grid")
 def handle_card_drag_over(event):
+    # Allow drops on sprint cards and highlight the current target.
     event.preventDefault()
     event.dataTransfer.dropEffect = "move"
     card = event.target.closest(".sprint-card")
@@ -131,6 +138,7 @@ def handle_card_drag_over(event):
 
 @when("dragleave", ".sprints-grid")
 def handle_card_drag_leave(event):
+    # Clear the target highlight after the dragged item leaves a sprint card.
     card = event.target.closest(".sprint-card")
     if card:
         card.classList.remove("card-drop-target")
@@ -138,6 +146,7 @@ def handle_card_drag_leave(event):
 
 @when("drop", ".sprints-grid")
 def handle_card_drop(event):
+    # Move the item immediately, then write its activity event without blocking the UI.
     event.preventDefault()
     card = event.target.closest(".sprint-card")
     if not card:
@@ -150,11 +159,11 @@ def handle_card_drop(event):
         return
 
     items = load_backlog_items()
-    matching = next((i for i in items if i["id"] == _dragged_backlog_id), None)
+    matching = next((item for item in items if item["id"] == _dragged_backlog_id), None)
     if matching is None:
         return
 
-    remaining = [i for i in items if i["id"] != _dragged_backlog_id]
+    remaining = [item for item in items if item["id"] != _dragged_backlog_id]
     save_backlog_items(remaining)
     add_item_to_sprint_backlog(sprint_id, matching)
     sprint = next((item for item in load_sprints() if item["id"] == sprint_id), {})
@@ -174,12 +183,12 @@ def handle_card_drop(event):
     ))
 
 
-# --- Sprint storage + rendering ---
+# Load and save the dashboard's sprint list, using starter sprints when needed.
 def load_sprints():
     raw = window.localStorage.getItem(SPRINTS_STORAGE_KEY)
     if not raw:
         seeded = list(DEFAULT_SPRINTS)
-        save_sprints(seeded)   # persist immediately, closes the race condition with sprint-page.py
+        save_sprints(seeded)
         return seeded
     try:
         return json.loads(raw)
@@ -191,6 +200,7 @@ def save_sprints(items):
     window.localStorage.setItem(SPRINTS_STORAGE_KEY, json.dumps(items))
 
 
+# Build one sprint card with its current state and backlog count target.
 def _make_sprint_card(item):
     card = document.createElement("div")
     card.className = "sprint-card"
@@ -207,6 +217,7 @@ def _make_sprint_card(item):
     return card
 
 
+# Refresh the sprint grid from saved sprint records.
 def render_sprints_grid():
     items = load_sprints()
     grid = document.querySelector(".sprints-grid")
@@ -215,11 +226,13 @@ def render_sprints_grid():
         grid.appendChild(_make_sprint_card(item))
 
 
+# Read history events from IndexedDB and convert JavaScript records to Python objects.
 async def _load_change_history():
     entries = await window.sprintHistoryDb.getAll()
     return json.loads(str(js.JSON.stringify(entries)))
 
 
+# Resolve the active account to a readable actor name for new events.
 def _current_actor():
     try:
         raw = window.localStorage.getItem("pyscript_app_data")
@@ -234,6 +247,7 @@ def _current_actor():
         return "Unknown user"
 
 
+# Store a timestamped dashboard event in the shared IndexedDB database.
 async def record_change(message, sprint_id=None, sprint_name=None, task_id=None, task_title=None):
     actor = _current_actor()
     entry = {
@@ -249,6 +263,7 @@ async def record_change(message, sprint_id=None, sprint_name=None, task_id=None,
     await window.sprintHistoryDb.add(js.JSON.parse(json.dumps(entry)))
 
 
+# Render activity newest-first and show a message when the database is empty.
 async def render_change_history():
     history = await _load_change_history()
     history_list = web.page["history-list"]
@@ -279,6 +294,7 @@ async def render_change_history():
         history_list.appendChild(row)
 
 
+# Load one sprint board, falling back to its sample state before first use.
 def _load_kanban_state(sprint_id):
     raw = window.localStorage.getItem(f"{KANBAN_STATE_KEY_PREFIX}{sprint_id}")
     if not raw:
@@ -292,6 +308,7 @@ def _load_kanban_state(sprint_id):
     return state
 
 
+# Match abbreviated seeded assignee names to full names in the member roster.
 def _member_name_for_assignee(assignee, members):
     normalized = assignee.strip().casefold()
     for name in members:
@@ -301,6 +318,7 @@ def _member_name_for_assignee(assignee, members):
     return assignee
 
 
+# Aggregate assigned tasks and completed counts for every member across sprints.
 def render_member_contributions():
     members = [
         button.getAttribute("data-member-name")
@@ -375,6 +393,7 @@ def render_member_contributions():
         contribution_list.appendChild(card)
 
 
+# Display one dashboard panel and keep its navigation item and layout in sync.
 def _show_dashboard_view(view_id):
     view_ids = ["sprints-view", "members-view", "history-view", "contributions-view"]
     nav_ids = ["nav-all-projects", "nav-members", "nav-history", "nav-contributions"]
@@ -382,38 +401,43 @@ def _show_dashboard_view(view_id):
     document.querySelector(".sprint-dashboard-layout").classList.toggle("members-open", is_feature_view)
     for current_view in view_ids:
         web.page[current_view].classList.toggle("hidden", current_view != view_id)
+    active_nav = {
+        "sprints-view": "nav-all-projects",
+        "members-view": "nav-members",
+        "history-view": "nav-history",
+        "contributions-view": "nav-contributions",
+    }[view_id]
     for nav_id in nav_ids:
-        web.page[nav_id].classList.toggle("active", nav_id == {
-            "sprints-view": "nav-all-projects",
-            "members-view": "nav-members",
-            "history-view": "nav-history",
-            "contributions-view": "nav-contributions",
-        }[view_id])
+        web.page[nav_id].classList.toggle("active", nav_id == active_nav)
 
 
 @when("click", "#nav-all-projects")
 def handle_show_sprints(event):
+    # Return to the sprint grid and restore the product-backlog sidebar.
     _show_dashboard_view("sprints-view")
 
 
 @when("click", "#nav-members")
 def handle_show_members(event):
+    # Open the sprint member roster.
     _show_dashboard_view("members-view")
 
 
 @when("click", "#nav-history")
 async def handle_show_history(event):
+    # Refresh saved events before opening the history panel.
     await render_change_history()
     _show_dashboard_view("history-view")
 
 
 @when("click", "#nav-contributions")
 def handle_show_contributions(event):
+    # Recalculate task totals before opening the contribution panel.
     render_member_contributions()
     _show_dashboard_view("contributions-view")
 
 
-# --- Modal open/close ---
+# Open and close shared dashboard modal overlays by element ID.
 def _open_modal(modal_id):
     web.page[modal_id].classList.remove("hidden")
 
@@ -424,10 +448,10 @@ def _close_modal(modal_id):
 
 @when("click", ".member-list")
 def handle_member_click(event):
+    # Populate the contact dialog from the selected member's data attributes.
     trigger = event.target.closest(".member-trigger")
     if trigger is None:
         return
-
     web.page["member-modal-name"].textContent = trigger.getAttribute("data-member-name") or "Not provided"
     web.page["member-modal-phone"].textContent = trigger.getAttribute("data-member-phone") or "Not provided"
     web.page["member-modal-email"].textContent = trigger.getAttribute("data-member-email") or "Not provided"
@@ -437,6 +461,7 @@ def handle_member_click(event):
 
 @when("click", "#close-member-details")
 def handle_close_member_details(event):
+    # Close the member contact dialog.
     _close_modal("member-details-modal")
 
 
@@ -452,8 +477,7 @@ def handle_open_create_task(event):
 
 @when("click", ".modal-btn-cancel")
 def handle_cancel_modal(event):
-    modal_id = event.currentTarget.getAttribute("data-modal")
-    _close_modal(modal_id)
+    _close_modal(event.currentTarget.getAttribute("data-modal"))
 
 
 @when("click", ".modal-overlay")
@@ -462,37 +486,33 @@ def handle_backdrop_click(event):
         _close_modal(event.currentTarget.id)
 
 
-# --- Form submissions ---
+# Validate and persist new sprint records from the create-sprint dialog.
 @when("submit", "#create-sprint-form")
 async def handle_create_sprint_submit(event):
     event.preventDefault()
-
     name = web.page["sprint-name-input"].value.strip()
     details = web.page["sprint-details-input"].value.strip()
     status = web.page["sprint-status-input"].value
-
     if not name:
         return
 
     items = load_sprints()
-    new_id = str(int(time.time() * 1000))  # simple unique id
+    new_id = str(int(time.time() * 1000))
     items.append({"id": new_id, "name": name, "details": details or "No description", "status": status})
     save_sprints(items)
     await record_change(f"created sprint {name}", new_id, name)
-
     render_sprints_grid()
     event.currentTarget.reset()
     _close_modal("create-sprint-modal")
 
 
+# Validate and persist new product-backlog tasks from the create-task dialog.
 @when("submit", "#create-task-form")
 async def handle_create_task_submit(event):
     event.preventDefault()
-
     title = web.page["task-title-input"].value.strip()
     tag = web.page["task-tag-input"].value
     priority = web.page["task-priority-input"].value
-
     if not title:
         return
 
@@ -501,7 +521,6 @@ async def handle_create_task_submit(event):
     items.append({"id": new_id, "title": title, "tag": tag, "priority": priority})
     save_backlog_items(items)
     await record_change(f"created backlog task {title}", task_id=new_id, task_title=title)
-
     render_backlog_list()
     event.currentTarget.reset()
     _close_modal("create-task-modal")
@@ -509,20 +528,19 @@ async def handle_create_task_submit(event):
 
 @when("click", ".sprints-grid")
 def handle_sprint_card_click(event):
+    # Open the selected sprint board unless the chart control was clicked.
     if event.target.closest(".burndown-button"):
         return
-
     card = event.target.closest(".sprint-card")
     if not card:
         return
-
     sprint_id = card.getAttribute("data-sprint-id")
     if not sprint_id:
         return
-
     window.location.href = f"sprint-page.html?sprint_id={sprint_id}"
 
 
+# Build the initial dashboard from saved sprint and backlog data.
 render_sprints_grid()
 render_backlog_list()
 _refresh_all_card_badges()
