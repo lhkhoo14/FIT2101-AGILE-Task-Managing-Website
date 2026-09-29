@@ -6,12 +6,12 @@ FIT2101 S2 2026 group repository.
 
 Add your team members and roles here.
 
-Chan Chee Wei (34073981) - Developer
-Loh Ken Yit (35731958) - Deputy Scrum Master, Developer
-Agasti Ngoh Cheng Che (36791407) Product Owner, Developer
-Lye Wei Ho (36286761) Scrum Master, Developer
-Izaan (36784478) secretary, Developer
-Khoo Lip Hong (36391948) Developer
+- Chan Chee Wei (34073981) - Developer
+- Loh Ken Yit (35731958) - Deputy Scrum Master, Developer
+- Agasti Ngoh Cheng Che (36791407) - Product Owner, Developer
+- Lye Wei Ho (36286761) - Scrum Master, Developer
+- Izaan (36784478) - Secretary, Developer
+- Khoo Lip Hong (36391948) - Developer
 
 ## Getting Started
 
