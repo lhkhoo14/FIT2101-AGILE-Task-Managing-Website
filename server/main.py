@@ -150,6 +150,24 @@ def get_projects():
         "projects": list(db.get("projects", {}).values())
     }
 
+@app.get("/api/users/{user_id}/projects")
+def get_user_projects(user_id: int):
+    db = read_db()
+    
+    # Check that user exists
+    user = next((u for u in db["users"] if u["user_id"] == user_id), None)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Filter projects where user is a member
+    all_projects = db.get("projects", {})
+    user_projects = [
+        project for project in all_projects.values()
+        if user_id in project.get("members", [])
+    ]
+
+    return user_projects
+
 @app.get("/api/projects/{project_id}")
 def get_project(project_id: int):
     db = read_db()

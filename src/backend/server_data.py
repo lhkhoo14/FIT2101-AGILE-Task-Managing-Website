@@ -2,8 +2,10 @@ from pyodide.http import pyfetch # type: ignore
 from pyscript import window       # type: ignore
 import json
 
+from constants import ACTIVE_SESSION_KEY, API_URL
+
 class ServerData:
-    def __init__(self, session_key : str = "session_user_id", api_url : str = "http://localhost:8000/api"):
+    def __init__(self, session_key : str = "session_user_id", api_url : str = API_URL):
         self.logged_in_user_id: int | None = None
 
         self.session_key = session_key
@@ -109,3 +111,39 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to create project: {e}")
             return False, "Unable to connect to the server."
+
+    async def get_projects(self) -> list[Project] | None:
+        """Fetches all projects associated with the active user session."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return None
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/users/{user_id}/projects",
+                method="GET",
+                headers={"Content-Type": "application/json"}
+            )
+            if response.status == 200:
+                data = await response.json()
+                return [
+                    Project(
+                        id=p.get("project_id", p.get("id", "")),
+                        name=p.get("name", "Untitled Project"),
+                        description=p.get("description", "No description provided."),
+                        status=p.get("status", "todo")
+                    )
+                    for p in data
+                ]
+            return None
+        except Exception as e:
+            print(f"[API Error] Failed to fetch projects: {e}")
+            return None
+        
+
+class Project:
+    def __init__(self, id: int, name: str, description: str, status: str) -> None:
+        self.id = id
+        self.name = name
+        self.description = description
+        self.status = status

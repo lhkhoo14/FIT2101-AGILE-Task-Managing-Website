@@ -1,5 +1,5 @@
 STORAGE_KEY_APP_DATA = "pyscript_app_data"
-STORAGE_KEY_ACTIVE_SESSION = "session_user_id"
+ACTIVE_SESSION_KEY = "session_user_id"
 API_URL = "http://127.0.0.1:8000"
 
 DEFAULT_SPRINTS = [
