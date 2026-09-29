@@ -22,7 +22,6 @@ COLUMN_ORDER = ["backlog", "active", "review", "completed"]
 SPRINTS_STORAGE_KEY = "sprints_list"
 SPRINT_BACKLOG_KEY_PREFIX = "sprint_backlog_"
 KANBAN_STATE_KEY_PREFIX = "kanban_state_"
-CHANGE_HISTORY_KEY = "sprint_change_history"
 
 _sprint_id = None
 _sprint_ended = False
@@ -104,13 +103,7 @@ def _current_actor():
         return "Unknown user"
 
 
-def _record_change(action, sprint, task=None, from_status=None, to_status=None):
-    raw = window.localStorage.getItem(CHANGE_HISTORY_KEY)
-    try:
-        history = json.loads(raw) if raw else []
-    except (ValueError, TypeError):
-        history = []
-
+async def _record_change(action, sprint, task=None, from_status=None, to_status=None):
     entry = {
         "action": action,
         "message": (
@@ -128,8 +121,7 @@ def _record_change(action, sprint, task=None, from_status=None, to_status=None):
         "actor": _current_actor(),
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     }
-    history.append(entry)
-    window.localStorage.setItem(CHANGE_HISTORY_KEY, json.dumps(history[-500:]))
+    await window.sprintHistoryDb.add(js.JSON.parse(json.dumps(entry)))
 
 
 # ==========================================
@@ -303,7 +295,7 @@ async def handle_card_drop(event):
     _save_kanban_state(_sprint_id, state)
 
     sprint = _find_sprint(_load_sprints(), _sprint_id) or {"name": "Sprint"}
-    _record_change("moved", sprint, task, source_column.replace("_", " "), target_column.replace("_", " "))
+    await _record_change("moved", sprint, task, source_column.replace("_", " "), target_column.replace("_", " "))
 
     _render_board(state)
 
@@ -321,7 +313,7 @@ async def handle_end_sprint(event):
     if sprint:
         sprint["status"] = "ended"
         _save_sprints(sprints)
-        _record_change("ended", sprint)
+        await _record_change("ended", sprint)
 
     board = web.page["kanban-board"]
     if board is not None:

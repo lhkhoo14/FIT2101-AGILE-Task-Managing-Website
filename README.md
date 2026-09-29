@@ -67,3 +67,5 @@ src/
 
 Keep your project work, documentation, setup instructions, and relevant artefacts in this repository.
 Do not share this repository outside your group and the teaching team.
+
+Sprint change history is stored in the browser's IndexedDB database (`sprint-dashboard`, object store `change-history`). Existing history in localStorage is migrated the first time the database is accessed. The data is local to each browser and is not shared across users or devices.

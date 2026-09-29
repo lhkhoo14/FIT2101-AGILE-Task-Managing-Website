@@ -1,14 +1,15 @@
 import json
 import time
+import asyncio
 from datetime import datetime
 from pyscript import when, web, window, document  # type: ignore[reportMissingImports]
 from constants import DEFAULT_SPRINTS, DEFAULT_BACKLOG_ITEMS, DEFAULT_KANBAN_STATES
+import js  # type: ignore[reportMissingImports]
 
 BACKLOG_STORAGE_KEY = "product_backlog_items"
 SPRINT_BACKLOG_KEY_PREFIX = "sprint_backlog_"  # + sprint_id
 SPRINTS_STORAGE_KEY = "sprints_list"
 KANBAN_STATE_KEY_PREFIX = "kanban_state_"
-CHANGE_HISTORY_KEY = "sprint_change_history"
 COLUMN_ORDER = ["backlog", "active", "review", "completed"]
 
 _dragged_backlog_id = None
@@ -136,7 +137,7 @@ def handle_card_drag_leave(event):
 
 
 @when("drop", ".sprints-grid")
-def handle_card_drop(event):
+async def handle_card_drop(event):
     event.preventDefault()
     card = event.target.closest(".sprint-card")
     if not card:
@@ -157,7 +158,7 @@ def handle_card_drop(event):
     save_backlog_items(remaining)
     add_item_to_sprint_backlog(sprint_id, matching)
     sprint = next((item for item in load_sprints() if item["id"] == sprint_id), {})
-    record_change(
+    await record_change(
         f"added {matching['title']} to {sprint.get('name', 'a sprint')}",
         sprint_id,
         sprint.get("name"),
@@ -213,14 +214,9 @@ def render_sprints_grid():
         grid.appendChild(_make_sprint_card(item))
 
 
-def _load_change_history():
-    raw = window.localStorage.getItem(CHANGE_HISTORY_KEY)
-    if not raw:
-        return []
-    try:
-        return json.loads(raw)
-    except (ValueError, TypeError):
-        return []
+async def _load_change_history():
+    entries = await window.sprintHistoryDb.getAll()
+    return json.loads(str(js.JSON.stringify(entries)))
 
 
 def _current_actor():
@@ -237,10 +233,9 @@ def _current_actor():
         return "Unknown user"
 
 
-def record_change(message, sprint_id=None, sprint_name=None, task_id=None, task_title=None):
-    history = _load_change_history()
+async def record_change(message, sprint_id=None, sprint_name=None, task_id=None, task_title=None):
     actor = _current_actor()
-    history.append({
+    entry = {
         "action": "project_change",
         "message": f"{actor} {message}",
         "sprint_id": sprint_id,
@@ -249,12 +244,12 @@ def record_change(message, sprint_id=None, sprint_name=None, task_id=None, task_
         "task_title": task_title,
         "actor": actor,
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
-    })
-    window.localStorage.setItem(CHANGE_HISTORY_KEY, json.dumps(history[-500:]))
+    }
+    await window.sprintHistoryDb.add(js.JSON.parse(json.dumps(entry)))
 
 
-def render_change_history():
-    history = _load_change_history()
+async def render_change_history():
+    history = await _load_change_history()
     history_list = web.page["history-list"]
     history_list.innerHTML = ""
     if not history:
@@ -406,8 +401,8 @@ def handle_show_members(event):
 
 
 @when("click", "#nav-history")
-def handle_show_history(event):
-    render_change_history()
+async def handle_show_history(event):
+    await render_change_history()
     _show_dashboard_view("history-view")
 
 
@@ -468,7 +463,7 @@ def handle_backdrop_click(event):
 
 # --- Form submissions ---
 @when("submit", "#create-sprint-form")
-def handle_create_sprint_submit(event):
+async def handle_create_sprint_submit(event):
     event.preventDefault()
 
     name = web.page["sprint-name-input"].value.strip()
@@ -482,7 +477,7 @@ def handle_create_sprint_submit(event):
     new_id = str(int(time.time() * 1000))  # simple unique id
     items.append({"id": new_id, "name": name, "details": details or "No description", "status": status})
     save_sprints(items)
-    record_change(f"created sprint {name}", new_id, name)
+    await record_change(f"created sprint {name}", new_id, name)
 
     render_sprints_grid()
     event.currentTarget.reset()
@@ -490,7 +485,7 @@ def handle_create_sprint_submit(event):
 
 
 @when("submit", "#create-task-form")
-def handle_create_task_submit(event):
+async def handle_create_task_submit(event):
     event.preventDefault()
 
     title = web.page["task-title-input"].value.strip()
@@ -504,7 +499,7 @@ def handle_create_task_submit(event):
     new_id = str(int(time.time() * 1000))
     items.append({"id": new_id, "title": title, "tag": tag, "priority": priority})
     save_backlog_items(items)
-    record_change(f"created backlog task {title}", task_id=new_id, task_title=title)
+    await record_change(f"created backlog task {title}", task_id=new_id, task_title=title)
 
     render_backlog_list()
     event.currentTarget.reset()
@@ -530,5 +525,5 @@ def handle_sprint_card_click(event):
 render_sprints_grid()
 render_backlog_list()
 _refresh_all_card_badges()
-render_change_history()
+asyncio.ensure_future(render_change_history())
 render_member_contributions()
