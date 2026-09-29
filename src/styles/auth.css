@@ -87,7 +87,7 @@ body {
   min-height: 1.2rem; /* Prevents form layout jump when text is inserted */
 }
 
-.submit-btn {
+.btn-submit {
     width: 100%;
     padding: 12px;
     background-color: #4747D4;
@@ -101,7 +101,7 @@ body {
     transition: background-color 0.2s;
 }
 
-.submit-btn:hover {
+.btn-submit:hover {
     background-color: #8080FF;
 }
 

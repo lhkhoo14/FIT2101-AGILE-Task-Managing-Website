@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
     <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
 
-    <!-- <script>
+    <script>
       const CONFIG = {
         STORAGE_KEY_APP_DATA: "pyscript_app_data",
         STORAGE_KEY_ACTIVE_SESSION: "session_user_id",
@@ -25,7 +25,7 @@
           window.location.replace(CONFIG.VIEW_LOGIN);
         }
       })();
-    </script> -->
+    </script>
 
     <!-- Layout Stylesheet -->
     <link rel="stylesheet" href="../styles/layout.css">
@@ -63,8 +63,8 @@
         <!-- Profile Dropdown Menu -->
         <div id="profile-dropdown" class="dropdown-menu hidden">
           <div class="dropdown-header">
-            <p id="user-display-name" class="user-name"></p>
-            <p id="user-display-email" class="user-email"></p>
+            <span class="user-name">User Name</span>
+            <span class="user-email">user@example.com</span>
           </div>
           <hr>
           <button type="button" id="signout-btn" class="dropdown-item">Sign Out</button>    
