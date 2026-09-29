@@ -30,9 +30,9 @@ def get_dom_element(field_id: str):
     except Exception:
         return None
 
-def show_feedback(field_id: str, message: str):
+def show_feedback(field_id: str, error_msg_id: str, message: str):
     input_elem = get_dom_element(field_id)
-    error_elem = get_dom_element(f"{field_id}-error")
+    error_elem = get_dom_element(error_msg_id)
 
     if input_elem is not None:
         if "is-invalid" not in input_elem.classes:

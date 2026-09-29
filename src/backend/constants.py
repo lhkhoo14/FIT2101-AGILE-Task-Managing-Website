@@ -1,6 +1,6 @@
 STORAGE_KEY_APP_DATA = "pyscript_app_data"
 ACTIVE_SESSION_KEY = "session_user_id"
-API_URL = "http://127.0.0.1:8000"
+API_URL = "http://127.0.0.1:8000/api"
 
 DEFAULT_SPRINTS = [
     {"id": "1", "name": "Sprint 1", "details": "Login & onboarding flow", "status": "active"},

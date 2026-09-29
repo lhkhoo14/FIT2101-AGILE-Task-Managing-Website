@@ -33,21 +33,21 @@ async def handle_signup(event):
     has_error = False
 
     if not username:
-        show_feedback("username", "Username is required.")
+        show_feedback("username", "username-error", "Username is required.")
         has_error = True
 
     is_email_valid, email_err = validate_email(email)
     if not is_email_valid:
-        show_feedback("email", email_err)
+        show_feedback("email", "email-error", email_err)
         has_error = True
 
     is_pass_valid, pass_err = validate_password(password)
     if not is_pass_valid:
-        show_feedback("password", pass_err)
+        show_feedback("password", "password-error", pass_err)
         has_error = True
 
     if password != confirm_password:
-        show_feedback("confirm-password", "Passwords do not match.")
+        show_feedback("confirm-password", "confirm-password-error", "Passwords do not match.")
         has_error = True
 
     if has_error:
@@ -62,7 +62,7 @@ async def handle_signup(event):
             await show_snackbar("Account Created! Redirecting to login...")
             window.location.href = "login.html"
         else:
-            show_feedback("email", message)
+            show_feedback("email", "email-error", message)
             
     except Exception as err:
         print(f"Unhandled Signup Error: {err}")
