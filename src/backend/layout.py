@@ -54,6 +54,10 @@ def toggle_sidebar(event):
         else:
             sidebar.classes.add("collapsed")
 
+@when("click", "#create-project-btn")
+def on_create_project_clicked(event):
+    window.location.replace("create-project.html")
+
 def render_user_profile(user: dict):
     name_elem = web.page["#user-display-name"]
     email_elem = web.page["#user-display-email"]

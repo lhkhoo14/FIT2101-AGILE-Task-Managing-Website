@@ -1,10 +1,9 @@
 import json
 
 from pyscript import when, web, window  # type: ignore
-
-
-API_URL = "http://127.0.0.1:8000"
-
+from constants import API_URL
+from server_data import ServerData
+from auth import show_snackbar
 
 def get_current_user_id():
     """Gets the currently logged-in user's ID from the browser session."""
@@ -39,9 +38,9 @@ def clear_errors():
 
 
 @when("submit", "#create-project-form")
+@when("submit", "#create-project-form")
 async def create_project(event):
-    """Sends the new project details to the FastAPI backend."""
-
+    """Handles project form submission."""
     if event:
         event.preventDefault()
 
@@ -50,69 +49,27 @@ async def create_project(event):
     name = web.page["#project-name"].value.strip()
     description = web.page["#project-description"].value.strip()
 
-    # Validate project name
+    # Form Validation
     if not name:
         show_error("project-name", "Project name is required.")
         return
 
-    # Validate project description
-    if not description:
-        show_error("project-description", "Project description is required.")
+    # Check Active Session via ServerData
+    db = ServerData()
+
+    if db.get_active_session() is None:
+        window.location.replace("login.html")
         return
 
-    user_id = get_current_user_id()
+    # API Request via ServerData
+    success, error_message = await db.create_project(name, description)
 
-    if user_id is None:
-        window.location.href = "login.html"
-        return
-
-    payload = {
-        "user_id": user_id,
-        "name": name,
-        "description": description
-    }
-
-    try:
-
-        response = await window.fetch(
-            f"{API_URL}/api/projects",
-            {
-                "method": "POST",
-                "headers": {
-                    "Content-Type": "application/json"
-                },
-                "body": json.dumps(payload)
-            }
-        )
-
-        if response.ok:
-
-            result = await response.json()
-
-            print("Project created successfully:", result)
-
-            # Return to dashboard after creating project
-            window.location.href = "dashboard.html"
-
-        else:
-
-            error_data = await response.json()
-
-            print("Project creation failed:", error_data)
-
-            show_error(
-                "project-name",
-                error_data.get("detail", "Unable to create project.")
-            )
-
-    except Exception as e:
-
-        print("Error connecting to backend:", e)
-
-        show_error(
-            "project-name",
-            "Unable to connect to the server."
-        )
+    if success:
+        await show_snackbar("Project created successfully!")
+        window.location.replace("dashboard.html")
+    else:
+        show_error("project-name", error_message)
+        await show_snackbar(error_message)
 
 
 @when("click", "#cancel-project")

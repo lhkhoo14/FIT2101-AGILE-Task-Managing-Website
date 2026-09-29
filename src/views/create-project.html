@@ -16,105 +16,15 @@
     <!-- Dashboard styles for matching appearance -->
     <link rel="stylesheet" href="../styles/dashboard.css">
 
-    <style>
-        .create-project-container {
-            max-width: 700px;
-            margin: 40px auto;
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 30px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-        }
-
-        .create-project-title {
-            font-size: 24px;
-            font-weight: 600;
-            color: #222222;
-            margin-bottom: 25px;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-label {
-            display: block;
-            font-size: 14px;
-            font-weight: 600;
-            color: #333333;
-            margin-bottom: 8px;
-        }
-
-        .form-input,
-        .form-textarea {
-            width: 100%;
-            box-sizing: border-box;
-            padding: 12px;
-            border: 1px solid #cccccc;
-            border-radius: 8px;
-            font-size: 14px;
-            outline: none;
-        }
-
-        .form-input:focus,
-        .form-textarea:focus {
-            border-color: #888888;
-        }
-
-        .form-textarea {
-            min-height: 140px;
-            resize: vertical;
-        }
-
-        .error-message {
-            display: none;
-            color: #c92a2a;
-            font-size: 13px;
-            margin-top: 6px;
-        }
-
-        .error-message.show {
-            display: block;
-        }
-
-        .button-container {
-            display: flex;
-            gap: 12px;
-            margin-top: 25px;
-        }
-
-        .create-btn,
-        .cancel-btn {
-            padding: 11px 20px;
-            border-radius: 8px;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-        }
-
-        .create-btn {
-            background: #333333;
-            color: #ffffff;
-        }
-
-        .cancel-btn {
-            background: #eeeeee;
-            color: #333333;
-        }
-    </style>
+    <link rel="stylesheet" href="../styles/create-project.css">
 </head>
 
 <body>
 
     <main class="main-content">
-
         <div class="create-project-container">
-
             <h1 class="create-project-title">Create New Project</h1>
-
-            <form id="create-project-form">
+            <form id="create-project-form", onsubmit="event.preventDefault();">
 
                 <div class="form-group">
                     <label class="form-label" for="project-name">
