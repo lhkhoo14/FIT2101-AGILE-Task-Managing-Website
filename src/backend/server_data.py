@@ -33,8 +33,8 @@ class ServerData:
             print(f"[API Error] {e}")
             return False, "Unable to connect to the server."
 
-    async def validate_login(self, email: str, password: str) -> bool:
-        """Sends login request to FastAPI server."""
+    async def validate_login(self, email: str, password: str) -> tuple[bool, str]:
+        """Sends login request to FastAPI server with detailed error feedback."""
         try:
             response = await pyfetch(
                 f"{self.api_url}/login",
@@ -42,14 +42,21 @@ class ServerData:
                 headers={"Content-Type": "application/json"},
                 body=json.dumps({"email": email, "password": password})
             )
+            data = await response.json()
+
             if response.status == 200:
-                data = await response.json()
                 self.set_active_session(data["user_id"])
-                return True
-            return False
+                return True, ""
+            
+            detail = data.get("detail", "Login failed.")
+            # If FastAPI returns validation errors as a list of dicts, format into a string
+            if isinstance(detail, list):
+                detail = "; ".join([f"{err.get('msg', 'Invalid input')}" for err in detail])
+
+            return False, str(detail)
         except Exception as e:
             print(f"[API Error] {e}")
-            return False
+            return False, "Unable to connect to the server."
 
     async def get_user_by_id(self, user_id: int) -> dict | None:
         """Fetches user details from FastAPI backend by user ID."""

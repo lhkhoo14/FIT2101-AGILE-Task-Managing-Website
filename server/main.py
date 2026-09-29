@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 import json, os
+import time
 
 app = FastAPI() # To run the server, place `uvicorn main:app --reload` in the terminal.
 
@@ -78,8 +79,52 @@ class CreateProjectPayload(BaseModel):
 def login(payload: LoginPayload):
     db = read_db()
     user = next((u for u in db["users"] if u["email"] == payload.email), None)
-    if not user or user["password"] != payload.password:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    # 1. Unregistered email error
+    if not user:
+        raise HTTPException(status_code=401, detail="Email is not registered.")
+
+    current_time = time.time()
+    lockout_until = user.get("lockout_until", 0)
+
+    # 2. Account locked out error
+    if current_time < lockout_until:
+        remaining_seconds = int(lockout_until - current_time)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed attempts. Try again in {remaining_seconds} seconds."
+        )
+
+    # 3. Password mismatch error
+    if user["password"] != payload.password:
+        failed_attempts = user.get("failed_attempts", 0) + 1
+        user["failed_attempts"] = failed_attempts
+
+        lockout_time = 0
+        if failed_attempts % 3 == 0:
+            multiplier = failed_attempts // 3
+            lockout_time = multiplier * 30  # 30s -> 60s -> 90s
+            user["lockout_until"] = current_time + lockout_time
+
+        write_db(db)
+
+        if lockout_time > 0:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many failed attempts. Account locked for {lockout_time} seconds."
+            )
+        
+        attempts_left = 3 - (failed_attempts % 3)
+        raise HTTPException(
+            status_code=401,
+            detail=f"Incorrect password. {attempts_left} attempt(s) remaining before lockout."
+        )
+
+    # Successful login: reset counters
+    user["failed_attempts"] = 0
+    user["lockout_until"] = 0
+    write_db(db)
+
     return {"status": "success", "user_id": user["user_id"]}
 
 @app.post("/api/register", status_code=status.HTTP_201_CREATED)

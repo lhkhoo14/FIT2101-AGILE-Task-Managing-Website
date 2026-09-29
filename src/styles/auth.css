@@ -105,6 +105,13 @@ body {
     background-color: #8080FF;
 }
 
+#login-btn:disabled {
+    background-color: #6c757d;
+    color: #ffffff;            
+    cursor: not-allowed;
+    border-color: #6c757d;
+}
+
 .auth-link {
     text-align: left;
     margin-top: 20px;
