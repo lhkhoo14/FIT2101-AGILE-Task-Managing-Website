@@ -4,9 +4,9 @@ STORAGE_KEY_ACTIVE_SESSION = "session_user_id"
 DEFAULT_SPRINTS = [
     # No "members" key on the seeded sprints = legacy/open sprint (every user can access it).
     # Sprints created through the UI always store an explicit "members" list.
-    {"id": "1", "name": "Sprint 1", "details": "Login & onboarding flow", "status": "active", "priority": "high", "created_at": 1788000000000},
-    {"id": "2", "name": "Sprint 2", "details": "Payments integration", "status": "ended", "priority": "medium", "created_at": 1788086400000},
-    {"id": "3", "name": "Sprint 3", "details": "Reporting dashboard", "status": "active", "priority": "low", "created_at": 1788172800000},
+    {"id": "1", "name": "Sprint 1", "details": "Login & onboarding flow", "status": "active", "priority": "high", "tags": ["auth", "frontend"], "created_at": 1788000000000},
+    {"id": "2", "name": "Sprint 2", "details": "Payments integration", "status": "ended", "priority": "medium", "tags": ["payments", "backend"], "created_at": 1788086400000},
+    {"id": "3", "name": "Sprint 3", "details": "Reporting dashboard", "status": "active", "priority": "low", "tags": ["reporting", "frontend"], "created_at": 1788172800000},
 ]
 
 DEFAULT_BACKLOG_ITEMS = [

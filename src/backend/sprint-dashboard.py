@@ -11,7 +11,10 @@ from pyscript import when, web, window, document  # type: ignore[reportMissingIm
 from auth import show_snackbar
 from constants import DEFAULT_SPRINTS, DEFAULT_BACKLOG_ITEMS
 from models.server_data import ServerData
-from sprint_access import is_sprint_member, sort_sprints, PRIORITY_ORDER, DEFAULT_PRIORITY
+from sprint_access import (
+    is_sprint_member, sort_sprints, normalize_tags, filter_sprints_by_tag,
+    PRIORITY_ORDER, DEFAULT_PRIORITY,
+)
 
 BACKLOG_STORAGE_KEY = "product_backlog_items"
 SPRINT_BACKLOG_KEY_PREFIX = "sprint_backlog_"  # + sprint_id
@@ -262,9 +265,15 @@ def _make_sprint_card(item, users):
         f'<span class="lock-badge" title="You are not assigned to this sprint">{_LOCK_ICON}Members only</span>'
         if not is_member else ""
     )
+    tags_html = "".join(
+        f'<span class="sprint-tag-chip">{escape(str(tag))}</span>' for tag in (item.get("tags") or [])
+    )
+    tags_block = f'<div class="sprint-tags">{tags_html}</div>' if tags_html else ""
+
     card.innerHTML = f"""
         <h3 class="sprint-title">{escape(item['name'])}</h3>
         <p class="sprint-details">{escape(item.get('details', ''))}</p>
+        {tags_block}
         <div class="sprint-members">{_members_html(item, users)}{lock_html}</div>
         <div class="sprint-footer">
             <div class="sprint-badges">
@@ -280,12 +289,27 @@ def _make_sprint_card(item, users):
 def render_sprints_grid():
     sort_select = web.page["sort-select"]
     sort_key = sort_select.value if sort_select is not None else "date"
-    items = sort_sprints(load_sprints(), sort_key)
+    search_input = web.page["global-search"]
+    query = search_input.value.strip() if search_input is not None else ""
+
+    all_items = load_sprints()
+    items = sort_sprints(filter_sprints_by_tag(all_items, query), sort_key)
     users = _users_by_id()
     grid = document.querySelector(".sprints-grid")
     grid.innerHTML = ""
     for item in items:
         grid.appendChild(_make_sprint_card(item, users))
+
+    if query and not items:
+        empty = document.createElement("p")
+        empty.className = "sprints-empty"
+        empty.textContent = f'No sprints have a tag matching "{query}".'
+        grid.appendChild(empty)
+
+
+@when("input", "#global-search")
+def handle_search_input(event):
+    render_sprints_grid()
 
 
 @when("change", "#sort-select")
@@ -384,6 +408,7 @@ def handle_create_sprint_submit(event):
         "details": details or "No description",
         "status": "active",  # new sprints always start active; "End Sprint" on the sprint page closes them
         "priority": priority,
+        "tags": normalize_tags(web.page["sprint-tags-input"].value),
         "members": _selected_member_ids(),
         "created_by": current_user_id,
         "created_at": now_ms,

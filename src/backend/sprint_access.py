@@ -57,3 +57,43 @@ def sort_sprints(sprints, sort_key):
     if sort_key == SORT_NAME:
         return sorted(items, key=lambda s: str(s.get("name", "")).casefold())
     return sorted(items, key=lambda s: -sprint_created_at(s))
+
+MAX_TAGS = 10
+MAX_TAG_LENGTH = 20
+
+
+def normalize_tags(raw) -> list:
+    """Turn user input ("Frontend, #API ,, urgent") into a clean tag list.
+
+    Accepts a comma-separated string or a list. Tags are lowercased, stripped of
+    a leading "#", de-duplicated (order kept), capped in length and in number.
+    """
+    if raw is None:
+        return []
+    parts = raw.split(",") if isinstance(raw, str) else list(raw)
+    tags = []
+    for part in parts:
+        tag = " ".join(str(part).strip().lstrip("#").split()).lower()[:MAX_TAG_LENGTH].strip()
+        if tag and tag not in tags:
+            tags.append(tag)
+    return tags[:MAX_TAGS]
+
+
+def filter_sprints_by_tag(sprints, query):
+    """Sprints whose tags match the search text.
+
+    The query is split on commas/whitespace (a leading "#" is ignored). Every
+    term must partially match at least one of the sprint's tags, so "front"
+    finds "frontend" and "api urgent" finds sprints tagged both. An empty
+    query returns all sprints. Sprints with no tags never match a search.
+    """
+    terms = [w.lstrip("#").lower() for w in str(query or "").replace(",", " ").split()]
+    terms = [w for w in terms if w]
+    if not terms:
+        return list(sprints)
+    result = []
+    for s in sprints:
+        tags = [str(tag).lower() for tag in (s.get("tags") or [])]
+        if tags and all(any(term in tag for tag in tags) for term in terms):
+            result.append(s)
+    return result
