@@ -396,3 +396,93 @@
 .modal-btn-submit:hover {
   background-color: #3939b0;
 }
+
+.feature-view .content-header {
+  margin-bottom: 12px;
+}
+
+.activity-list,
+.contribution-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid #e2e8f0;
+}
+
+.activity-row,
+.contribution-row {
+  display: grid;
+  gap: 6px;
+  padding: 16px 4px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.activity-summary,
+.contribution-name {
+  color: #222222;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.activity-metadata,
+.contribution-metrics {
+  color: #666666;
+  font-size: 12px;
+}
+
+.contribution-tasks {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.contribution-tasks.empty {
+  color: #666666;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 13px;
+}
+
+.contribution-task {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  font-size: 13px;
+}
+
+.contribution-task-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.contribution-task.incomplete .contribution-task-title {
+  color: #333333;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-weight: 600;
+}
+
+.contribution-task.completed .contribution-task-title {
+  color: #666666;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  text-decoration: line-through;
+}
+
+.contribution-task-status {
+  color: #666666;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 11px;
+}
+
+.feature-empty-state {
+  padding: 20px 4px;
+  color: #666666;
+  font-size: 14px;
+}

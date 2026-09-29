@@ -109,12 +109,12 @@
 
       <div class="nav-section-title">Additional Features</div>
 
-      <button type="button" class="nav-item section-item">
+      <button type="button" id="nav-contributions" class="nav-item section-item">
         <span class="additional-label"></span>
-        <span>Effort Breakdown</span>
+        <span>Member Contributions</span>
       </button>
 
-      <button type="button" class="nav-item section-item">
+      <button type="button" id="nav-history" class="nav-item section-item">
         <span class="additional-label"></span>
         <span>History</span>
       </button>
@@ -243,6 +243,20 @@
           </ul>
         </section>
       </div>
+    </section>
+
+    <section id="history-view" class="feature-view hidden" aria-labelledby="history-title">
+      <div class="content-header">
+        <h1 id="history-title" class="page-title">Change History</h1>
+      </div>
+      <ol id="history-list" class="activity-list"></ol>
+    </section>
+
+    <section id="contributions-view" class="feature-view hidden" aria-labelledby="contributions-title">
+      <div class="content-header">
+        <h1 id="contributions-title" class="page-title">Member Contributions</h1>
+      </div>
+      <div id="contribution-list" class="contribution-list"></div>
     </section>
 
   </main>

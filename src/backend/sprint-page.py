@@ -2,6 +2,7 @@ import sys
 import json
 import copy
 import asyncio
+from datetime import datetime, timezone
 
 
 # Ensure the current directory is in the system path for local module imports
@@ -21,6 +22,7 @@ COLUMN_ORDER = ["backlog", "active", "review", "completed"]
 SPRINTS_STORAGE_KEY = "sprints_list"
 SPRINT_BACKLOG_KEY_PREFIX = "sprint_backlog_"
 KANBAN_STATE_KEY_PREFIX = "kanban_state_"
+CHANGE_HISTORY_KEY = "sprint_change_history"
 
 _sprint_id = None
 _sprint_ended = False
@@ -86,6 +88,48 @@ def _load_kanban_state(sprint_id):
 
 def _save_kanban_state(sprint_id, state):
     window.localStorage.setItem(f"{KANBAN_STATE_KEY_PREFIX}{sprint_id}", json.dumps(state))
+
+
+def _current_actor():
+    try:
+        raw = window.localStorage.getItem("pyscript_app_data")
+        data = json.loads(raw) if raw else {}
+        active_id = str(window.localStorage.getItem("session_user_id") or "")
+        user = next(
+            (user for user in data.get("users", []) if str(user.get("user_id")) == active_id),
+            None,
+        )
+        return user.get("username") or user.get("email") if user else "Unknown user"
+    except (ValueError, TypeError):
+        return "Unknown user"
+
+
+def _record_change(action, sprint, task=None, from_status=None, to_status=None):
+    raw = window.localStorage.getItem(CHANGE_HISTORY_KEY)
+    try:
+        history = json.loads(raw) if raw else []
+    except (ValueError, TypeError):
+        history = []
+
+    entry = {
+        "action": action,
+        "message": (
+            f"{_current_actor()} moved {task.get('title', 'a task')} from "
+            f"{from_status} to {to_status} in {sprint.get('name', 'a sprint')}"
+            if action == "moved"
+            else f"{_current_actor()} ended {sprint.get('name', 'a sprint')}"
+        ),
+        "sprint_id": _sprint_id,
+        "sprint_name": sprint.get("name", "Sprint"),
+        "task_id": task.get("id") if task else None,
+        "task_title": task.get("title") if task else None,
+        "from_status": from_status,
+        "to_status": to_status,
+        "actor": _current_actor(),
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+    }
+    history.append(entry)
+    window.localStorage.setItem(CHANGE_HISTORY_KEY, json.dumps(history[-500:]))
 
 
 # ==========================================
@@ -258,6 +302,9 @@ async def handle_card_drop(event):
     state[target_column].append(task)
     _save_kanban_state(_sprint_id, state)
 
+    sprint = _find_sprint(_load_sprints(), _sprint_id) or {"name": "Sprint"}
+    _record_change("moved", sprint, task, source_column.replace("_", " "), target_column.replace("_", " "))
+
     _render_board(state)
 
 
@@ -265,6 +312,8 @@ async def handle_card_drop(event):
 @when("click", "#end-sprint-btn")
 async def handle_end_sprint(event):
     global _sprint_ended
+    if _sprint_ended:
+        return
     _sprint_ended = True
 
     sprints = _load_sprints()
@@ -272,6 +321,7 @@ async def handle_end_sprint(event):
     if sprint:
         sprint["status"] = "ended"
         _save_sprints(sprints)
+        _record_change("ended", sprint)
 
     board = web.page["kanban-board"]
     if board is not None:

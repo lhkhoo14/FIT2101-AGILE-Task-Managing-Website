@@ -1,11 +1,15 @@
 import json
 import time
+from datetime import datetime
 from pyscript import when, web, window, document  # type: ignore[reportMissingImports]
-from constants import DEFAULT_SPRINTS, DEFAULT_BACKLOG_ITEMS
+from constants import DEFAULT_SPRINTS, DEFAULT_BACKLOG_ITEMS, DEFAULT_KANBAN_STATES
 
 BACKLOG_STORAGE_KEY = "product_backlog_items"
 SPRINT_BACKLOG_KEY_PREFIX = "sprint_backlog_"  # + sprint_id
 SPRINTS_STORAGE_KEY = "sprints_list"
+KANBAN_STATE_KEY_PREFIX = "kanban_state_"
+CHANGE_HISTORY_KEY = "sprint_change_history"
+COLUMN_ORDER = ["backlog", "active", "review", "completed"]
 
 _dragged_backlog_id = None
 
@@ -152,6 +156,14 @@ def handle_card_drop(event):
     remaining = [i for i in items if i["id"] != _dragged_backlog_id]
     save_backlog_items(remaining)
     add_item_to_sprint_backlog(sprint_id, matching)
+    sprint = next((item for item in load_sprints() if item["id"] == sprint_id), {})
+    record_change(
+        f"added {matching['title']} to {sprint.get('name', 'a sprint')}",
+        sprint_id,
+        sprint.get("name"),
+        matching.get("id"),
+        matching.get("title"),
+    )
 
     dragged_el = web.page[f"backlog-item-{_dragged_backlog_id}"]
     if dragged_el is not None:
@@ -201,13 +213,186 @@ def render_sprints_grid():
         grid.appendChild(_make_sprint_card(item))
 
 
+def _load_change_history():
+    raw = window.localStorage.getItem(CHANGE_HISTORY_KEY)
+    if not raw:
+        return []
+    try:
+        return json.loads(raw)
+    except (ValueError, TypeError):
+        return []
+
+
+def _current_actor():
+    try:
+        raw = window.localStorage.getItem("pyscript_app_data")
+        data = json.loads(raw) if raw else {}
+        active_id = str(window.localStorage.getItem("session_user_id") or "")
+        user = next(
+            (item for item in data.get("users", []) if str(item.get("user_id")) == active_id),
+            None,
+        )
+        return user.get("username") or user.get("email") if user else "Unknown user"
+    except (ValueError, TypeError):
+        return "Unknown user"
+
+
+def record_change(message, sprint_id=None, sprint_name=None, task_id=None, task_title=None):
+    history = _load_change_history()
+    actor = _current_actor()
+    history.append({
+        "action": "project_change",
+        "message": f"{actor} {message}",
+        "sprint_id": sprint_id,
+        "sprint_name": sprint_name,
+        "task_id": task_id,
+        "task_title": task_title,
+        "actor": actor,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    })
+    window.localStorage.setItem(CHANGE_HISTORY_KEY, json.dumps(history[-500:]))
+
+
+def render_change_history():
+    history = _load_change_history()
+    history_list = web.page["history-list"]
+    history_list.innerHTML = ""
+    if not history:
+        empty = document.createElement("li")
+        empty.className = "feature-empty-state"
+        empty.textContent = "No changes have been recorded yet."
+        history_list.appendChild(empty)
+        return
+
+    for entry in reversed(history):
+        row = document.createElement("li")
+        row.className = "activity-row"
+        summary = document.createElement("p")
+        summary.className = "activity-summary"
+        if entry.get("message"):
+            summary.textContent = entry["message"]
+        elif entry.get("action") == "moved":
+            summary.textContent = f"{entry.get('actor', 'Unknown user')} moved {entry.get('task_title', 'a task')} from {entry.get('from_status', 'unknown')} to {entry.get('to_status', 'unknown')} in {entry.get('sprint_name', 'a sprint')}"
+        else:
+            summary.textContent = f"{entry.get('actor', 'Unknown user')} ended {entry.get('sprint_name', 'a sprint')}"
+        metadata = document.createElement("span")
+        metadata.className = "activity-metadata"
+        metadata.textContent = entry.get("timestamp", "")
+        row.appendChild(summary)
+        row.appendChild(metadata)
+        history_list.appendChild(row)
+
+
+def _load_kanban_state(sprint_id):
+    raw = window.localStorage.getItem(f"{KANBAN_STATE_KEY_PREFIX}{sprint_id}")
+    if not raw:
+        return DEFAULT_KANBAN_STATES.get(sprint_id, {column: [] for column in COLUMN_ORDER})
+    try:
+        state = json.loads(raw)
+    except (ValueError, TypeError):
+        return DEFAULT_KANBAN_STATES.get(sprint_id, {column: [] for column in COLUMN_ORDER})
+    for column in COLUMN_ORDER:
+        state.setdefault(column, [])
+    return state
+
+
+def _member_name_for_assignee(assignee, members):
+    normalized = assignee.strip().casefold()
+    for name in members:
+        candidate = name.casefold()
+        if candidate == normalized or candidate.endswith(f" {normalized}"):
+            return name
+    return assignee
+
+
+def render_member_contributions():
+    members = [
+        button.getAttribute("data-member-name")
+        for button in document.querySelectorAll(".member-trigger")
+        if button.getAttribute("data-member-name")
+    ]
+    contributions = {
+        name: {"assigned": 0, "completed": 0, "tasks": []}
+        for name in members
+    }
+
+    for sprint in load_sprints():
+        state = _load_kanban_state(sprint["id"])
+        for column in COLUMN_ORDER:
+            for task in state[column]:
+                assignee = task.get("assignee")
+                if not assignee:
+                    continue
+                name = _member_name_for_assignee(assignee, members)
+                contribution = contributions.setdefault(
+                    name, {"assigned": 0, "completed": 0, "tasks": []}
+                )
+                contribution["assigned"] += 1
+                if column == "completed":
+                    contribution["completed"] += 1
+                contribution["tasks"].append({
+                    "title": task.get("title", "Untitled task"),
+                    "status": column,
+                    "sprint": sprint.get("name", "Sprint"),
+                })
+
+    contribution_list = web.page["contribution-list"]
+    contribution_list.innerHTML = ""
+    ranked = sorted(
+        contributions.items(),
+        key=lambda item: (-item[1]["assigned"], item[0].casefold()),
+    )
+    for name, stats in ranked:
+        card = document.createElement("section")
+        card.className = "contribution-row"
+        heading = document.createElement("h2")
+        heading.className = "contribution-name"
+        heading.textContent = name
+        metrics = document.createElement("p")
+        metrics.className = "contribution-metrics"
+        metrics.textContent = f"{stats['assigned']} assigned · {stats['completed']} completed"
+        tasks = document.createElement("ul")
+        tasks.className = "contribution-tasks"
+        if stats["tasks"]:
+            for task in stats["tasks"]:
+                task_row = document.createElement("li")
+                is_completed = task["status"] == "completed"
+                task_row.className = "contribution-task completed" if is_completed else "contribution-task incomplete"
+                task_title = document.createElement("span")
+                task_title.className = "contribution-task-title"
+                task_title.textContent = task["title"]
+                task_status = document.createElement("span")
+                task_status.className = "contribution-task-status"
+                if is_completed:
+                    task_status.textContent = f"Completed · {task['sprint']}"
+                else:
+                    task_status.textContent = f"Not completed · {task['status'].capitalize()} · {task['sprint']}"
+                task_row.appendChild(task_title)
+                task_row.appendChild(task_status)
+                tasks.appendChild(task_row)
+        else:
+            tasks.classList.add("empty")
+            tasks.textContent = "No assigned tasks"
+        card.appendChild(heading)
+        card.appendChild(metrics)
+        card.appendChild(tasks)
+        contribution_list.appendChild(card)
+
+
 def _show_dashboard_view(view_id):
-    is_members_view = view_id == "members-view"
-    document.querySelector(".sprint-dashboard-layout").classList.toggle("members-open", is_members_view)
-    web.page["sprints-view"].classList.toggle("hidden", is_members_view)
-    web.page["members-view"].classList.toggle("hidden", not is_members_view)
-    web.page["nav-all-projects"].classList.toggle("active", not is_members_view)
-    web.page["nav-members"].classList.toggle("active", is_members_view)
+    view_ids = ["sprints-view", "members-view", "history-view", "contributions-view"]
+    nav_ids = ["nav-all-projects", "nav-members", "nav-history", "nav-contributions"]
+    is_feature_view = view_id != "sprints-view"
+    document.querySelector(".sprint-dashboard-layout").classList.toggle("members-open", is_feature_view)
+    for current_view in view_ids:
+        web.page[current_view].classList.toggle("hidden", current_view != view_id)
+    for nav_id in nav_ids:
+        web.page[nav_id].classList.toggle("active", nav_id == {
+            "sprints-view": "nav-all-projects",
+            "members-view": "nav-members",
+            "history-view": "nav-history",
+            "contributions-view": "nav-contributions",
+        }[view_id])
 
 
 @when("click", "#nav-all-projects")
@@ -218,6 +403,18 @@ def handle_show_sprints(event):
 @when("click", "#nav-members")
 def handle_show_members(event):
     _show_dashboard_view("members-view")
+
+
+@when("click", "#nav-history")
+def handle_show_history(event):
+    render_change_history()
+    _show_dashboard_view("history-view")
+
+
+@when("click", "#nav-contributions")
+def handle_show_contributions(event):
+    render_member_contributions()
+    _show_dashboard_view("contributions-view")
 
 
 # --- Modal open/close ---
@@ -285,6 +482,7 @@ def handle_create_sprint_submit(event):
     new_id = str(int(time.time() * 1000))  # simple unique id
     items.append({"id": new_id, "name": name, "details": details or "No description", "status": status})
     save_sprints(items)
+    record_change(f"created sprint {name}", new_id, name)
 
     render_sprints_grid()
     event.currentTarget.reset()
@@ -306,6 +504,7 @@ def handle_create_task_submit(event):
     new_id = str(int(time.time() * 1000))
     items.append({"id": new_id, "title": title, "tag": tag, "priority": priority})
     save_backlog_items(items)
+    record_change(f"created backlog task {title}", task_id=new_id, task_title=title)
 
     render_backlog_list()
     event.currentTarget.reset()
@@ -331,3 +530,5 @@ def handle_sprint_card_click(event):
 render_sprints_grid()
 render_backlog_list()
 _refresh_all_card_badges()
+render_change_history()
+render_member_contributions()
