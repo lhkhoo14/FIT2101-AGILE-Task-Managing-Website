@@ -393,6 +393,22 @@
   height: 16px;
 }
 
+.checklist-delete-btn {
+  background: none;
+  border: none;
+  color: #d64545;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: auto;
+}
+
+.checklist-delete-btn:hover {
+  background-color: #fbeaea;
+}
+
 .checklist-empty {
   font-size: 0.85rem;
   color: #888888;

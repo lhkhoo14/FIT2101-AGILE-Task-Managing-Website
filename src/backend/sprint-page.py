@@ -14,6 +14,13 @@ from auth import show_snackbar
 from constants import DEFAULT_SPRINTS  # fallback only — see _load_sprints below
 import js  # type: ignore
 
+from models.server_data import ServerData
+
+# --- CURRENT USER (for checklist ownership checks) ---
+server_data = ServerData()
+_current_user_id = server_data.get_active_session()
+current_user = server_data.find_user_by_id(int(_current_user_id)) if _current_user_id else None
+
 # ==========================================
 # CONSTANTS & GLOBAL STATE
 # ==========================================
@@ -401,6 +408,22 @@ def _render_task_detail_modal():
 
             row.appendChild(checkbox)
             row.appendChild(label)
+
+            # --- Delete button: only visible to the item's own creator ---
+            is_owner = (
+                current_user is not None
+                and item.get("created_by") == current_user.user_id
+            )
+            if is_owner and not _sprint_ended:
+                delete_btn = document.createElement("button")
+                delete_btn.type = "button"
+                delete_btn.className = "checklist-delete-btn"
+                delete_btn.title = "Delete this item"
+                delete_btn.dataset.itemId = str(item.get("id", ""))
+                delete_btn.textContent = "×"
+                row.appendChild(delete_btn)
+            # ---------------------------------------------------------------
+
             items_container.appendChild(row)
 
     # Ended sprint view-only controls
@@ -457,6 +480,7 @@ def handle_add_checklist_item(event):
             "id": str(int(time.time() * 1000)),
             "text": text,
             "done": False,
+            "created_by": current_user.user_id if current_user else None,
         }
         target_task["checklist"].append(new_item)
         _save_kanban_state(_sprint_id, kanban_state)
@@ -497,6 +521,46 @@ def handle_checklist_toggle(event):
         _render_task_detail_modal()
         _render_board(kanban_state)
 
+@when("click", "#checklist-items")
+def handle_checklist_delete(event):
+    if _sprint_ended or not _open_task_id:
+        return
+
+    target = event.target
+    if not target.classList.contains("checklist-delete-btn"):
+        return
+
+    item_id = target.dataset.itemId
+
+    kanban_state = _load_kanban_state(_sprint_id)
+    target_task = None
+    for col_tasks in kanban_state.values():
+        for t in col_tasks:
+            if t.get("id") == _open_task_id:
+                target_task = t
+                break
+        if target_task:
+            break
+
+    if not target_task:
+        return
+
+    checklist = target_task.get("checklist", [])
+    item_to_delete = next((i for i in checklist if str(i.get("id")) == item_id), None)
+
+    # Guard: only the creator may delete their own item
+    if item_to_delete is None:
+        return
+    if current_user is None or item_to_delete.get("created_by") != current_user.user_id:
+        asyncio.ensure_future(
+            show_snackbar("You can only delete checklist items you created.")
+        )
+        return
+
+    target_task["checklist"] = [i for i in checklist if str(i.get("id")) != item_id]
+    _save_kanban_state(_sprint_id, kanban_state)
+    _render_task_detail_modal()
+    _render_board(kanban_state)
 
 def _close_task_detail_modal():
     global _open_task_id
