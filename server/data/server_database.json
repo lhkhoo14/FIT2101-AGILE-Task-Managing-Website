@@ -1,1 +1,14 @@
-{}
+{
+    "next_user_id": 2,
+    "next_project_id": 1,
+    "users": [
+        {
+            "user_id": 1,
+            "username": "iala0012@student.monash.edu",
+            "email": "iala0012@student.monash.edu",
+            "password": "asdasdasd",
+            "projects": []
+        }
+    ],
+    "projects": {}
+}

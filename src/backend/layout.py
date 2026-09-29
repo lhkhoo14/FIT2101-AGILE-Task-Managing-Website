@@ -92,3 +92,7 @@ async def init_topbar():
         render_user_profile(current_user)
 
 asyncio.ensure_future(init_topbar())
+
+@when("click", "#create-project-btn")
+def handle_create_project(event):
+    window.location.href = "create-project.html"

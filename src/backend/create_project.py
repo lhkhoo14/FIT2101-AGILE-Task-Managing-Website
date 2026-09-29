@@ -2,6 +2,7 @@ import json
 
 from pyscript import when, web, window  # type: ignore
 
+print("CREATE_PROJECT.PY LOADED")
 
 API_URL = "http://127.0.0.1:8000"
 
@@ -41,6 +42,7 @@ def clear_errors():
 @when("submit", "#create-project-form")
 async def create_project(event):
     """Sends the new project details to the FastAPI backend."""
+    print("CREATE PROJECT HANDLER TRIGGERED")
 
     if event:
         event.preventDefault()
