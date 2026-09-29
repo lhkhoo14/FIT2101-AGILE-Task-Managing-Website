@@ -137,7 +137,7 @@ def handle_card_drag_leave(event):
 
 
 @when("drop", ".sprints-grid")
-async def handle_card_drop(event):
+def handle_card_drop(event):
     event.preventDefault()
     card = event.target.closest(".sprint-card")
     if not card:
@@ -158,19 +158,20 @@ async def handle_card_drop(event):
     save_backlog_items(remaining)
     add_item_to_sprint_backlog(sprint_id, matching)
     sprint = next((item for item in load_sprints() if item["id"] == sprint_id), {})
-    await record_change(
-        f"added {matching['title']} to {sprint.get('name', 'a sprint')}",
-        sprint_id,
-        sprint.get("name"),
-        matching.get("id"),
-        matching.get("title"),
-    )
 
     dragged_el = web.page[f"backlog-item-{_dragged_backlog_id}"]
     if dragged_el is not None:
         dragged_el.remove()
     web.page["count-product-backlog"].textContent = str(len(remaining))
     _refresh_card_badge(sprint_id)
+
+    asyncio.ensure_future(record_change(
+        f"added {matching['title']} to {sprint.get('name', 'a sprint')}",
+        sprint_id,
+        sprint.get("name"),
+        matching.get("id"),
+        matching.get("title"),
+    ))
 
 
 # --- Sprint storage + rendering ---
