@@ -201,6 +201,25 @@ def render_sprints_grid():
         grid.appendChild(_make_sprint_card(item))
 
 
+def _show_dashboard_view(view_id):
+    is_members_view = view_id == "members-view"
+    document.querySelector(".sprint-dashboard-layout").classList.toggle("members-open", is_members_view)
+    web.page["sprints-view"].classList.toggle("hidden", is_members_view)
+    web.page["members-view"].classList.toggle("hidden", not is_members_view)
+    web.page["nav-all-projects"].classList.toggle("active", not is_members_view)
+    web.page["nav-members"].classList.toggle("active", is_members_view)
+
+
+@when("click", "#nav-all-projects")
+def handle_show_sprints(event):
+    _show_dashboard_view("sprints-view")
+
+
+@when("click", "#nav-members")
+def handle_show_members(event):
+    _show_dashboard_view("members-view")
+
+
 # --- Modal open/close ---
 def _open_modal(modal_id):
     web.page[modal_id].classList.remove("hidden")
@@ -208,6 +227,24 @@ def _open_modal(modal_id):
 
 def _close_modal(modal_id):
     web.page[modal_id].classList.add("hidden")
+
+
+@when("click", ".member-list")
+def handle_member_click(event):
+    trigger = event.target.closest(".member-trigger")
+    if trigger is None:
+        return
+
+    web.page["member-modal-name"].textContent = trigger.getAttribute("data-member-name") or "Not provided"
+    web.page["member-modal-phone"].textContent = trigger.getAttribute("data-member-phone") or "Not provided"
+    web.page["member-modal-email"].textContent = trigger.getAttribute("data-member-email") or "Not provided"
+    _open_modal("member-details-modal")
+    web.page["close-member-details"].focus()
+
+
+@when("click", "#close-member-details")
+def handle_close_member_details(event):
+    _close_modal("member-details-modal")
 
 
 @when("click", "#create-sprint-btn")
