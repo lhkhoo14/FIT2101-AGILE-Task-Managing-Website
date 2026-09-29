@@ -546,3 +546,23 @@ render_backlog_list()
 _refresh_all_card_badges()
 asyncio.ensure_future(render_change_history())
 render_member_contributions()
+
+# Restore the panel requested by a sprint-page sidebar link, or open its modal.
+dashboard_params = js.URLSearchParams.new(window.location.search)
+requested_view = dashboard_params.get("view")
+view_ids = {
+    "sprints": "sprints-view",
+    "members": "members-view",
+    "history": "history-view",
+    "contributions": "contributions-view",
+}
+if requested_view in view_ids:
+    if requested_view == "history":
+        asyncio.ensure_future(render_change_history())
+    elif requested_view == "contributions":
+        render_member_contributions()
+    _show_dashboard_view(view_ids[requested_view])
+
+requested_modal = dashboard_params.get("modal")
+if requested_modal == "create-sprint-modal":
+    _open_modal(requested_modal)

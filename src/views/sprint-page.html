@@ -82,11 +82,11 @@
 
     <aside id="sidebar" class="sidebar">
       <div class="sidebar-action">
-        <button type="button" id="back-to-project-btn" class="btn-create">
+        <button type="button" id="create-sprint-btn" class="btn-create">
           <svg viewBox="0 0 24 24" class="icon">
-            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
           </svg>
-          <span>Back to Project</span>
+          <span>Create Sprint</span>
         </button>
       </div>
 
@@ -95,14 +95,22 @@
           <svg viewBox="0 0 24 24" class="icon">
             <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
           </svg>
-          <span>All Projects</span>
+          <span>All Sprints</span>
         </button>
 
-        <div class="nav-section-title">Board Legend</div>
-        <div class="nav-item filter-item"><span class="status-dot dot-todo"></span><span>Sprint Backlog</span></div>
-        <div class="nav-item filter-item"><span class="status-dot dot-wip"></span><span>Active</span></div>
-        <div class="nav-item filter-item"><span class="status-dot dot-review"></span><span>Review</span></div>
-        <div class="nav-item filter-item"><span class="status-dot dot-completed"></span><span>Completed</span></div>
+        <div class="nav-section-title">Additional Features</div>
+        <button type="button" id="nav-contributions" class="nav-item section-item">
+          <span class="additional-label"></span>
+          <span>Member Contributions</span>
+        </button>
+        <button type="button" id="nav-history" class="nav-item section-item">
+          <span class="additional-label"></span>
+          <span>History</span>
+        </button>
+        <button type="button" id="nav-members" class="nav-item section-item">
+          <span class="additional-label"></span>
+          <span>Members</span>
+        </button>
       </nav>
 
       <div class="sidebar-footer">

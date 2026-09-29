@@ -366,4 +366,37 @@ async def handle_end_sprint(event):
     asyncio.ensure_future(show_snackbar("Sprint ended. Board is now locked."))
 
 
+# Route sidebar actions to the matching sprint-dashboard panel.
+def _open_sprint_dashboard(view="sprints", modal=None):
+    destination = f"sprint-dashboard.html?view={view}"
+    if modal:
+        destination += f"&modal={modal}"
+    window.location.href = destination
+
+
+@when("click", "#create-sprint-btn")
+def handle_open_sprint_creation(event):
+    _open_sprint_dashboard(modal="create-sprint-modal")
+
+
+@when("click", "#nav-all-projects")
+def handle_open_all_sprints(event):
+    _open_sprint_dashboard()
+
+
+@when("click", "#nav-members")
+def handle_open_members(event):
+    _open_sprint_dashboard("members")
+
+
+@when("click", "#nav-history")
+def handle_open_history(event):
+    _open_sprint_dashboard("history")
+
+
+@when("click", "#nav-contributions")
+def handle_open_contributions(event):
+    _open_sprint_dashboard("contributions")
+
+
 _init_page()
