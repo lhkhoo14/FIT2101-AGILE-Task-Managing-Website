@@ -226,3 +226,209 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* --- SECTION: Task Detail Modal & Checklist Styles --- */
+
+/* Modal Base (Shared with sprint-dashboard) */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-box {
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: 24px;
+  width: 100%;
+  max-width: 440px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0;
+}
+
+.modal-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #555555;
+}
+
+.modal-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.modal-input:focus {
+  border-color: #4747D4;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.modal-btn-cancel {
+  background-color: transparent;
+  border: 1px solid #d0d0d0;
+  color: #555555;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modal-btn-cancel:hover {
+  background-color: #f4f5f9;
+}
+
+.modal-btn-submit {
+  background-color: #4747D4;
+  border: none;
+  color: #ffffff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modal-btn-submit:hover {
+  background-color: #3636b8;
+}
+
+.modal-btn-submit:disabled,
+.modal-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Checklist & Progress Styles */
+.task-detail-meta {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.task-progress-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.task-progress-bar-bg {
+  flex: 1;
+  height: 8px;
+  background-color: #e8e8fb;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.task-progress-bar-fill {
+  height: 100%;
+  background-color: #4747D4;
+  width: 0%;
+  transition: width 0.25s ease;
+}
+
+.task-progress-text {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #555555;
+  white-space: nowrap;
+}
+
+.checklist-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.checklist-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background-color: #f4f5f9;
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+.checklist-row label {
+  font-size: 0.875rem;
+  color: #333333;
+  cursor: pointer;
+  word-break: break-word;
+}
+
+.checklist-row input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: #4747D4;
+  width: 16px;
+  height: 16px;
+}
+
+.checklist-empty {
+  font-size: 0.85rem;
+  color: #888888;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.checklist-add-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.card-checklist-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 8px 0;
+}
+
+.card-progress-bar-bg {
+  flex: 1;
+  height: 4px;
+  background-color: #e8e8fb;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.card-progress-bar-fill {
+  height: 100%;
+  background-color: #4747D4;
+  width: 0%;
+}
+
+.card-progress-text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #666666;
+}

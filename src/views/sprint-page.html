@@ -211,6 +211,33 @@
       })();
     </script>
 
+    <!-- Task Detail / Checklist Modal -->
+  <div id="task-detail-modal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <h3 id="task-detail-title" class="modal-title">Task Details</h3>
+      <div id="task-detail-meta" class="task-detail-meta"></div>
+      
+      <div id="task-progress-container" class="task-progress-container">
+        <div class="task-progress-bar-bg">
+          <div id="task-progress-fill" class="task-progress-bar-fill"></div>
+        </div>
+        <span id="task-progress-text" class="task-progress-text"></span>
+      </div>
+
+      <div class="modal-label" style="margin-top: 15px;">Checklist</div>
+      <div id="checklist-items" class="checklist-items"></div>
+
+      <form id="checklist-add-form" class="checklist-add-form">
+        <input type="text" id="checklist-input" class="modal-input" placeholder="Add a sub-item..." />
+        <button type="submit" id="checklist-add-btn" class="modal-btn-submit">Add</button>
+      </form>
+
+      <div class="modal-actions" style="margin-top: 20px;">
+        <button type="button" id="task-detail-close-btn" class="modal-btn-cancel">Close</button>
+      </div>
+    </div>
+  </div>
+
     <!-- Link settings.json for PyScript backend -->
     <script type="py" config="../../settings.json" src="../backend/layout.py"></script>
     <script type="py" config="../../settings.json" src="../backend/sprint-page.py"></script>
