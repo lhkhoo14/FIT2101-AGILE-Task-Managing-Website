@@ -1,5 +1,4 @@
 import sys
-import asyncio
 
 from models import ServerData
 
@@ -10,12 +9,8 @@ from pyscript import when, web, window # type: ignore
 from auth import show_snackbar
 
 def validate_session():
-    db = ServerData()
-    if db.get_active_session() is None:
+    if not window.localStorage.getItem("session_user_id"):
         window.location.href = "login.html"
-        return
-    else:
-        return
 
 # --- 1. TOGGLE PROFILE DROPDOWN MENU ---
 @when("click", "#profile-menu-btn")

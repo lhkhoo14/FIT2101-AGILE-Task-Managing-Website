@@ -2,7 +2,6 @@ import sys
 import asyncio
 import json
 import time
-import asyncio
 from html import escape
 
 if "." not in sys.path:
@@ -553,6 +552,30 @@ def handle_show_contributions(event):
     _show_dashboard_view("contributions-view")
 
 
+@when("app:sprint-dashboard-navigation", "body")
+async def handle_sprint_page_navigation(event):
+    detail = event.detail
+    if detail.action == "create-sprint":
+        _render_member_options()
+        _open_modal("create-sprint-modal")
+        return
+
+    view_ids = {
+        "sprints": "sprints-view",
+        "members": "members-view",
+        "history": "history-view",
+        "contributions": "contributions-view",
+    }
+    view_id = view_ids.get(detail.view)
+    if view_id is None:
+        return
+    if detail.view == "history":
+        await render_change_history()
+    elif detail.view == "contributions":
+        render_member_contributions()
+    _show_dashboard_view(view_id)
+
+
 # Open and close shared dashboard modal overlays by element ID.
 def _open_modal(modal_id):
     web.page[modal_id].classList.remove("hidden")
@@ -667,7 +690,7 @@ async def handle_create_sprint_submit(event):
         "created_at": now_ms,
     })
     save_sprints(items)
-    await record_change(f"created sprint {name}", new_id, name)
+    await record_change(f"created sprint {name}", str(now_ms), name)
     render_sprints_grid()
     event.currentTarget.reset()
     _close_modal("create-sprint-modal")
@@ -709,15 +732,13 @@ def handle_sprint_card_click(event):
         _notify("You are not assigned to this sprint.")
         return
 
-    window.location.href = f"sprint-page.html?sprint_id={sprint_id}"
+    window.openSprintBoard(sprint_id)
 
 
 # Build the initial dashboard from saved sprint and backlog data.
 render_sprints_grid()
 render_backlog_list()
 _refresh_all_card_badges()
-asyncio.ensure_future(render_change_history())
-render_member_contributions()
 
 # Restore the panel requested by a sprint-page sidebar link, or open its modal.
 dashboard_params = js.URLSearchParams.new(window.location.search)

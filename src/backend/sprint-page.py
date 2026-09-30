@@ -2,6 +2,7 @@ import sys
 import json
 import copy
 import asyncio
+import time
 from datetime import datetime, timezone
 
 
@@ -97,41 +98,6 @@ def _load_kanban_state(sprint_id):
 
 def _save_kanban_state(sprint_id, state):
     window.localStorage.setItem(f"{KANBAN_STATE_KEY_PREFIX}{sprint_id}", json.dumps(state))
-
-
-def _current_actor():
-    try:
-        raw = window.localStorage.getItem("pyscript_app_data")
-        data = json.loads(raw) if raw else {}
-        active_id = str(window.localStorage.getItem("session_user_id") or "")
-        user = next(
-            (user for user in data.get("users", []) if str(user.get("user_id")) == active_id),
-            None,
-        )
-        return user.get("username") or user.get("email") if user else "Unknown user"
-    except (ValueError, TypeError):
-        return "Unknown user"
-
-
-async def _record_change(action, sprint, task=None, from_status=None, to_status=None):
-    entry = {
-        "action": action,
-        "message": (
-            f"{_current_actor()} moved {task.get('title', 'a task')} from "
-            f"{from_status} to {to_status} in {sprint.get('name', 'a sprint')}"
-            if action == "moved"
-            else f"{_current_actor()} ended {sprint.get('name', 'a sprint')}"
-        ),
-        "sprint_id": _sprint_id,
-        "sprint_name": sprint.get("name", "Sprint"),
-        "task_id": task.get("id") if task else None,
-        "task_title": task.get("title") if task else None,
-        "from_status": from_status,
-        "to_status": to_status,
-        "actor": _current_actor(),
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-    }
-    await window.sprintHistoryDb.add(js.JSON.parse(json.dumps(entry)))
 
 
 # ==========================================
@@ -330,6 +296,52 @@ def _init_page():
 # ==========================================
 # EVENT HANDLERS
 # ==========================================
+@when("click", "#create-sprint-btn")
+def handle_create_sprint_navigation(event):
+    _navigate_to_dashboard(action="create-sprint")
+
+
+@when("click", "#nav-all-projects")
+def handle_show_sprints(event):
+    _navigate_to_dashboard(view="sprints")
+
+
+@when("click", "#nav-members")
+def handle_show_members(event):
+    _navigate_to_dashboard(view="members")
+
+
+@when("click", "#nav-history")
+def handle_show_history(event):
+    _navigate_to_dashboard(view="history")
+
+
+@when("click", "#nav-contributions")
+def handle_show_contributions(event):
+    _navigate_to_dashboard(view="contributions")
+
+
+@when("click", "#settings-btn")
+def handle_unavailable_settings(event):
+    asyncio.ensure_future(show_snackbar("Settings are not available yet."))
+
+
+def _navigate_to_dashboard(view=None, action=None):
+    if window.isEmbeddedSprintPage:
+        payload = {"type": "sprint-dashboard-navigation", "view": view, "action": action}
+        window.parent.postMessage(js.JSON.parse(json.dumps(payload)), str(window.location.origin))
+        return
+    if action == "create-sprint":
+        window.location.href = "sprint-dashboard.html?modal=create-sprint-modal"
+    else:
+        window.location.href = f"sprint-dashboard.html?view={view}"
+
+
+@when("app:activate-sprint-page", "body")
+def handle_activate_sprint_page(event):
+    _init_page()
+
+
 @when("app:card-drop", "body")
 async def handle_card_drop(event):
     if _sprint_ended or not _has_access:
@@ -468,7 +480,7 @@ def _render_task_detail_modal():
         web.page["task-progress-container"].classList.remove("hidden")
     else:
         fill_el.style.width = "0%"
-        text_el.textContent = "0 of 0 done (0%)"
+        web.page["task-progress-container"].classList.add("hidden")
 
     # Checklist Rows
     items_container = web.page["checklist-items"]
@@ -669,4 +681,15 @@ def handle_modal_backdrop_click(event):
     if event.target.id == event.currentTarget.id:
         _close_task_detail_modal()
 
-_init_page()
+_page_params = js.URLSearchParams.new(window.location.search)
+if _page_params.get("prewarm") == "1":
+    ready_message = {
+        "type": "sprint-page-ready",
+        "sprintId": _get_sprint_id_from_url(),
+    }
+    window.parent.postMessage(
+        js.JSON.parse(json.dumps(ready_message)),
+        str(window.location.origin),
+    )
+else:
+    _init_page()

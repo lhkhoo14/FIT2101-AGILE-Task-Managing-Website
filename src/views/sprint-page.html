@@ -34,6 +34,15 @@
   <link rel="stylesheet" href="../styles/snackbar.css">
   <!-- Shared IndexedDB API used to record sprint-board events. -->
   <script src="../backend/history-db.js"></script>
+  <script>
+    window.isEmbeddedSprintPage = window.parent !== window;
+    window.addEventListener("message", (event) => {
+      if (event.source !== window.parent || event.origin !== window.location.origin) return;
+      if (event.data?.type === "activate-sprint-page") {
+        document.body.dispatchEvent(new CustomEvent("app:activate-sprint-page"));
+      }
+    });
+  </script>
 </head>
 
 <body>
@@ -238,12 +247,12 @@
     })();
   </script>
 
-    <!-- Task Detail / Checklist Modal -->
+  <!-- Task Detail / Checklist Modal -->
   <div id="task-detail-modal" class="modal-overlay hidden">
     <div class="modal-box">
       <h3 id="task-detail-title" class="modal-title">Task Details</h3>
       <div id="task-detail-meta" class="task-detail-meta"></div>
-      
+
       <div id="task-progress-container" class="task-progress-container">
         <div class="task-progress-bar-bg">
           <div id="task-progress-fill" class="task-progress-bar-fill"></div>

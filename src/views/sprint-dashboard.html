@@ -37,6 +37,71 @@
   <link rel="stylesheet" href="../styles/snackbar.css">
   <!-- Shared IndexedDB API for reading and recording sprint change history. -->
   <script src="../backend/history-db.js"></script>
+  <script>
+    let activeSprintId = null;
+    const sprintFrame = () => document.getElementById("sprint-page-frame");
+
+    function prepareSprintBoard(sprintId) {
+      const frame = sprintFrame();
+      if (frame.dataset.sprintId === sprintId) return;
+      frame.dataset.sprintId = sprintId;
+      frame.dataset.prewarm = "true";
+      frame.dataset.ready = "false";
+      frame.src = `sprint-page.html?sprint_id=${encodeURIComponent(sprintId)}&prewarm=1`;
+    }
+
+    window.openSprintBoard = (sprintId) => {
+      const frame = sprintFrame();
+      activeSprintId = sprintId;
+      frame.hidden = false;
+
+      if (frame.dataset.sprintId === sprintId && frame.dataset.prewarm === "true") {
+        if (frame.dataset.ready === "true") {
+          frame.contentWindow.postMessage({ type: "activate-sprint-page" }, location.origin);
+        }
+        return;
+      }
+
+      frame.dataset.sprintId = sprintId;
+      frame.dataset.prewarm = "false";
+      frame.dataset.ready = "false";
+      frame.src = `sprint-page.html?sprint_id=${encodeURIComponent(sprintId)}`;
+    };
+
+    document.addEventListener("pointerover", (event) => {
+      const card = event.target.closest(".sprint-card[data-member='true']");
+      if (card) prepareSprintBoard(card.dataset.sprintId);
+    });
+
+    window.addEventListener("message", (event) => {
+      const frame = sprintFrame();
+      if (event.origin !== location.origin || event.source !== frame.contentWindow) return;
+
+      if (event.data?.type === "sprint-page-ready") {
+        frame.dataset.ready = "true";
+        if (activeSprintId === event.data.sprintId && frame.dataset.prewarm === "true") {
+          frame.contentWindow.postMessage({ type: "activate-sprint-page" }, location.origin);
+        }
+      } else if (event.data?.type === "sprint-dashboard-navigation") {
+        frame.hidden = true;
+        activeSprintId = null;
+        document.body.dispatchEvent(new CustomEvent("app:sprint-dashboard-navigation", {
+          detail: event.data,
+        }));
+      }
+    });
+  </script>
+  <style>
+    #sprint-page-frame {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #f4f5f9;
+    }
+  </style>
 </head>
 
 <!-- Top App Bar -->
@@ -160,24 +225,26 @@
 
     <!-- Backlog Tasls List -->
     <div class="backlog-list" id="backlog-list">
+    </div>
   </aside>
 
-      <!-- Main Content Area -->
-      <main class="main-content">
-        
-        <!-- Top Filters / Sort Area -->
-        <div class="content-header">
-          <h1 class="page-title">Sprints</h1>
-          
-          <div class="sort-container">
-            <label for="sort-select" class="sort-label">Sort:</label>
-            <select id="sort-select" class="sort-dropdown">
-              <option value="date">Creation date (newest)</option>
-              <option value="priority">Priority (high to low)</option>
-              <option value="name">Name (A-Z)</option>
-            </select>
-          </div>
+  <!-- Main Content Area -->
+  <main class="main-content">
+    <section id="sprints-view" class="sprints-view">
+
+      <!-- Top Filters / Sort Area -->
+      <div class="content-header">
+        <h1 class="page-title">Sprints</h1>
+
+        <div class="sort-container">
+          <label for="sort-select" class="sort-label">Sort:</label>
+          <select id="sort-select" class="sort-dropdown">
+            <option value="date">Creation date (newest)</option>
+            <option value="priority">Priority (high to low)</option>
+            <option value="name">Name (A-Z)</option>
+          </select>
         </div>
+      </div>
 
       <!-- Sprint Cards Grid -->
       <div class="sprints-grid">
@@ -267,6 +334,7 @@
   </main>
 </div>
 
+<iframe id="sprint-page-frame" title="Sprint board" hidden></iframe>
 <div id="snackbar">Some text some message..</div>
 
 <!-- Contact dialog filled from the selected member's data attributes. -->
@@ -305,20 +373,22 @@
       <label class="modal-label" for="sprint-details-input">Details</label>
       <input type="text" id="sprint-details-input" class="modal-input" placeholder="Short description">
 
-            <label class="modal-label" for="sprint-tags-input">Tags</label>
-            <input type="text" id="sprint-tags-input" class="modal-input" placeholder="e.g. frontend, api, urgent" autocomplete="off">
-            <p class="members-hint">Separate tags with commas. You can search sprints by tag from the top bar.</p>
+      <label class="modal-label" for="sprint-tags-input">Tags</label>
+      <input type="text" id="sprint-tags-input" class="modal-input" placeholder="e.g. frontend, api, urgent"
+        autocomplete="off">
+      <p class="members-hint">Separate tags with commas. You can search sprints by tag from the top bar.</p>
 
-            <label class="modal-label" for="sprint-priority-input">Priority</label>
-            <select id="sprint-priority-input" class="modal-input">
-              <option value="low">Low</option>
-              <option value="medium" selected>Medium</option>
-              <option value="high">High</option>
-            </select>
+      <label class="modal-label" for="sprint-priority-input">Priority</label>
+      <select id="sprint-priority-input" class="modal-input">
+        <option value="low">Low</option>
+        <option value="medium" selected>Medium</option>
+        <option value="high">High</option>
+      </select>
 
-            <span class="modal-label">Assign Members</span>
-            <div id="sprint-members-list" class="members-list"></div>
-            <p class="members-hint">Only assigned members can open this sprint or drag tasks into it. You are always included.</p>
+      <span class="modal-label">Assign Members</span>
+      <div id="sprint-members-list" class="members-list"></div>
+      <p class="members-hint">Only assigned members can open this sprint or drag tasks into it. You are always included.
+      </p>
 
       <div class="modal-actions">
         <button type="button" class="modal-btn-cancel" data-modal="create-sprint-modal">Cancel</button>
