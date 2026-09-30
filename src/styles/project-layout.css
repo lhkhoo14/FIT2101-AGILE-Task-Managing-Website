@@ -1,0 +1,204 @@
+/* --- GLOBAL RESETS & BASE STYLES --- */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+  background-color: #f4f5f9;
+  color: #333333;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Common SVG Icon Sizing */
+.icon {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.content-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #222222;
+}
+
+/* --- MAIN CONTENT AREA --- */
+.main-content {
+  flex: 1;
+  padding: 32px;
+  overflow-y: auto;
+}
+
+/* --- DASHBOARD LAYOUT & SIDEBAR --- */
+.dashboard-layout {
+  display: flex;
+  flex: 1;
+}
+
+.sidebar {
+  width: 240px;
+  background-color: #ffffff;
+  border-right: 1px solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 12px;
+  transition: width 0.3s ease, padding 0.3s ease;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Sidebar Collapsed State */
+.sidebar.collapsed {
+  width: 80px; /* Slightly wider to comfortably fit icon + stacked label */
+  padding: 20px 6px;
+}
+
+/* Hide Section Headers when collapsed */
+.sidebar.collapsed .nav-section-title {
+  display: none;
+}
+
+/* Switch nav items to column alignment */
+.sidebar.collapsed .nav-item {
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  text-align: center;
+}
+
+/* Smaller text placed under the icon */
+.sidebar.collapsed .nav-item span {
+  font-size: 0px;
+  font-weight: 500;
+  line-height: 1.1;
+  white-space: normal; /* Allows 2-line wrap if text is long */
+  word-break: break-word;
+}
+
+/* Adjust status dots for task items when collapsed */
+.sidebar.collapsed .status-dot {
+  width: 12px;
+  height: 12px;
+  margin-bottom: 2px;
+}
+
+/* Compact Floating Create Button when collapsed */
+.sidebar.collapsed .btn-create {
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 4px;
+  border-radius: 12px;
+}
+
+.sidebar.collapsed .btn-create span {
+  font-size: 12px;
+}
+
+.sidebar-action {
+  margin-bottom: 24px;
+}
+
+/* Floating-style Create Button */
+.btn-create {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background-color: #ffffff;
+  color: #4747D4;
+  border: 1px solid #e0e0e0;
+  border-radius: 24px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+.btn-create:hover {
+  background-color: #4747D4;
+  color: #ffffff;
+  border-color: #4747D4;
+  box-shadow: 0 8px 26px rgba(71, 71, 212, 0.25);
+}
+
+.btn-create .icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* Sidebar Nav & Status Dots */
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.nav-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #999999;
+  letter-spacing: 0.5px;
+  margin: 16px 12px 6px 12px;
+}
+
+/* Default Horizontal Layout for Nav Items */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #555555;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+.nav-item .icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.nav-item:hover {
+  background-color: #f0f1fa;
+  color: #4747D4;
+}
+
+.nav-item.active {
+  background-color: #e8e8fb;
+  color: #4747D4;
+  font-weight: 600;
+}
+
+.sidebar-footer {
+  border-top: 1px solid #eeeeee;
+  padding-top: 12px;
+}
