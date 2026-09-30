@@ -12,7 +12,15 @@ if "." not in sys.path:
 from pyscript import when, web, window, document  # type: ignore
 from auth import show_snackbar
 from constants import DEFAULT_SPRINTS  # fallback only — see _load_sprints below
+from sprint_access import is_sprint_member
 import js  # type: ignore
+
+from models.server_data import ServerData
+
+# --- CURRENT USER (for checklist ownership checks) ---
+server_data = ServerData()
+_current_user_id = server_data.get_active_session()
+current_user = server_data.find_user_by_id(int(_current_user_id)) if _current_user_id else None
 
 # ==========================================
 # CONSTANTS & GLOBAL STATE
@@ -25,6 +33,8 @@ KANBAN_STATE_KEY_PREFIX = "kanban_state_"
 
 _sprint_id = None
 _sprint_ended = False
+_has_access = False  # True only once the current user is confirmed as an assigned member
+FLASH_KEY = "flash_snackbar"  # shown by sprint-dashboard.html after a redirect
 
 
 # ==========================================
@@ -176,16 +186,33 @@ def _make_task_card(task, column_key):
     else:
         avatar_html = '<div class="assignee-avatar" title="Unassigned">?</div>'
 
+    # --- NEW CHECKLIST PROGRESS HTML ---
+    done_cnt, total_cnt, pct = _checklist_progress(task)
+    if total_cnt > 0:
+        progress_html = f"""
+        <div class="card-checklist-progress">
+            <div class="card-progress-bar-bg">
+                <div class="card-progress-bar-fill" style="width: {pct}%;"></div>
+            </div>
+            <span class="card-progress-text">{done_cnt}/{total_cnt}</span>
+        </div>
+        """
+    else:
+        progress_html = ""
+    # -----------------------------------
+
     card.innerHTML = f"""
         <div class="task-card-header">
             <span class="tag-badge tag-{task['tag']}">{task['tag'].capitalize()}</span>
         </div>
         <p class="task-card-title">{task['title']}</p>
+        {progress_html}
         <div class="task-card-footer">
             <span class="priority-badge priority-{task['priority']}">{task['priority'].capitalize()}</span>
             {avatar_html}
         </div>
     """
+    
     return card
 
 
@@ -284,6 +311,15 @@ def _init_page():
         window.location.href = "dashboard.html"
         return
 
+    # Only members assigned to this sprint may open its page (this also covers
+    # anyone who types the sprint_id into the URL directly).
+    global _has_access
+    if not is_sprint_member(sprint, current_user.user_id if current_user else None):
+        window.sessionStorage.setItem(FLASH_KEY, "You are not assigned to that sprint.")
+        window.location.href = "sprint-dashboard.html"
+        return
+    _has_access = True
+
     _apply_header_and_lock_state(sprint)
 
     state = _load_kanban_state(_sprint_id)
@@ -296,8 +332,7 @@ def _init_page():
 # ==========================================
 @when("app:card-drop", "body")
 async def handle_card_drop(event):
-    # Persist a forward-only column move and record it in the shared event database.
-    if _sprint_ended:
+    if _sprint_ended or not _has_access:
         return
 
     detail = event.detail
@@ -327,6 +362,15 @@ async def handle_card_drop(event):
             show_snackbar("Tasks can only be pushed forward on the board.")
         )
         return
+
+    # --- INSERTED CHECK: Gate forward moves if task has unchecked items ---
+    checklist = task.get("checklist", [])
+    if any(not item.get("done", False) for item in checklist):
+        asyncio.ensure_future(
+            show_snackbar("Complete all checklist items before moving this task forward.")
+        )
+        return
+    # ----------------------------------------------------------------------
 
     state[source_column] = [t for t in state[source_column] if t["id"] != card_id]
     state[target_column].append(task)
@@ -365,38 +409,264 @@ async def handle_end_sprint(event):
 
     asyncio.ensure_future(show_snackbar("Sprint ended. Board is now locked."))
 
+# --- SECTION: Task Checklist & Detail Modal ---
 
-# Route sidebar actions to the matching sprint-dashboard panel.
-def _open_sprint_dashboard(view="sprints", modal=None):
-    destination = f"sprint-dashboard.html?view={view}"
-    if modal:
-        destination += f"&modal={modal}"
-    window.location.href = destination
+_open_task_id = None
 
 
-@when("click", "#create-sprint-btn")
-def handle_open_sprint_creation(event):
-    _open_sprint_dashboard(modal="create-sprint-modal")
+def _checklist_progress(task):
+    checklist = task.get("checklist", [])
+    total = len(checklist)
+    if total == 0:
+        return 0, 0, 0
+    done = sum(1 for item in checklist if item.get("done", False))
+    percent = round(done / total * 100)
+    return done, total, percent
 
 
-@when("click", "#nav-all-projects")
-def handle_open_all_sprints(event):
-    _open_sprint_dashboard()
+def _render_task_detail_modal():
+    global _open_task_id
+    if not _open_task_id:
+        return
+
+    kanban_state = _load_kanban_state(_sprint_id)
+    task = None
+    for col_tasks in kanban_state.values():
+        for t in col_tasks:
+            if t.get("id") == _open_task_id:
+                task = t
+                break
+        if task:
+            break
+
+    if not task:
+        _close_task_detail_modal()
+        return
+
+    # Title
+    web.page["task-detail-title"].textContent = task.get("title", "Task Details")
+
+    # Tag & Priority Meta
+    meta_container = web.page["task-detail-meta"]
+    meta_container.innerHTML = ""
+    tag_span = document.createElement("span")
+    tag_span.className = f"task-tag tag-{task.get('tag', 'dev').lower()}"
+    tag_span.textContent = task.get("tag", "DEV")
+    prio_span = document.createElement("span")
+    prio_span.className = f"task-priority priority-{task.get('priority', 'medium').lower()}"
+    prio_span.textContent = task.get("priority", "Medium")
+    meta_container.appendChild(tag_span)
+    meta_container.appendChild(prio_span)
+
+    # Progress Bar
+    done, total, percent = _checklist_progress(task)
+    fill_el = web.page["task-progress-fill"]
+    text_el = web.page["task-progress-text"]
+    if total > 0:
+        fill_el.style.width = f"{percent}%"
+        text_el.textContent = f"{done} of {total} done ({percent}%)"
+        web.page["task-progress-container"].classList.remove("hidden")
+    else:
+        fill_el.style.width = "0%"
+        text_el.textContent = "0 of 0 done (0%)"
+
+    # Checklist Rows
+    items_container = web.page["checklist-items"]
+    items_container.innerHTML = ""
+    checklist = task.get("checklist", [])
+
+    if not checklist:
+        empty_div = document.createElement("div")
+        empty_div.className = "checklist-empty"
+        empty_div.textContent = "No checklist items yet."
+        items_container.appendChild(empty_div)
+    else:
+        for idx, item in enumerate(checklist):
+            row = document.createElement("div")
+            row.className = "checklist-row"
+
+            checkbox = document.createElement("input")
+            checkbox.type = "checkbox"
+            checkbox.id = f"chk-item-{item.get('id', idx)}"
+            checkbox.dataset.itemId = str(item.get("id", ""))
+            checkbox.checked = item.get("done", False)
+            if _sprint_ended:
+                checkbox.disabled = True
+
+            label = document.createElement("label")
+            label.htmlFor = checkbox.id
+            label.textContent = item.get("text", "")
+
+            row.appendChild(checkbox)
+            row.appendChild(label)
+
+            # --- Delete button: only visible to the item's own creator ---
+            is_owner = (
+                current_user is not None
+                and item.get("created_by") == current_user.user_id
+            )
+            if is_owner and not _sprint_ended:
+                delete_btn = document.createElement("button")
+                delete_btn.type = "button"
+                delete_btn.className = "checklist-delete-btn"
+                delete_btn.title = "Delete this item"
+                delete_btn.dataset.itemId = str(item.get("id", ""))
+                delete_btn.textContent = "×"
+                row.appendChild(delete_btn)
+            # ---------------------------------------------------------------
+
+            items_container.appendChild(row)
+
+    # Ended sprint view-only controls
+    input_el = web.page["checklist-input"]
+    add_btn = web.page["checklist-add-btn"]
+    if _sprint_ended:
+        input_el.disabled = True
+        add_btn.disabled = True
+    else:
+        input_el.disabled = False
+        add_btn.disabled = False
 
 
-@when("click", "#nav-members")
-def handle_open_members(event):
-    _open_sprint_dashboard("members")
+@when("click", "#kanban-board")
+def handle_kanban_click(event):
+    card = event.target.closest(".task-card")
+    if not card:
+        return
+
+    task_id = card.id
+    global _open_task_id
+    _open_task_id = task_id
+
+    _render_task_detail_modal()
+    web.page["task-detail-modal"].classList.remove("hidden")
 
 
-@when("click", "#nav-history")
-def handle_open_history(event):
-    _open_sprint_dashboard("history")
+@when("submit", "#checklist-add-form")
+def handle_add_checklist_item(event):
+    event.preventDefault()
+    if _sprint_ended or not _open_task_id:
+        return
+
+    input_el = web.page["checklist-input"]
+    text = input_el.value.strip()
+    if not text:
+        return
+
+    kanban_state = _load_kanban_state(_sprint_id)
+    target_task = None
+    for col_tasks in kanban_state.values():
+        for t in col_tasks:
+            if t.get("id") == _open_task_id:
+                target_task = t
+                break
+        if target_task:
+            break
+
+    if target_task:
+        if "checklist" not in target_task:
+            target_task["checklist"] = []
+
+        new_item = {
+            "id": str(int(time.time() * 1000)),
+            "text": text,
+            "done": False,
+            "created_by": current_user.user_id if current_user else None,
+        }
+        target_task["checklist"].append(new_item)
+        _save_kanban_state(_sprint_id, kanban_state)
+
+        input_el.value = ""
+        _render_task_detail_modal()
+        _render_board(kanban_state)
 
 
-@when("click", "#nav-contributions")
-def handle_open_contributions(event):
-    _open_sprint_dashboard("contributions")
+@when("change", "#checklist-items")
+def handle_checklist_toggle(event):
+    if _sprint_ended or not _open_task_id:
+        return
 
+    target = event.target
+    if target.tagName.lower() != "input" or target.type != "checkbox":
+        return
+
+    item_id = target.dataset.itemId
+    is_checked = target.checked
+
+    kanban_state = _load_kanban_state(_sprint_id)
+    target_task = None
+    for col_tasks in kanban_state.values():
+        for t in col_tasks:
+            if t.get("id") == _open_task_id:
+                target_task = t
+                break
+        if target_task:
+            break
+
+    if target_task:
+        for item in target_task.get("checklist", []):
+            if str(item.get("id")) == item_id:
+                item["done"] = is_checked
+                break
+        _save_kanban_state(_sprint_id, kanban_state)
+        _render_task_detail_modal()
+        _render_board(kanban_state)
+
+@when("click", "#checklist-items")
+def handle_checklist_delete(event):
+    if _sprint_ended or not _open_task_id:
+        return
+
+    target = event.target
+    if not target.classList.contains("checklist-delete-btn"):
+        return
+
+    item_id = target.dataset.itemId
+
+    kanban_state = _load_kanban_state(_sprint_id)
+    target_task = None
+    for col_tasks in kanban_state.values():
+        for t in col_tasks:
+            if t.get("id") == _open_task_id:
+                target_task = t
+                break
+        if target_task:
+            break
+
+    if not target_task:
+        return
+
+    checklist = target_task.get("checklist", [])
+    item_to_delete = next((i for i in checklist if str(i.get("id")) == item_id), None)
+
+    # Guard: only the creator may delete their own item
+    if item_to_delete is None:
+        return
+    if current_user is None or item_to_delete.get("created_by") != current_user.user_id:
+        asyncio.ensure_future(
+            show_snackbar("You can only delete checklist items you created.")
+        )
+        return
+
+    target_task["checklist"] = [i for i in checklist if str(i.get("id")) != item_id]
+    _save_kanban_state(_sprint_id, kanban_state)
+    _render_task_detail_modal()
+    _render_board(kanban_state)
+
+def _close_task_detail_modal():
+    global _open_task_id
+    _open_task_id = None
+    web.page["task-detail-modal"].classList.add("hidden")
+
+
+@when("click", "#task-detail-close-btn")
+def handle_close_modal_click(event):
+    _close_task_detail_modal()
+
+
+@when("click", "#task-detail-modal")
+def handle_modal_backdrop_click(event):
+    if event.target.id == event.currentTarget.id:
+        _close_task_detail_modal()
 
 _init_page()

@@ -492,3 +492,171 @@
   color: #666666;
   font-size: 14px;
 }
+
+/* --- SPRINT CARD: badges, members, locked state --- */
+.sprint-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sprint-members {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 26px;
+  margin-bottom: 14px;
+}
+
+.member-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background-color: #4747D4;
+  color: #ffffff;
+  border: 2px solid #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -8px;
+}
+
+.member-avatar:first-child {
+  margin-left: 0;
+}
+
+.member-avatar-more {
+  background-color: #eceef2;
+  color: #555555;
+}
+
+.members-open {
+  font-size: 12px;
+  color: #888888;
+}
+
+.lock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #888888;
+  margin-left: auto;
+}
+
+.lock-badge .icon {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+}
+
+/* Sprint the current user is not assigned to */
+.sprint-card.sprint-card-locked {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sprint-card.sprint-card-locked:hover {
+  transform: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+}
+
+.sprint-card.card-drop-denied {
+  outline: 2px dashed #c92a2a;
+  outline-offset: -2px;
+  background-color: #fde8e8;
+}
+
+/* --- CREATE SPRINT: member picker --- */
+.members-list {
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid #dddddd;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.member-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #333333;
+}
+
+.member-option:hover {
+  background-color: #f4f5f9;
+}
+
+.member-option input {
+  accent-color: #4747D4;
+}
+
+.member-option-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-color: #4747D4;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.member-option-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.members-empty,
+.members-hint {
+  font-size: 12px;
+  color: #888888;
+  padding: 6px 8px;
+}
+
+.members-hint {
+  padding: 6px 0 0;
+}
+
+/* --- SPRINT TAGS --- */
+.sprint-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.sprint-tag-chip {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 10px;
+  background-color: #e8e8fb;
+  color: #3939b0;
+}
+
+.sprint-tag-chip::before {
+  content: "#";
+  opacity: 0.6;
+}
+
+.sprints-empty {
+  grid-column: 1 / -1;
+  padding: 32px 16px;
+  text-align: center;
+  font-size: 14px;
+  color: #888888;
+}
