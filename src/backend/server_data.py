@@ -146,6 +146,35 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to fetch projects: {e}")
             return None
+
+    async def get_project_by_id(self, project_id: int) -> Project | None:
+        """Fetches all projects associated with the active user session."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return None
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}?user_id={user_id}",
+                method="GET",
+                headers={"Content-Type": "application/json"}
+            )
+            if response.status == 200:
+                data = await response.json()
+                return Project(
+                    id=data.get("project_id", data.get("id", "")),
+                    name=data.get("name", "Untitled Project"),
+                    description=data.get("description", "No description provided."),
+                    status=data.get("status", "todo")
+                )
+            elif response.status in (403, 404):
+                print(f"[API Security] Project access denied or missing (Status {response.status}).")
+                return None
+
+            return None
+        except Exception as e:
+            print(f"[API Error] Failed to fetch projects: {e}")
+            return None
         
 
 class Project:

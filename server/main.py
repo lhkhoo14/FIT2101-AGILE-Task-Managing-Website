@@ -214,7 +214,7 @@ def get_user_projects(user_id: int):
     return user_projects
 
 @app.get("/api/projects/{project_id}")
-def get_project(project_id: int):
+def get_project(project_id: int, user_id: int):
     db = read_db()
 
     project = db.get("projects", {}).get(str(project_id))
@@ -225,9 +225,14 @@ def get_project(project_id: int):
             detail="Project not found"
         )
 
-    return {
-        "project": project
-    }
+    # Security Check: Verify user membership
+    members = project.get("members", [])
+    if user_id not in members:
+        raise HTTPException(
+            status_code=403,
+            detail="Access forbidden: You are not a member of this project"
+        )
+    return project
 
 @app.get("/api/users/{user_id}")
 def get_user(user_id: int):
