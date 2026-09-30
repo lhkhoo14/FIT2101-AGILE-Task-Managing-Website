@@ -66,7 +66,7 @@ async def create_project(event):
 
     if success:
         await show_snackbar("Project created successfully!")
-        window.location.replace("dashboard.html")
+        window.location.replace("project-page.html")
     else:
         show_error("project-name", error_message)
         await show_snackbar(error_message)

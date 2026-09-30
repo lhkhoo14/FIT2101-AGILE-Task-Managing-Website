@@ -1,14 +1,25 @@
 import sys
 import asyncio
+from pyscript import web, window, document  # type: ignore
+from pyodide.ffi import create_proxy  # type: ignore
 
 if "." not in sys.path:
     sys.path.append(".")
 
-from pyscript import web, document  # type: ignore
 from server_data import ServerData
 
+def handle_project_click(event):
+    """Navigates to project-page.html using the selected project ID."""
+    card = event.currentTarget
+    project_id = card.getAttribute("data-project-id")
+    if project_id:
+        window.location.href = f"project-page.html?project_id={project_id}"
+
+# Create a persistent proxy wrapper for the callback
+click_proxy = create_proxy(handle_project_click)
+
 def create_project_card(project) -> web.Element:
-    """Creates a project card DOM element."""
+    """Creates a project card DOM element and binds click handling."""
     card = document.createElement("div")
     card.className = "project-card"
     card.setAttribute("data-project-id", str(project.id))
@@ -23,6 +34,9 @@ def create_project_card(project) -> web.Element:
             <span class="status-badge {status_class}">{status_label}</span>
         </div>
     """
+    
+    # Pass the persistent proxy to addEventListener
+    card.addEventListener("click", click_proxy)
     return card
 
 async def list_projects():
