@@ -25,36 +25,6 @@ body {
   display: none !important;
 }
 
-.app-bar-left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.icon-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #555555;
-  padding: 8px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.2s;
-}
-
-.icon-btn:hover {
-  background-color: #f0f0f0;
-  color: #4747D4;
-}
-
-.brand-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: #333333;
-}
-
 .content-header {
   display: flex;
   justify-content: space-between;

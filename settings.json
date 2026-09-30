@@ -1,6 +1,7 @@
 {
   "files": {
     "./src/backend/constants.py": "./constants.py",
+    "./src/backend/topbar.py": "./topbar.py",
     "./src/backend/layout.py": "./layout.py",
     "./src/backend/auth.py": "./auth.py",
     "./src/backend/login.py": "./login.py",
