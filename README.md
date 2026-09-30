@@ -27,15 +27,16 @@ Update this section as your project grows.
 ```
 src/
 ├── backend/
-│   ├── server_data.py
 │   ├── auth.py
+│   ├── constants.py
+│   ├── create_project.py
+│   ├── dashboard.py
 │   ├── layout.py
 │   ├── login.py
-│   ├── constants.py
-│   ├── sprint-page.py
-│   ├── sprint-dashboard.py
+│   ├── server_data.py
 │   ├── signup.py
-│   └── dashboard.py
+│   ├── sprint-dashboard.py
+│   └── sprint-page.py
 |
 ├── components/
 │   ├── avatar.html
@@ -44,18 +45,21 @@ src/
 |
 ├── styles/
 │   ├── auth.css
+│   ├── create-project.css
 │   ├── dashboard.css
 │   ├── layout.css
+│   ├── snackbar.css
 │   ├── sprint-dashboard.css
-│   ├── sprint-page.css
-│   └── snackbar.css
+│   └── sprint-page.css
 |
 ├── views/
+│   ├── create-project.html
 │   ├── dashboard.html
 │   ├── login.html
+│   ├── signup.html
 │   ├── sprint-dashboard.html
-│   ├── sprint-page.html
-│   └── signup.html
+│   └── sprint-page.html
+│
 ├── index.html
 ├── PYSCRIPT_TUTORIAL.md
 ├── README.md
