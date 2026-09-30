@@ -5,17 +5,6 @@ from constants import API_URL
 from server_data import ServerData
 from auth import show_snackbar
 
-def get_current_user_id():
-    """Gets the currently logged-in user's ID from the browser session."""
-
-    user_id = window.localStorage.getItem("session_user_id")
-
-    if user_id is None or user_id.strip() == "":
-        return None
-
-    return int(user_id)
-
-
 def show_error(field_id: str, message: str):
     """Displays an error message underneath a form field."""
 
@@ -24,7 +13,6 @@ def show_error(field_id: str, message: str):
     if error is not None:
         error.innerText = message
         error.classList.add("show")
-
 
 def clear_errors():
     """Clears all project creation errors."""
@@ -36,8 +24,6 @@ def clear_errors():
             error.innerText = ""
             error.classList.remove("show")
 
-
-@when("submit", "#create-project-form")
 @when("submit", "#create-project-form")
 async def create_project(event):
     """Handles project form submission."""

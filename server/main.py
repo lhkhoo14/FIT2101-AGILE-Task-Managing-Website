@@ -22,35 +22,31 @@ DB_PATH = os.path.join(
 )
 
 def read_db() -> dict:
-    default_structure = {"next_user_id": 1, "users": []}
-    
+    default_structure = {
+        "next_user_id": 1, 
+        "next_project_id": 1, 
+        "next_backlog_id": 1, 
+        "next_sprint_id": 1, 
+        "users": [], 
+        "projects": {}
+    }
     if not os.path.exists(DB_PATH):
-        return {
-            "next_user_id": 1,
-            "next_project_id": 1,
-            "users": [],
-            "projects": {}
-        }
+        return default_structure
 
     try:
         with open(DB_PATH, "r") as f:
             data = json.load(f)
 
             if not isinstance(data, dict):
-                return {
-                    "next_user_id": 1,
-                    "next_project_id": 1,
-                    "users": [],
-                    "projects": {}
-                }
-
+                return default_structure
             data.setdefault("next_user_id", 1)
             data.setdefault("next_project_id", 1)
+            data.setdefault("next_backlog_id", 1)
+            data.setdefault("next_sprint_id", 1)
             data.setdefault("users", [])
             data.setdefault("projects", {})
-
+            
             return data
-
     except (json.JSONDecodeError, Exception):
         return default_structure
 
@@ -74,6 +70,22 @@ class CreateProjectPayload(BaseModel):
     user_id: int
     name: str
     description: str
+
+class CreateBacklogPayload(BaseModel):
+    user_id: int
+    title: str
+    tag: str
+    priority: str
+
+class CreateSprintPayload(BaseModel):
+    user_id: int
+    name: str
+    details: str
+    status: str
+
+class MoveBacklogPayload(BaseModel):
+    user_id: int
+    backlog_id: int
 
 @app.post("/api/login")
 def login(payload: LoginPayload):
@@ -159,10 +171,7 @@ def create_project(payload: CreateProjectPayload):
     )
 
     if user is None:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found"
-        )
+        raise HTTPException(status_code=404, detail="User not found")
 
     project_id = db.get("next_project_id", 1)
     db["next_project_id"] = project_id + 1
@@ -171,7 +180,10 @@ def create_project(payload: CreateProjectPayload):
         "project_id": project_id,
         "name": payload.name,
         "description": payload.description,
-        "members": [payload.user_id]
+        "creator": [payload.user_id],
+        "members": [payload.user_id],
+        "backlog": [],
+        "sprints": []
     }
 
     db["projects"][str(project_id)] = new_project
@@ -181,19 +193,7 @@ def create_project(payload: CreateProjectPayload):
     user["projects"].append(project_id)
 
     write_db(db)
-
-    return {
-        "status": "success",
-        "project": new_project
-    }
-
-@app.get("/api/projects")
-def get_projects():
-    db = read_db()
-
-    return {
-        "projects": list(db.get("projects", {}).values())
-    }
+    return {"status": "success", "project": new_project}
 
 @app.get("/api/users/{user_id}/projects")
 def get_user_projects(user_id: int):
@@ -206,12 +206,7 @@ def get_user_projects(user_id: int):
 
     # Filter projects where user is a member
     all_projects = db.get("projects", {})
-    user_projects = [
-        project for project in all_projects.values()
-        if user_id in project.get("members", [])
-    ]
-
-    return user_projects
+    return [p for p in all_projects.values() if user_id in p.get("members", [])]
 
 @app.get("/api/projects/{project_id}")
 def get_project(project_id: int, user_id: int):
@@ -220,10 +215,7 @@ def get_project(project_id: int, user_id: int):
     project = db.get("projects", {}).get(str(project_id))
 
     if project is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Project not found"
-        )
+        raise HTTPException(status_code=404, detail="Project not found")
 
     # Security Check: Verify user membership
     members = project.get("members", [])
@@ -241,3 +233,85 @@ def get_user(user_id: int):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return {"user_id": user["user_id"], "username": user["username"], "email": user["email"]}
+
+# --- Backlog & Sprint Endpoints ---
+
+@app.get("/api/projects/{project_id}/backlog")
+def get_project_backlog(project_id: int, user_id: int):
+    project = get_project(project_id, user_id)
+    return project.get("backlog", [])
+
+@app.post("/api/projects/{project_id}/backlog", status_code=status.HTTP_201_CREATED)
+def create_backlog_item(project_id: int, payload: CreateBacklogPayload):
+    db = read_db()
+    project = db.get("projects", {}).get(str(project_id))
+    if not project or payload.user_id not in project.get("members", []):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    backlog_id = db.get("next_backlog_id", 1)
+    db["next_backlog_id"] = backlog_id + 1
+
+    item = {
+        "id": backlog_id,
+        "title": payload.title,
+        "tag": payload.tag,
+        "priority": payload.priority
+    }
+    project.setdefault("backlog", []).append(item)
+    write_db(db)
+    return item
+
+@app.get("/api/projects/{project_id}/sprints")
+def get_project_sprints(project_id: int, user_id: int):
+    project = get_project(project_id, user_id)
+    return project.get("sprints", [])
+
+@app.post("/api/projects/{project_id}/sprints", status_code=status.HTTP_201_CREATED)
+def create_sprint(project_id: int, payload: CreateSprintPayload):
+    db = read_db()
+    project = db.get("projects", {}).get(str(project_id))
+    if not project or payload.user_id not in project.get("members", []):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    sprint_id = db.get("next_sprint_id", 1)
+    db["next_sprint_id"] = sprint_id + 1
+
+    sprint = {
+        "id": str(sprint_id),
+        "name": payload.name,
+        "details": payload.details,
+        "status": payload.status,
+        "backlog": []
+    }
+    project.setdefault("sprints", []).append(sprint)
+    write_db(db)
+    return sprint
+
+@app.get("/api/projects/{project_id}/sprints/{sprint_id}/backlog")
+def get_sprint_backlog(project_id: int, sprint_id: str, user_id: int):
+    project = get_project(project_id, user_id)
+    sprint = next((s for s in project.get("sprints", []) if str(s["id"]) == str(sprint_id)), None)
+    if not sprint:
+        raise HTTPException(status_code=404, detail="Sprint not found")
+    return sprint.get("backlog", [])
+
+@app.post("/api/projects/{project_id}/sprints/{sprint_id}/backlog")
+def move_backlog_to_sprint(project_id: int, sprint_id: str, payload: MoveBacklogPayload):
+    db = read_db()
+    project = db.get("projects", {}).get(str(project_id))
+    if not project or payload.user_id not in project.get("members", []):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    backlog = project.get("backlog", [])
+    item_idx = next((i for i, item in enumerate(backlog) if str(item["id"]) == str(payload.backlog_id)), None)
+    if item_idx is None:
+        raise HTTPException(status_code=404, detail="Backlog item not found in project backlog")
+
+    sprint = next((s for s in project.get("sprints", []) if str(s["id"]) == str(sprint_id)), None)
+    if not sprint:
+        raise HTTPException(status_code=404, detail="Sprint not found")
+
+    item = backlog.pop(item_idx)
+    sprint.setdefault("backlog", []).append(item)
+    write_db(db)
+    return {"status": "success"}
