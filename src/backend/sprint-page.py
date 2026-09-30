@@ -261,11 +261,21 @@ def _apply_header_and_lock_state(sprint):
         if end_btn is not None:
             end_btn.textContent = "Sprint Ended"
             end_btn.disabled = True
+    else:
+        board = web.page["kanban-board"]
+        if board is not None:
+            board.classList.remove("sprint-ended")
+        end_btn = web.page["end-sprint-btn"]
+        if end_btn is not None:
+            end_btn.textContent = "End Sprint"
+            end_btn.disabled = False
 
 
-def _init_page():
-    global _sprint_id
-    _sprint_id = _get_sprint_id_from_url()
+def _init_page(sprint_id=None):
+    global _sprint_id, _sprint_ended, _has_access
+    _sprint_id = sprint_id or _get_sprint_id_from_url()
+    _sprint_ended = False
+    _has_access = False
 
     if not _sprint_id:
         window.location.href = "dashboard.html"
@@ -279,7 +289,6 @@ def _init_page():
 
     # Only members assigned to this sprint may open its page (this also covers
     # anyone who types the sprint_id into the URL directly).
-    global _has_access
     if not is_sprint_member(sprint, current_user.user_id if current_user else None):
         window.sessionStorage.setItem(FLASH_KEY, "You are not assigned to that sprint.")
         window.location.href = "sprint-dashboard.html"
@@ -339,7 +348,7 @@ def _navigate_to_dashboard(view=None, action=None):
 
 @when("app:activate-sprint-page", "body")
 def handle_activate_sprint_page(event):
-    _init_page()
+    _init_page(event.detail.sprintId)
 
 
 @when("app:card-drop", "body")

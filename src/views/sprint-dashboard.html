@@ -43,35 +43,37 @@
 
     function prepareSprintBoard(sprintId) {
       const frame = sprintFrame();
-      if (frame.dataset.sprintId === sprintId) return;
+      if (frame.dataset.ready === "true" || frame.dataset.prewarm === "true") return;
       frame.dataset.sprintId = sprintId;
       frame.dataset.prewarm = "true";
       frame.dataset.ready = "false";
       frame.src = `sprint-page.html?sprint_id=${encodeURIComponent(sprintId)}&prewarm=1`;
     }
 
+    function prewarmInitialSprint() {
+      let sprints = [];
+      try {
+        sprints = JSON.parse(localStorage.getItem("sprints_list") || "[]");
+      } catch {
+        return;
+      }
+      const activeUserId = localStorage.getItem("session_user_id");
+      const sprint = sprints.find(item =>
+        item.members == null || item.members.some(id => String(id) === String(activeUserId))
+      );
+      if (sprint) prepareSprintBoard(String(sprint.id));
+    }
+
+    document.addEventListener("DOMContentLoaded", prewarmInitialSprint, { once: true });
+
     window.openSprintBoard = (sprintId) => {
       const frame = sprintFrame();
       activeSprintId = sprintId;
       frame.hidden = false;
-
-      if (frame.dataset.sprintId === sprintId && frame.dataset.prewarm === "true") {
-        if (frame.dataset.ready === "true") {
-          frame.contentWindow.postMessage({ type: "activate-sprint-page" }, location.origin);
-        }
-        return;
+      if (frame.dataset.ready === "true") {
+        frame.contentWindow.postMessage({ type: "activate-sprint-page", sprintId }, location.origin);
       }
-
-      frame.dataset.sprintId = sprintId;
-      frame.dataset.prewarm = "false";
-      frame.dataset.ready = "false";
-      frame.src = `sprint-page.html?sprint_id=${encodeURIComponent(sprintId)}`;
     };
-
-    document.addEventListener("pointerover", (event) => {
-      const card = event.target.closest(".sprint-card[data-member='true']");
-      if (card) prepareSprintBoard(card.dataset.sprintId);
-    });
 
     window.addEventListener("message", (event) => {
       const frame = sprintFrame();
@@ -79,8 +81,8 @@
 
       if (event.data?.type === "sprint-page-ready") {
         frame.dataset.ready = "true";
-        if (activeSprintId === event.data.sprintId && frame.dataset.prewarm === "true") {
-          frame.contentWindow.postMessage({ type: "activate-sprint-page" }, location.origin);
+        if (activeSprintId) {
+          frame.contentWindow.postMessage({ type: "activate-sprint-page", sprintId: activeSprintId }, location.origin);
         }
       } else if (event.data?.type === "sprint-dashboard-navigation") {
         frame.hidden = true;

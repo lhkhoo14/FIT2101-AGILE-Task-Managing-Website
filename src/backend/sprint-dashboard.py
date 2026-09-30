@@ -739,6 +739,9 @@ def handle_sprint_card_click(event):
 render_sprints_grid()
 render_backlog_list()
 _refresh_all_card_badges()
+first_available_card = document.querySelector('.sprint-card[data-member="true"]')
+if first_available_card is not None:
+    window.prepareSprintBoard(first_available_card.getAttribute("data-sprint-id"))
 
 # Restore the panel requested by a sprint-page sidebar link, or open its modal.
 dashboard_params = js.URLSearchParams.new(window.location.search)
