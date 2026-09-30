@@ -22,6 +22,21 @@
   color: #4747D4;
 }
 
+/* --- TOP APP BAR --- */
+.top-app-bar {
+  height: 64px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+
 .brand-title {
   font-size: 18px;
   font-weight: 700;
@@ -29,33 +44,128 @@
   cursor: pointer;
 }
 
-.app-bar-left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
+/* Rounded Search Bar (Middle) */
+.search-container {
+  position: relative;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 20px;
 }
 
-.icon-btn {
+.search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  fill: #888888;
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px 16px 10px 42px;
+  border-radius: 24px;
+  border: 1px solid #cccccc;
+  background-color: #f9f9f9;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.search-input:focus {
+  background-color: #ffffff;
+  border-color: #4747D4;
+  box-shadow: 0 0 0 3px rgba(71, 71, 212, 0.15);
+}
+
+/* User Profile & Dropdown */
+.profile-menu-container {
+  position: relative;
+}
+
+.profile-btn {
   background: none;
   border: none;
   cursor: pointer;
-  color: #555555;
-  padding: 8px;
+  padding: 0;
   border-radius: 50%;
+}
+
+.profile-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: #e0e0e0;
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  transition: border-color 0.2s;
+}
+
+.profile-btn:hover .profile-avatar {
+  border-color: #4747D4;
+}
+
+.profile-avatar svg {
+  width: 24px;
+  height: 24px;
+  fill: #757575;
+}
+
+.dropdown-menu {
+  position: absolute;
+  right: 0;
+  top: 52px;
+  width: 220px;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  border: 1px solid #e0e0e0;
+  padding: 8px 0;
+  z-index: 200;
+}
+
+.dropdown-header {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.user-name {
+  font-weight: 600;
+  font-size: 16px;
+  color: #333;
+}
+
+.user-email {
+  font-size: 12px;
+  color: #777;
+  margin-top: 2px;
+}
+
+.dropdown-menu hr {
+  border: none;
+  border-top: 1px solid #eeeeee;
+  margin: 6px 0;
+}
+
+.dropdown-item {
+  width: 100%;
+  padding: 10px 16px;
+  text-align: left;
+  background: none;
+  border: none;
+  font-size: 14px;
+  color: #d9534f;
+  cursor: pointer;
+  font-weight: 500;
   transition: background-color 0.2s;
 }
 
-.icon-btn:hover {
-  background-color: #f0f0f0;
-  color: #4747D4;
-}
-
-.brand-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: #333333;
-  cursor: pointer;
+.dropdown-item:hover {
+  background-color: #fff0f0;
 }
