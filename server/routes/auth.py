@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, EmailStr
 import time
 from database_manager import db_manager
+from security import hash_password, verify_password
 
 router = APIRouter()
 
@@ -32,7 +33,8 @@ def login(payload: LoginPayload):
             detail=f"Too many failed attempts. Try again in {remaining_seconds} seconds."
         )
 
-    if user["password"] != payload.password:
+    is_verified = verify_password(payload.password, user["password"])
+    if not is_verified:
         failed_attempts = user.get("failed_attempts", 0) + 1
         user["failed_attempts"] = failed_attempts
 
@@ -75,7 +77,7 @@ def register(payload: RegisterPayload):
         "user_id": user_id,
         "username": payload.username,
         "email": payload.email,
-        "password": payload.password,
+        "password": hash_password(payload.password),
         "projects": []
     }
     db["users"].append(new_user)
