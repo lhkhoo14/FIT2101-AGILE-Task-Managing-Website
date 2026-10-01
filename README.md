@@ -33,29 +33,36 @@ src/
 │   ├── dashboard.py
 │   ├── layout.py
 │   ├── login.py
+│   ├── project_layout.py
 │   ├── server_data.py
 │   ├── signup.py
 │   ├── sprint-dashboard.py
-│   └── sprint-page.py
+│   ├── sprint-page.py
+│   └── topbar.py
 |
 ├── components/
 │   ├── avatar.html
+│   ├── project-sidebar.html
 │   ├── sidebar.html
 │   └── topbar.html
 |
 ├── styles/
 │   ├── auth.css
+│   ├── base.css
 │   ├── create-project.css
 │   ├── dashboard.css
 │   ├── layout.css
+│   ├── project-layout.css
 │   ├── snackbar.css
 │   ├── sprint-dashboard.css
-│   └── sprint-page.css
+│   ├── sprint-page.css
+│   └── topbar.css
 |
 ├── views/
 │   ├── create-project.html
 │   ├── dashboard.html
 │   ├── login.html
+│   ├── project-page.html
 │   ├── signup.html
 │   ├── sprint-dashboard.html
 │   └── sprint-page.html
