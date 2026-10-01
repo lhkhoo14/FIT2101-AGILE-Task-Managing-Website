@@ -1,41 +1,61 @@
-from pyscript import when, window  # type: ignore
-from models.server_data import ServerData
+import sys
+import asyncio
+from pyscript import web, window, document  # type: ignore
+from pyodide.ffi import create_proxy  # type: ignore
 
-# 1. Instantiate database manager
-server_data = ServerData()
+if "." not in sys.path:
+    sys.path.append(".")
 
-def guard_session() -> str | None:
-    """Validates session and boots to login if invalid."""
-    session_id = server_data.get_active_session()
+from server_data import ServerData
 
-    if session_id is None or server_data.find_user_by_id(int(session_id)) is None:
-        print("[Auth Guard] Invalid session. Redirecting to login...")
-        server_data.clear_session()
-        window.location.replace("login.html")
-        return None
+def handle_project_click(event):
+    """Navigates to project-page.html using the selected project ID."""
+    card = event.currentTarget
+    project_id = card.getAttribute("data-project-id")
+    if project_id:
+        window.location.href = f"project-page.html?project_id={project_id}"
 
-    return session_id
+# Create a persistent proxy wrapper for the callback
+click_proxy = create_proxy(handle_project_click)
 
-# 2. Enforce guard immediately
-current_session_id = guard_session()
+def create_project_card(project) -> web.Element:
+    """Creates a project card DOM element and binds click handling."""
+    card = document.createElement("div")
+    card.className = "project-card"
+    card.setAttribute("data-project-id", str(project.id))
 
-if current_session_id:
-    # Get active user
-    current_user = server_data.find_user_by_id(int(current_session_id))
-    if current_user is not None:
-        print(f"Authenticated as: {current_user.username}")
+    status_class = f"status-{project.status.lower()}"
+    status_label = project.status.capitalize()
 
-    # 3. Import layout handlers (sidebar toggle, signout, profile menu)
-    import layout  # Binds global layout event listeners
+    card.innerHTML = f"""
+        <h3 class="card-title">{project.name}</h3>
+        <p class="card-details">{project.description}</p>
+        <div class="card-footer">
+            <span class="status-badge {status_class}">{status_label}</span>
+        </div>
+    """
+    
+    # Pass the persistent proxy to addEventListener
+    card.addEventListener("click", click_proxy)
+    return card
 
-    # 4. Initialize dashboard-specific UI & data
-    # e.g., render_projects_grid(server_data.projects)
-    # e.g., update_profile_header(current_user)
+async def list_projects():
+    """Fetches projects for the active user and renders them to the dashboard grid."""
+    db = ServerData()
+    projects = await db.get_projects()
 
-@when("click", ".projects-grid")
-def handle_project_card_click(event):
-    card = event.target.closest(".project-card")
-    if not card:
+    grid = web.page["projects-grid"]
+    if not grid:
         return
 
-    window.location.href = "sprint-dashboard.html"
+    grid.innerHTML = ""  # Clear hardcoded placeholder cards
+
+    if not projects:
+        grid.innerHTML = "<p class='no-projects'>No projects found. Click 'Create' to get started!</p>"
+        return
+
+    for project in projects:
+        grid.appendChild(create_project_card(project))
+
+# Execute project listing on page load
+asyncio.ensure_future(list_projects())

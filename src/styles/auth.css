@@ -87,7 +87,7 @@ body {
   min-height: 1.2rem; /* Prevents form layout jump when text is inserted */
 }
 
-.btn-submit {
+.submit-btn {
     width: 100%;
     padding: 12px;
     background-color: #4747D4;
@@ -101,8 +101,15 @@ body {
     transition: background-color 0.2s;
 }
 
-.btn-submit:hover {
+.submit-btn:hover {
     background-color: #8080FF;
+}
+
+#login-btn:disabled {
+    background-color: #6c757d;
+    color: #ffffff;            
+    cursor: not-allowed;
+    border-color: #6c757d;
 }
 
 .auth-link {

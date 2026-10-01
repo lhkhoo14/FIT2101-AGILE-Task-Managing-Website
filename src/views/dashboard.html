@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
     <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
 
-    <script>
+    <!-- <script>
       const CONFIG = {
         STORAGE_KEY_APP_DATA: "pyscript_app_data",
         STORAGE_KEY_ACTIVE_SESSION: "session_user_id",
@@ -25,8 +25,11 @@
           window.location.replace(CONFIG.VIEW_LOGIN);
         }
       })();
-    </script>
+    </script> -->
 
+    <link rel="stylesheet" href="../styles/base.css">
+    <!-- Top Bar Stylesheet -->
+    <link rel="stylesheet" href="../styles/topbar.css">
     <!-- Layout Stylesheet -->
     <link rel="stylesheet" href="../styles/layout.css">
     <!-- Page Stylesheet -->
@@ -63,8 +66,8 @@
         <!-- Profile Dropdown Menu -->
         <div id="profile-dropdown" class="dropdown-menu hidden">
           <div class="dropdown-header">
-            <span class="user-name">User Name</span>
-            <span class="user-email">user@example.com</span>
+            <p id="user-display-name" class="user-name"></p>
+            <p id="user-display-email" class="user-email"></p>
           </div>
           <hr>
           <button type="button" id="signout-btn" class="dropdown-item">Sign Out</button>    
@@ -145,7 +148,7 @@
         </div>
 
         <!-- Project Cards Grid -->
-        <div class="projects-grid">
+        <div class="projects-grid", id="projects-grid">
 
           <!-- Card Example 1 -->
           <div class="project-card">
@@ -208,6 +211,7 @@
 
       <div id="snackbar">Some text some message..</div>
     <!-- Link settings.json for PyScript backend -->
+    <script type="py" config="../../settings.json" src="../backend/layout.py"></script>
     <script type="py" config="../../settings.json" src="../backend/dashboard.py"></script>
   </body>
 </html>

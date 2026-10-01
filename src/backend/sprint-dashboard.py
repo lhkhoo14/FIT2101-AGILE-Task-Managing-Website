@@ -1,60 +1,23 @@
-import json
-import time
+import asyncio
 from pyscript import when, web, window, document  # type: ignore[reportMissingImports]
-from constants import DEFAULT_SPRINTS, DEFAULT_BACKLOG_ITEMS
+from server_data import ServerData
 
-BACKLOG_STORAGE_KEY = "product_backlog_items"
-SPRINT_BACKLOG_KEY_PREFIX = "sprint_backlog_"  # + sprint_id
-SPRINTS_STORAGE_KEY = "sprints_list"
+server_data = ServerData()
+
+# Retrieve active project_id from URL query params or default to 1
+url_params = window.URLSearchParams.new(window.location.search)
+PROJECT_ID = int(url_params.get("project_id") or 1)
 
 _dragged_backlog_id = None
 
 
-# --- Storage helpers ---
-def load_backlog_items():
-    raw = window.localStorage.getItem(BACKLOG_STORAGE_KEY)
-    if not raw:
-        seeded = list(DEFAULT_BACKLOG_ITEMS)
-        save_backlog_items(seeded)   # persist immediately so every page sees the same data
-        return seeded
-    try:
-        return json.loads(raw)
-    except (ValueError, TypeError):
-        return list(DEFAULT_BACKLOG_ITEMS)
-
-
-def save_backlog_items(items):
-    window.localStorage.setItem(BACKLOG_STORAGE_KEY, json.dumps(items))
-
-
-def load_sprint_backlog(sprint_id):
-    raw = window.localStorage.getItem(f"{SPRINT_BACKLOG_KEY_PREFIX}{sprint_id}")
-    if not raw:
-        return []
-    try:
-        return json.loads(raw)
-    except ValueError:
-        return []
-
-
-def save_sprint_backlog(sprint_id, items):
-    window.localStorage.setItem(f"{SPRINT_BACKLOG_KEY_PREFIX}{sprint_id}", json.dumps(items))
-
-
-def add_item_to_sprint_backlog(sprint_id, item):
-    items = load_sprint_backlog(sprint_id)
-    items.append(item)
-    save_sprint_backlog(sprint_id, items)
-    return len(items)
-
-
-# --- Rendering the pool sidebar ---
+# --- Rendering the Backlog List ---
 def _make_backlog_card(item):
     card = document.createElement("div")
     card.className = "task-card"
     card.id = f"backlog-item-{item['id']}"
     card.setAttribute("draggable", "true")
-    card.setAttribute("data-backlog-id", item["id"])
+    card.setAttribute("data-backlog-id", str(item["id"]))
 
     card.innerHTML = f"""
         <div class="task-card-header">
@@ -68,8 +31,8 @@ def _make_backlog_card(item):
     return card
 
 
-def render_backlog_list():
-    items = load_backlog_items()
+async def render_backlog_list():
+    items = await server_data.get_backlog_items(PROJECT_ID)
     list_el = web.page["backlog-list"]
     list_el.innerHTML = ""
     for item in items:
@@ -77,20 +40,22 @@ def render_backlog_list():
     web.page["count-product-backlog"].textContent = str(len(items))
 
 
-def _refresh_card_badge(sprint_id):
+async def _refresh_card_badge(sprint_id):
     badge = web.page[f"backlog-count-{sprint_id}"]
     if badge is not None:
-        count = len(load_sprint_backlog(sprint_id))
+        items = await server_data.get_sprint_backlog(PROJECT_ID, sprint_id)
+        count = len(items)
         badge.textContent = f"{count} backlog item{'s' if count != 1 else ''}"
 
 
-def _refresh_all_card_badges():
+async def _refresh_all_card_badges():
     for card in document.querySelectorAll(".sprint-card"):
         sprint_id = card.getAttribute("data-sprint-id")
         if sprint_id:
-            _refresh_card_badge(sprint_id)
+            await _refresh_card_badge(sprint_id)
 
 
+# --- Drag and Drop Logic ---
 @when("dragstart", "#backlog-list")
 def handle_drag_start(event):
     global _dragged_backlog_id
@@ -138,45 +103,30 @@ def handle_card_drop(event):
     if not card:
         return
     card.classList.remove("card-drop-target")
+
+    global _dragged_backlog_id
     if _dragged_backlog_id is None:
         return
     sprint_id = card.getAttribute("data-sprint-id")
     if not sprint_id:
         return
 
-    items = load_backlog_items()
-    matching = next((i for i in items if i["id"] == _dragged_backlog_id), None)
-    if matching is None:
-        return
+    backlog_id = _dragged_backlog_id
+    _dragged_backlog_id = None
 
-    remaining = [i for i in items if i["id"] != _dragged_backlog_id]
-    save_backlog_items(remaining)
-    add_item_to_sprint_backlog(sprint_id, matching)
+    async def process_move():
+        success, err = await server_data.move_backlog_item_to_sprint(PROJECT_ID, backlog_id, sprint_id)
+        if success:
+            dragged_el = web.page[f"backlog-item-{backlog_id}"]
+            if dragged_el is not None:
+                dragged_el.remove()
+            await render_backlog_list()
+            await _refresh_card_badge(sprint_id)
 
-    dragged_el = web.page[f"backlog-item-{_dragged_backlog_id}"]
-    if dragged_el is not None:
-        dragged_el.remove()
-    web.page["count-product-backlog"].textContent = str(len(remaining))
-    _refresh_card_badge(sprint_id)
-
-
-# --- Sprint storage + rendering ---
-def load_sprints():
-    raw = window.localStorage.getItem(SPRINTS_STORAGE_KEY)
-    if not raw:
-        seeded = list(DEFAULT_SPRINTS)
-        save_sprints(seeded)   # persist immediately, closes the race condition with sprint-page.py
-        return seeded
-    try:
-        return json.loads(raw)
-    except (ValueError, TypeError):
-        return list(DEFAULT_SPRINTS)
+    asyncio.ensure_future(process_move())
 
 
-def save_sprints(items):
-    window.localStorage.setItem(SPRINTS_STORAGE_KEY, json.dumps(items))
-
-
+# --- Sprint rendering ---
 def _make_sprint_card(item):
     card = document.createElement("div")
     card.className = "sprint-card"
@@ -193,8 +143,8 @@ def _make_sprint_card(item):
     return card
 
 
-def render_sprints_grid():
-    items = load_sprints()
+async def render_sprints_grid():
+    items = await server_data.get_sprints(PROJECT_ID)
     grid = document.querySelector(".sprints-grid")
     grid.innerHTML = ""
     for item in items:
@@ -244,12 +194,13 @@ def handle_create_sprint_submit(event):
     if not name:
         return
 
-    items = load_sprints()
-    new_id = str(int(time.time() * 1000))  # simple unique id
-    items.append({"id": new_id, "name": name, "details": details or "No description", "status": status})
-    save_sprints(items)
+    async def process_create_sprint():
+        success, err = await server_data.create_sprint(PROJECT_ID, name, details or "No description", status)
+        if success:
+            await render_sprints_grid()
+            await _refresh_all_card_badges()
 
-    render_sprints_grid()
+    asyncio.ensure_future(process_create_sprint())
     event.currentTarget.reset()
     _close_modal("create-sprint-modal")
 
@@ -265,12 +216,12 @@ def handle_create_task_submit(event):
     if not title:
         return
 
-    items = load_backlog_items()
-    new_id = str(int(time.time() * 1000))
-    items.append({"id": new_id, "title": title, "tag": tag, "priority": priority})
-    save_backlog_items(items)
+    async def process_create_task():
+        success, err, item = await server_data.create_backlog_item(PROJECT_ID, title, tag, priority)
+        if success:
+            await render_backlog_list()
 
-    render_backlog_list()
+    asyncio.ensure_future(process_create_task())
     event.currentTarget.reset()
     _close_modal("create-task-modal")
 
@@ -288,9 +239,12 @@ def handle_sprint_card_click(event):
     if not sprint_id:
         return
 
-    window.location.href = f"sprint-page.html?sprint_id={sprint_id}"
+    window.location.href = f"sprint-page.html?sprint_id={sprint_id}&project_id={PROJECT_ID}"
 
 
-render_sprints_grid()
-render_backlog_list()
-_refresh_all_card_badges()
+async def initialize_dashboard():
+    await render_sprints_grid()
+    await render_backlog_list()
+    await _refresh_all_card_badges()
+
+asyncio.ensure_future(initialize_dashboard())

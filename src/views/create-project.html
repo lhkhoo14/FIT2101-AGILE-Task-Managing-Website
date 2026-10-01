@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Create Project</title>
+
+    <!-- PyScript Core -->
+    <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
+    <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
+
+    <link rel="stylesheet" href="../styles/base.css">
+    <!-- Existing layout styles -->
+    <link rel="stylesheet" href="../styles/layout.css">
+
+    <!-- Dashboard styles for matching appearance -->
+    <link rel="stylesheet" href="../styles/dashboard.css">
+
+    <link rel="stylesheet" href="../styles/create-project.css">
+</head>
+
+<body>
+
+    <main class="main-content">
+        <div class="create-project-container">
+            <h1 class="create-project-title">Create New Project</h1>
+            <form id="create-project-form", onsubmit="event.preventDefault();">
+
+                <div class="form-group">
+                    <label class="form-label" for="project-name">
+                        Project Name
+                    </label>
+
+                    <input
+                        type="text"
+                        id="project-name"
+                        class="form-input"
+                        placeholder="Enter project name"
+                    >
+
+                    <div id="project-name-error" class="error-message"></div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="project-description">
+                        Project Description
+                    </label>
+
+                    <textarea
+                        id="project-description"
+                        class="form-textarea"
+                        placeholder="Enter project description"
+                    ></textarea>
+
+                    <div id="project-description-error" class="error-message"></div>
+                </div>
+
+                <div class="button-container">
+
+                    <button
+                        type="submit"
+                        id="create-project-submit"
+                        class="create-btn"
+                    >
+                        Create Project
+                    </button>
+
+                    <button
+                        type="button"
+                        id="cancel-project"
+                        class="cancel-btn"
+                    >
+                        Cancel
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </main>
+
+    <!-- PyScript backend -->
+    <script
+        type="py"
+        config="../../settings.json"
+        src="../backend/create_project.py">
+    </script>
+
+</body>
+</html>
