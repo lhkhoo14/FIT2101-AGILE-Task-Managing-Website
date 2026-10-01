@@ -48,11 +48,11 @@ async def create_project(event):
         return
 
     # API Request via ServerData
-    success, error_message = await db.create_project(name, description)
+    success, error_message, project_id = await db.create_project(name, description)
 
-    if success:
+    if success and project_id:
         await show_snackbar("Project created successfully!")
-        window.location.replace("project-page.html")
+        window.location.replace(f"project-page.html?project_id={project_id}")
     else:
         show_error("project-name", error_message)
         await show_snackbar(error_message)

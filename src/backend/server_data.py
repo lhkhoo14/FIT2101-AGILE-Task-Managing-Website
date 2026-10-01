@@ -91,11 +91,11 @@ class ServerData:
         self.logged_in_user_id = None
         window.localStorage.removeItem(self.session_key)
 
-    async def create_project(self, name: str, description: str) -> tuple[bool, str]:
+    async def create_project(self, name: str, description: str) -> tuple[bool, str, int | None]:
         """Creates a new project on the backend."""
         user_id = self.get_active_session()
         if user_id is None:
-            return False, "Session has expired."
+            return False, "Session has expired.", None
 
         try:
             response = await pyfetch(
@@ -109,12 +109,15 @@ class ServerData:
                 })
             )
             if response.status in (200, 201):
-                return True, ""
+                data = await response.json()
+                project_data = data.get("project", {})
+                project_id = project_data.get("project_id", project_data.get("id", None))
+                return True, "", project_id
             err_data = await response.json()
-            return False, err_data.get("detail", "Unable to create project.")
+            return False, err_data.get("detail", "Unable to create project."), None
         except Exception as e:
             print(f"[API Error] Failed to create project: {e}")
-            return False, "Unable to connect to the server."
+            return False, "Unable to connect to the server.", None
 
     async def get_projects(self) -> list[Project] | None:
         """Fetches all projects associated with the active user session."""
