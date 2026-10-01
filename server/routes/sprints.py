@@ -137,3 +137,22 @@ def move_backlog_to_sprint(project_id: int, sprint_id: str, payload: MoveBacklog
     
     db_manager.write(db)
     return {"status": "success"}
+
+@router.get("/projects/{project_id}/sprints/{sprint_id}/backlog")
+def get_sprint_backlog(project_id: int, sprint_id: str, user_id: int):
+    sprint = get_sprint(project_id, sprint_id, user_id)
+    kanban = sprint.get("kanban_state", {
+        "backlog": [],
+        "active": [],
+        "review": [],
+        "completed": []
+    })
+    
+    # Flatten items from all kanban columns into a single list with a status field
+    items = []
+    for column, tasks in kanban.items():
+        for task in tasks:
+            task_item = dict(task)
+            task_item["status"] = column
+            items.append(task_item)
+    return items

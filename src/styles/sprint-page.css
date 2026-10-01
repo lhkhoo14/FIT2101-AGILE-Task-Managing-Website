@@ -1,12 +1,46 @@
 /* --- SPRINT HEADER --- */
 .sprint-header {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
+  margin-bottom: 24px;
 }
 
 .sprint-title-group {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.return-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background-color: #ffffff;
+  color: #555555;
+  border: 1px solid #e0e0e0;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+}
+
+.return-btn:hover {
+  background-color: #f0f1fa;
+  color: #4747D4;
+  border-color: #4747D4;
+  transform: translateX(-2px);
+  box-shadow: 0 4px 8px rgba(71, 71, 212, 0.12);
+}
+
+.return-btn:active {
+  transform: translateX(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
 .kanban-badge {
@@ -56,14 +90,15 @@
   padding: 16px;
   display: flex;
   flex-direction: column;
-  min-height: 480px;
+  min-height: 520px;
+  border: 1px solid #e0e0e0;
 }
 
 .kanban-column-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 6px;
+  padding-bottom: 8px;
   margin-bottom: 4px;
   border-bottom: 3px solid transparent;
 }
@@ -90,8 +125,7 @@
   margin-bottom: 12px;
 }
 
-/* Column accent colors, matching the status-dot / status-badge palette
-   already used on the dashboard */
+/* Column Accent Border Colors */
 .column-accent-backlog { border-bottom-color: #d9534f; }
 .column-accent-active { border-bottom-color: #f0ad4e; }
 .column-accent-review { border-bottom-color: #5bc0de; }
@@ -105,8 +139,8 @@
   gap: 12px;
   padding: 4px;
   border-radius: 8px;
-  min-height: 100px;
-  transition: background-color 0.15s ease;
+  min-height: 120px;
+  transition: background-color 0.15s ease, outline 0.15s ease;
 }
 
 .kanban-column-body.drag-over {
@@ -120,15 +154,15 @@
   background-color: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
-  padding: 12px 14px;
+  padding: 14px;
   cursor: grab;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
   transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
 }
 
 .task-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.08);
 }
 
 .task-card.dragging {
@@ -154,7 +188,7 @@
   justify-content: space-between;
 }
 
-/* Tag badges */
+/* Tag Badges */
 .tag-badge {
   font-size: 11px;
   font-weight: 600;
@@ -172,7 +206,7 @@
   color: #7e22ce;
 }
 
-/* Priority badges */
+/* Priority Badges */
 .priority-badge {
   font-size: 11px;
   font-weight: 600;
@@ -195,7 +229,7 @@
   color: #c92a2a;
 }
 
-/* Assignee avatar */
+/* Assignee Avatar */
 .assignee-avatar {
   width: 26px;
   height: 26px;
@@ -220,8 +254,24 @@
   background-color: #eceef2;
 }
 
-/* --- RESPONSIVE: stack columns on narrow screens --- */
-@media (max-width: 900px) {
+/* Filter Nav Items in Inner Sidebar */
+.filter-item {
+  cursor: default;
+}
+
+.filter-item:hover {
+  background-color: transparent;
+  color: #555555;
+}
+
+/* --- RESPONSIVE ADJUSTMENTS --- */
+@media (max-width: 1100px) {
+  .kanban-board {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
   .kanban-board {
     grid-template-columns: 1fr;
   }

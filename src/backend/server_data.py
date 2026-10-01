@@ -302,6 +302,29 @@ class ServerData:
             print(f"[API Error] Failed to move backlog item: {e}")
             return False, "Unable to connect to the server."
 
+    async def update_kanban_state(
+        self, project_id: int, sprint_id: str | int, kanban_state: dict
+    ) -> tuple[bool, str]:
+        """Saves current Kanban column state to the backend."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired"
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/sprints/{sprint_id}/kanban",
+                method="PUT",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id, "state": kanban_state})
+            )
+            if response.status == 200:
+                return True, ""
+            err_data = await response.json()
+            return False, err_data.get("detail", "Failed to update board.")
+        except Exception as e:
+            print(f"[API Error] Failed to update kanban state: {e}")
+            return False, "Unable to connect to the server."
+
 
 class Project:
     def __init__(self, id: int, name: str, description: str, status: str) -> None:

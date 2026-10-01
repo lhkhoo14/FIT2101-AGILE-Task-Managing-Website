@@ -1,8 +1,5 @@
 import sys
-import json
-import copy
 import asyncio
-
 
 # Ensure the current directory is in the system path for local module imports
 if "." not in sys.path:
@@ -12,6 +9,9 @@ from pyscript import when, web, window, document  # type: ignore
 from auth import show_snackbar
 from constants import DEFAULT_SPRINTS  # fallback only — see _load_sprints below
 import js  # type: ignore
+
+from server_data import ServerData
+import topbar
 
 # ==========================================
 # CONSTANTS & GLOBAL STATE
@@ -23,105 +23,22 @@ SPRINT_BACKLOG_KEY_PREFIX = "sprint_backlog_"
 KANBAN_STATE_KEY_PREFIX = "kanban_state_"
 
 _sprint_id = None
+_project_id = None
 _sprint_ended = False
-
+_db = ServerData()
 
 # ==========================================
 # URL HELPERS
 # ==========================================
 
-def _get_sprint_id_from_url():
+def _get_url_params():
     params = js.URLSearchParams.new(window.location.search)
-    sid = params.get("sprint_id")
-    return sid if sid else None
+    sprint_id = params.get("sprint_id")
+    project_id = params.get("project_id")
 
-
-# ==========================================
-# SPRINT STORAGE HELPERS
-# ==========================================
-def _load_sprints():
-    raw = window.localStorage.getItem(SPRINTS_STORAGE_KEY)
-    if not raw:
-        # Belt-and-suspenders: only matters if someone opens sprint-page.html
-        # directly via URL before ever visiting the dashboard. Doesn't save —
-        # the dashboard owns seeding sprints_list into localStorage.
-        return list(DEFAULT_SPRINTS)
-    try:
-        return json.loads(raw)
-    except ValueError:
-        return list(DEFAULT_SPRINTS)
-
-
-def _save_sprints(sprints):
-    window.localStorage.setItem(SPRINTS_STORAGE_KEY, json.dumps(sprints))
-
-
-def _find_sprint(sprints, sprint_id):
-    return next((s for s in sprints if s["id"] == sprint_id), None)
-
-# ==========================================
-# KANBAN BOARD STATE HELPERS
-# ==========================================
-
-def _load_kanban_state(sprint_id):
-    from constants import DEFAULT_KANBAN_STATES  # local import keeps top-level imports lean
-
-    raw = window.localStorage.getItem(f"{KANBAN_STATE_KEY_PREFIX}{sprint_id}")
-    if not raw:
-        seed = DEFAULT_KANBAN_STATES.get(sprint_id)
-        if seed is not None:
-            state = copy.deepcopy(seed)
-        else:
-            state = {col: [] for col in COLUMN_ORDER}
-        _save_kanban_state(sprint_id, state)  # persist so this sprint's data is stable going forward
-        return state
-    try:
-        state = json.loads(raw)
-    except ValueError:
-        state = {col: [] for col in COLUMN_ORDER}
-    for col in COLUMN_ORDER:
-        state.setdefault(col, [])
-    return state
-
-
-def _save_kanban_state(sprint_id, state):
-    window.localStorage.setItem(f"{KANBAN_STATE_KEY_PREFIX}{sprint_id}", json.dumps(state))
-
-
-# ==========================================
-# BACKLOG HANDOFF HELPERS
-# ==========================================
-
-def _load_backlog_handoff(sprint_id):
-    raw = window.localStorage.getItem(f"{SPRINT_BACKLOG_KEY_PREFIX}{sprint_id}")
-    if not raw:
-        return []
-    try:
-        return json.loads(raw)
-    except ValueError:
-        return []
-
-
-def _clear_backlog_handoff(sprint_id):
-    window.localStorage.setItem(f"{SPRINT_BACKLOG_KEY_PREFIX}{sprint_id}", json.dumps([]))
-
-
-def _merge_handoff_into_backlog_column(sprint_id, state):
-    handoff = _load_backlog_handoff(sprint_id)
-    if not handoff:
-        return state
-    for item in handoff:
-        state["backlog"].append({
-            "id": f"task-{item['id']}",
-            "title": item["title"],
-            "tag": item["tag"],
-            "priority": item["priority"],
-            "assignee": None,
-        })
-    _clear_backlog_handoff(sprint_id)
-    _save_kanban_state(sprint_id, state)
-    return state
-
+    sprint_id = int(sprint_id) if sprint_id and sprint_id.isdigit() else sprint_id
+    project_id = int(project_id) if project_id and project_id.isdigit() else project_id
+    return sprint_id, project_id
 
 # ==========================================
 # RENDERING & UI HELPERS
@@ -129,7 +46,7 @@ def _merge_handoff_into_backlog_column(sprint_id, state):
 def _make_task_card(task, column_key):
     card = document.createElement("div")
     card.className = "task-card"
-    card.id = task["id"]
+    card.id = f"task-{task.get('id', task.get('backlog_id', ''))}"
     card.setAttribute("draggable", "true")
     card.setAttribute("data-column", column_key)
 
@@ -140,27 +57,30 @@ def _make_task_card(task, column_key):
     else:
         avatar_html = '<div class="assignee-avatar" title="Unassigned">?</div>'
 
+    tag = task.get("tag", "task")
+    priority = task.get("priority", "medium")
+    title = task.get("title", "Untitled Task")
+
     card.innerHTML = f"""
         <div class="task-card-header">
-            <span class="tag-badge tag-{task['tag']}">{task['tag'].capitalize()}</span>
+            <span class="tag-badge tag-{tag}">{tag.capitalize()}</span>
         </div>
-        <p class="task-card-title">{task['title']}</p>
+        <p class="task-card-title">{title}</p>
         <div class="task-card-footer">
-            <span class="priority-badge priority-{task['priority']}">{task['priority'].capitalize()}</span>
+            <span class="priority-badge priority-{priority}">{priority.capitalize()}</span>
             {avatar_html}
         </div>
     """
     return card
 
-
 def _render_board(state):
     for column_key in COLUMN_ORDER:
         body = web.page[f"column-{column_key}"]
-        body.innerHTML = ""
-        for task in state[column_key]:
-            body.appendChild(_make_task_card(task, column_key))
+        if body:
+            body.innerHTML = ""
+            for task in state.get(column_key, []):
+                body.appendChild(_make_task_card(task, column_key))
     _refresh_all_counts()
-
 
 def _update_column_count(column_key):
     body = web.page[f"column-{column_key}"]
@@ -168,24 +88,23 @@ def _update_column_count(column_key):
     if body is not None and count_el is not None:
         count_el.textContent = str(len(body.children))
 
-
 def _refresh_all_counts():
     for key in COLUMN_ORDER:
         _update_column_count(key)
 
-
 def _column_index(column_key):
     return COLUMN_ORDER.index(column_key)
-
 
 # ==========================================
 # PAGE INITIALIZATION & BOOTSTRAP
 # ==========================================
 def _apply_header_and_lock_state(sprint):
-    web.page["sprint-name"].textContent = sprint["name"]
+    name_el = web.page["sprint-name"]
+    if name_el:
+        name_el.textContent = sprint.get("name", f"Sprint {_sprint_id}")
 
     global _sprint_ended
-    _sprint_ended = sprint["status"] == "ended"
+    _sprint_ended = sprint.get("status") == "ended"
 
     if _sprint_ended:
         board = web.page["kanban-board"]
@@ -196,27 +115,44 @@ def _apply_header_and_lock_state(sprint):
             end_btn.textContent = "Sprint Ended"
             end_btn.disabled = True
 
+async def _init_page():
+    global _sprint_id, _project_id
+    _sprint_id, _project_id = _get_url_params()
 
-def _init_page():
-    global _sprint_id
-    _sprint_id = _get_sprint_id_from_url()
-
-    if not _sprint_id:
+    if not _sprint_id or not _project_id:
         window.location.href = "dashboard.html"
         return
 
-    sprints = _load_sprints()
-    sprint = _find_sprint(sprints, _sprint_id)
+    # Fetch active sprint details from server
+    sprints = await _db.get_sprints(_project_id)
+    str_sprint_id = str(_sprint_id)
+    sprint = next(
+        (
+            s for s in sprints 
+            if s.get("id") == str_sprint_id 
+            or s.get("sprint_id") == str_sprint_id
+        ), 
+        None
+    )
+    
     if not sprint:
-        window.location.href = "dashboard.html"
+        window.location.href = f"sprint-dashboard.html?project_id={_project_id}"
         return
 
     _apply_header_and_lock_state(sprint)
 
-    state = _load_kanban_state(_sprint_id)
-    state = _merge_handoff_into_backlog_column(_sprint_id, state)
-    _render_board(state)
+    # Fetch sprint backlog items from server database
+    sprint_items = await _db.get_sprint_backlog(_project_id, _sprint_id)
 
+    # Map backlog items into state columns
+    state = {col: [] for col in COLUMN_ORDER}
+    for item in sprint_items:
+        status_col = item.get("status", "backlog")
+        if status_col not in state:
+            status_col = "backlog"
+        state[status_col].append(item)
+
+    _render_board(state)
 
 # ==========================================
 # EVENT HANDLERS
@@ -233,45 +169,53 @@ async def handle_card_drop(event):
     if not card_id or not target_column:
         return
 
-    state = _load_kanban_state(_sprint_id)
-
-    source_column = None
-    task = None
-    for col in COLUMN_ORDER:
-        match = next((t for t in state[col] if t["id"] == card_id), None)
-        if match is not None:
-            source_column = col
-            task = match
-            break
-
-    if task is None or source_column == target_column:
+    if not _project_id or not _sprint_id:
         return
 
-    # Restrict backward movement across columns
+    sprint_items = await _db.get_sprint_backlog(_project_id, _sprint_id)
+    
+    # Extract clean target ID
+    raw_id = card_id.replace("task-", "")
+    task = next((t for t in sprint_items if str(t.get("id", t.get("backlog_id", ""))).replace("task-", "") == raw_id), None)
+
+    if not task:
+        return
+
+    source_column = task.get("status", "backlog")
+    if source_column == target_column:
+        return
+
+    # Enforce workflow rule: tasks can only be moved forward
     if _column_index(target_column) < _column_index(source_column):
-        asyncio.ensure_future(
-            show_snackbar("Tasks can only be pushed forward on the board.")
-        )
+        await show_snackbar("Tasks can only be pushed forward on the board.")
         return
 
-    state[source_column] = [t for t in state[source_column] if t["id"] != card_id]
-    state[target_column].append(task)
-    _save_kanban_state(_sprint_id, state)
+    # Update state locally
+    task["status"] = target_column
+    
+    state = {col: [] for col in COLUMN_ORDER}
+    for item in sprint_items:
+        status_col = item.get("status", "backlog")
+        if status_col not in state:
+            status_col = "backlog"
+        
+        # Prepare clean dict for backend storage
+        clean_item = dict(item)
+        clean_item.pop("status", None)
+        state[status_col].append(clean_item)
 
     _render_board(state)
 
+    # Persist move to database
+    success, err_msg = await _db.update_kanban_state(_project_id, _sprint_id, state)
+    if not success:
+        await show_snackbar(f"Failed to update board: {err_msg}")
 
-# --- END SPRINT: lock the board and persist status ---
+# --- END SPRINT: lock the board and persist status via ServerData ---
 @when("click", "#end-sprint-btn")
 async def handle_end_sprint(event):
     global _sprint_ended
     _sprint_ended = True
-
-    sprints = _load_sprints()
-    sprint = _find_sprint(sprints, _sprint_id)
-    if sprint:
-        sprint["status"] = "ended"
-        _save_sprints(sprints)
 
     board = web.page["kanban-board"]
     if board is not None:
@@ -282,7 +226,22 @@ async def handle_end_sprint(event):
         end_btn.textContent = "Sprint Ended"
         end_btn.disabled = True
 
-    asyncio.ensure_future(show_snackbar("Sprint ended. Board is now locked."))
+    await show_snackbar("Sprint ended. Board is now locked.")
 
+@when("click", "#toggle-sidebar-btn")
+def toggle_sidebar(event):
+    # Retrieve either project-sidebar or standard dashboard sidebar
+    sidebar = web.page["#project-sidebar"] or web.page["#sidebar"]
+    if sidebar:
+        if "collapsed" in sidebar.classes:
+            sidebar.classes.remove("collapsed")
+        else:
+            sidebar.classes.add("collapsed")
 
-_init_page()
+@when("click", "#back-to-project-btn")
+def return_to_project(event):
+    """Returns the user to the sprint dashboard."""
+    window.location.href = f"sprint-dashboard.html?project_id={_project_id}"
+
+# Launch async page initialization
+asyncio.ensure_future(_init_page())
