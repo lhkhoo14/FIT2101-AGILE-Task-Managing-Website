@@ -70,6 +70,25 @@ class ServerData:
             print(f"[API Error] Failed to fetch user: {e}")
             return None
 
+    async def get_users(self) -> list[dict]:
+        """Fetches registered user details for sprint membership selection."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return []
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/users?user_id={user_id}",
+                method="GET",
+                headers={"Content-Type": "application/json"}
+            )
+            if response.status == 200:
+                return await response.json()
+            return []
+        except Exception as e:
+            print(f"[API Error] Failed to fetch users: {e}")
+            return []
+
     def get_active_session(self) -> int | None:
         """Returns currently logged in user ID."""
         return self.logged_in_user_id
@@ -239,26 +258,45 @@ class ServerData:
             print(f"[API Error] Failed to fetch sprints: {e}")
             return []
 
-    async def create_sprint(self, project_id: int, name: str, details: str, status: str) -> tuple[bool, str]:
+    async def create_sprint(
+        self,
+        project_id: int,
+        name: str,
+        details: str,
+        status: str,
+        priority: str = "medium",
+        tags: list[str] | None = None,
+        members: list[int] | None = None,
+        created_at: int | None = None,
+    ) -> tuple[bool, str, dict | None]:
         """Creates a new sprint in server database."""
         user_id = self.get_active_session()
         if user_id is None:
-            return False, "Session expired"
+            return False, "Session expired", None
 
         try:
             response = await pyfetch(
                 f"{self.api_url}/projects/{project_id}/sprints",
                 method="POST",
                 headers={"Content-Type": "application/json"},
-                body=json.dumps({"user_id": user_id, "name": name, "details": details, "status": status})
+                body=json.dumps({
+                    "user_id": user_id,
+                    "name": name,
+                    "details": details,
+                    "status": status,
+                    "priority": priority,
+                    "tags": tags or [],
+                    "members": members,
+                    "created_at": created_at,
+                })
             )
             if response.status in (200, 201):
-                return True, ""
+                return True, "", await response.json()
             err_data = await response.json()
-            return False, err_data.get("detail", "Failed to create sprint.")
+            return False, err_data.get("detail", "Failed to create sprint."), None
         except Exception as e:
             print(f"[API Error] Failed to create sprint: {e}")
-            return False, "Unable to connect to the server."
+            return False, "Unable to connect to the server.", None
 
     async def get_sprint_backlog(self, project_id: int, sprint_id: str | int) -> list[dict]:
         """Fetches backlog items assigned to a specific sprint."""
@@ -278,6 +316,25 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to fetch sprint backlog: {e}")
             return []
+
+    async def get_kanban_state(self, project_id: int, sprint_id: str | int) -> dict | None:
+        """Fetches the kanban columns for a sprint."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return None
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/sprints/{sprint_id}/kanban?user_id={user_id}",
+                method="GET",
+                headers={"Content-Type": "application/json"}
+            )
+            if response.status == 200:
+                return await response.json()
+            return None
+        except Exception as e:
+            print(f"[API Error] Failed to fetch kanban state: {e}")
+            return None
 
     async def move_backlog_item_to_sprint(
         self, project_id: int, backlog_id: str | int, sprint_id: str | int
@@ -324,6 +381,30 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to update kanban state: {e}")
             return False, "Unable to connect to the server."
+
+    async def update_sprint_status(
+        self, project_id: int, sprint_id: str | int, status: str
+    ) -> tuple[bool, str, dict | None]:
+        """Updates the sprint status on the backend."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired", None
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/sprints/{sprint_id}/status",
+                method="PATCH",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id, "status": status})
+            )
+            if response.status == 200:
+                data = await response.json()
+                return True, "", data.get("sprint")
+            err_data = await response.json()
+            return False, err_data.get("detail", "Failed to update sprint status."), None
+        except Exception as e:
+            print(f"[API Error] Failed to update sprint status: {e}")
+            return False, "Unable to connect to the server.", None
 
 
 class Project:

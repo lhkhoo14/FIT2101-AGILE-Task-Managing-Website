@@ -6,12 +6,12 @@ FIT2101 S2 2026 group repository.
 
 Add your team members and roles here.
 
-Chan Chee Wei (34073981) - Developer
-Loh Ken Yit (35731958) - Deputy Scrum Master, Developer
-Agasti Ngoh Cheng Che (36791407) Product Owner, Developer
-Lye Wei Ho (36286761) Scrum Master, Developer
-Izaan (36784478) secretary, Developer
-Khoo Lip Hong (36391948) Developer
+- Chan Chee Wei (34073981) - Developer
+- Loh Ken Yit (35731958) - Deputy Scrum Master, Developer
+- Agasti Ngoh Cheng Che (36791407) - Product Owner, Developer
+- Lye Wei Ho (36286761) - Scrum Master, Developer
+- Izaan (36784478) - Secretary, Developer
+- Khoo Lip Hong (36391948) - Developer
 
 ## Getting Started
 
@@ -77,3 +77,5 @@ src/
 
 Keep your project work, documentation, setup instructions, and relevant artefacts in this repository.
 Do not share this repository outside your group and the teaching team.
+
+Sprint change history is stored in the browser's IndexedDB database (`sprint-dashboard`, object store `change-history`). Existing history in localStorage is migrated the first time the database is accessed. The data is local to each browser and is not shared across users or devices.

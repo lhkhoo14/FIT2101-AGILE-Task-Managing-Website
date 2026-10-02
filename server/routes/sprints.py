@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from database_manager import db_manager
 from dependencies import get_verified_project
 
@@ -10,6 +10,10 @@ class CreateSprintPayload(BaseModel):
     name: str
     details: str
     status: str
+    priority: str = "medium"
+    tags: list[str] = Field(default_factory=list)
+    members: list[int] | None = None
+    created_at: int | None = None
 
 class MoveBacklogPayload(BaseModel):
     user_id: int
@@ -43,6 +47,11 @@ def create_sprint(project_id: int, payload: CreateSprintPayload):
         "name": payload.name,
         "details": payload.details,
         "status": payload.status,
+        "priority": payload.priority,
+        "tags": payload.tags,
+        "members": payload.members,
+        "created_by": payload.user_id,
+        "created_at": payload.created_at,
         "kanban_state": {
             "backlog": [],
             "active": [],
