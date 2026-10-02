@@ -47,7 +47,11 @@
     function prepareSprintBoard(sprintId) {
       const frame = sprintFrame();
       if (frame.dataset.ready === "true" || frame.dataset.prewarm === "true") return;
-      const projectId = new URLSearchParams(window.location.search).get("project_id") || "1";
+      const projectId = new URLSearchParams(window.location.search).get("project_id");
+      if (!projectId) {
+        window.location.replace("dashboard.html");
+        return;
+      }
       frame.dataset.sprintId = sprintId;
       frame.dataset.prewarm = "true";
       frame.dataset.ready = "false";

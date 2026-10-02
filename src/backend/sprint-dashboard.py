@@ -23,9 +23,15 @@ from sprint_access import (
 FLASH_KEY = "flash_snackbar"  # one-shot message set by other pages (e.g. sprint-page access denied)
 COLUMN_ORDER = ["backlog", "active", "review", "completed"]
 
-# Retrieve active project_id from URL query params or default to 1
+# Retrieve the project selected by the user. Do not silently fall back to
+# another user's project when this page is opened without a project_id.
 url_params = window.URLSearchParams.new(window.location.search)
-PROJECT_ID = int(url_params.get("project_id") or 1)
+project_id_param = url_params.get("project_id")
+if not project_id_param or not project_id_param.isdigit():
+    window.location.replace("dashboard.html")
+    PROJECT_ID = 0
+else:
+    PROJECT_ID = int(project_id_param)
 
 _dragged_backlog_id = None
 

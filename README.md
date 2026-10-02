@@ -6,12 +6,12 @@ FIT2101 S2 2026 group repository.
 
 Add your team members and roles here.
 
-- Chan Chee Wei (34073981) - Developer
-- Loh Ken Yit (35731958) - Deputy Scrum Master, Developer
-- Agasti Ngoh Cheng Che (36791407) - Product Owner, Developer
-- Lye Wei Ho (36286761) - Scrum Master, Developer
-- Izaan (36784478) - Secretary, Developer
-- Khoo Lip Hong (36391948) - Developer
+Chan Chee Wei (34073981) - Developer
+Loh Ken Yit (35731958) - Deputy Scrum Master, Developer
+Agasti Ngoh Cheng Che (36791407) Product Owner, Developer
+Lye Wei Ho (36286761) Scrum Master, Developer
+Izaan (36784478) secretary, Developer
+Khoo Lip Hong (36391948) Developer
 
 ## Getting Started
 
@@ -19,6 +19,41 @@ Add your team members and roles here.
 2. Create a branch for your work.
 3. Commit regularly with clear messages.
 4. Open a merge request when your work is ready for review.
+
+## Running the application locally
+
+The login page needs both the static frontend and the FastAPI backend running.
+Run these commands from the repository root. Create a virtual environment if
+you do not already have one:
+
+```powershell
+python -m venv .venv
+```
+
+Install the backend dependencies using the virtual environment's Python:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r server\requirements.txt
+```
+
+Start the API in one terminal (no activation required):
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn main:app --app-dir server --reload --host 127.0.0.1 --port 8000
+```
+Then you can either:
+Right-click `index.html` in the file directory and Click Open with [Live Server]
+
+Or:
+Start the frontend in a second terminal:
+
+```powershell
+python -m http.server 5500
+```
+
+Open `http://localhost:5500/src/views/login.html`. Keep both terminals running
+while using the application. The API listens on port 8000; the frontend uses
+port 5500.
 
 ## Repository Structure
 
@@ -77,5 +112,3 @@ src/
 
 Keep your project work, documentation, setup instructions, and relevant artefacts in this repository.
 Do not share this repository outside your group and the teaching team.
-
-Sprint change history is stored in the browser's IndexedDB database (`sprint-dashboard`, object store `change-history`). Existing history in localStorage is migrated the first time the database is accessed. The data is local to each browser and is not shared across users or devices.
