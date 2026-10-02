@@ -1,6 +1,6 @@
 {
-    "next_user_id": 2,
-    "next_project_id": 2,
+    "next_user_id": 3,
+    "next_project_id": 3,
     "next_backlog_id": 9,
     "next_sprint_id": 3,
     "users": [
@@ -9,6 +9,15 @@
             "username": "wa",
             "email": "wa@gmail.com",
             "password": "$2b$12$SV.Re86eHEZ1kJND/kfE8e4HAm5BJtJxjxTrhmut6wrb/Jk6d/nXC",
+            "projects": [],
+            "failed_attempts": 0,
+            "lockout_until": 0
+        },
+        {
+            "user_id": 2,
+            "username": "test",
+            "email": "test@gmail.com",
+            "password": "$2b$12$wFDsiyqVXfyWlBGJBIVJke/TrZLPVRPf2XjHQZu4H1Fn0y1Lzpici",
             "projects": [],
             "failed_attempts": 0,
             "lockout_until": 0
@@ -116,6 +125,19 @@
                     }
                 }
             ]
+        },
+        "2": {
+            "project_id": 2,
+            "name": "test",
+            "description": "test",
+            "creator": [
+                2
+            ],
+            "members": [
+                2
+            ],
+            "backlog": [],
+            "sprints": []
         }
     }
 }
