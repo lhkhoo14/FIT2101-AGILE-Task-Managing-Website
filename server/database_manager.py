@@ -37,9 +37,14 @@ class DatabaseManager:
             "projects": {}
         }
 
+    def _connect(self):
+        # Supabase's transaction pooler can reuse a connection for different
+        # transactions, so avoid psycopg prepared statements on pooled URLs.
+        return psycopg.connect(self.database_url, prepare_threshold=None)
+
     def read(self) -> Dict[str, Any]:
         if self.database_url:
-            with psycopg.connect(self.database_url) as connection:
+            with self._connect() as connection:
                 row = connection.execute(
                     "SELECT data FROM application_state WHERE state_id = TRUE"
                 ).fetchone()
@@ -63,7 +68,7 @@ class DatabaseManager:
 
     def write(self, data: Dict[str, Any]) -> None:
         if self.database_url:
-            with psycopg.connect(self.database_url) as connection:
+            with self._connect() as connection:
                 connection.execute(
                     """
                     INSERT INTO application_state (state_id, data)
@@ -84,7 +89,7 @@ class DatabaseManager:
             self.write(data)
             return result
 
-        with psycopg.connect(self.database_url) as connection:
+        with self._connect() as connection:
             row = connection.execute(
                 "SELECT data FROM application_state WHERE state_id = TRUE FOR UPDATE"
             ).fetchone()
@@ -103,7 +108,7 @@ class DatabaseManager:
     def _initialize_postgres(self) -> None:
         # Import the legacy JSON database only when the PostgreSQL row is empty.
         legacy_data = self._read_json()
-        with psycopg.connect(self.database_url) as connection:
+        with self._connect() as connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS application_state (

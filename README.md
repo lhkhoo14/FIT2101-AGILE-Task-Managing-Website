@@ -75,6 +75,26 @@ the local API automatically on localhost and the Render API in production.
 The frontend build copies only the public application files into `dist`; the
 server database and backend-only files are not published by the static site.
 
+## Using Supabase PostgreSQL
+
+Supabase is used here as the PostgreSQL database only. The FastAPI server still
+owns the API and authentication flow. Create a Supabase project, then open
+**Project Settings > Database > Connection string** and copy the **Session
+pooler** URI. Put it in `DATABASE_URL`; do not commit the real password.
+
+For local PowerShell development:
+
+```powershell
+$env:DATABASE_URL = "postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres?sslmode=require"
+$env:CORS_ORIGINS = "http://localhost:5500"
+.\.venv\Scripts\python.exe -m uvicorn main:app --app-dir server --reload --host 127.0.0.1 --port 8000
+```
+
+For Render, paste the same Supabase URI into the API service's `DATABASE_URL`
+environment variable and set `CORS_ORIGINS` to the deployed frontend URL. On
+the first connection, the API creates its `application_state` table and imports
+the legacy JSON database if that table is empty.
+
 ## Repository Structure
 
 Update this section as your project grows.
