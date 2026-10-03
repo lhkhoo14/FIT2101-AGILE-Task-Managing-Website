@@ -6,6 +6,11 @@
     "./src/backend/auth.py": "./auth.py",
     "./src/backend/login.py": "./login.py",
     "./src/backend/signup.py": "./signup.py",
+    "./src/backend/constants.py": "./constants.py",
+    "./src/backend/sprint_access.py": "./sprint_access.py",
+    "./src/backend/sprint-dashboard.py": "./sprint-dashboard.py",
+    "./src/backend/sprint-page.py": "./sprint-page.py",
+    "./src/backend/dashboard.py": "./dashboard.py",
     "./src/backend/create_project.py": "./create_project.py",
     "./src/backend/server_data.py": "./server_data.py"
   }

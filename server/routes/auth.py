@@ -91,3 +91,14 @@ def get_user(user_id: int):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return {"user_id": user["user_id"], "username": user["username"], "email": user["email"]}
+
+@router.get("/users")
+def get_users(user_id: int):
+    if not db_manager.find_user_by_id(user_id):
+        raise HTTPException(status_code=401, detail="Session is invalid.")
+
+    db = db_manager.read()
+    return [
+        {"user_id": user["user_id"], "username": user["username"], "email": user["email"]}
+        for user in db["users"]
+    ]

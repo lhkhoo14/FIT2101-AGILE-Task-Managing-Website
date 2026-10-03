@@ -63,6 +63,30 @@ Include the PyScript CSS and JS core bundles in the <head> of your HTML files, a
 ```
 
 ## Running the Project Locally
+
+The login page needs both the static frontend and the FastAPI backend running.
+Run these commands from the repository root. Create a virtual environment if
+you do not already have one:
+
+```powershell
+python -m venv .venv
+```
+
+Install the backend dependencies using the virtual environment's Python:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r server\requirements.txt
+```
+
+Start the API in one terminal (no activation required):
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn main:app --app-dir server --reload --host 127.0.0.1 --port 8000
+
+    ```
+3. In a second terminal, start the frontend using Option A or Option B below.
+   Do not use port 8000 for the frontend; that port belongs to the API.
+
 ### Option A: Using VS Code Live Server
 
 1. Open the project root folder in VS Code.
@@ -77,9 +101,8 @@ Include the PyScript CSS and JS core bundles in the <head> of your HTML files, a
 
 2. Run:
     ```Bash
-    python -m http.server 8000
+    python -m http.server 5500
     ```
 
 3. Open your browser and navigate to:
-    http://localhost:8000
-
+    http://localhost:5500/src/views/login.html
