@@ -17,73 +17,61 @@ class RegisterPayload(BaseModel):
 
 @router.post("/login")
 def login(payload: LoginPayload):
-    db = db_manager.read()
-    user = next((u for u in db["users"] if u["email"] == payload.email), None)
+    def mutate(db):
+        user = next((u for u in db["users"] if u["email"] == payload.email), None)
+        if not user:
+            raise HTTPException(status_code=401, detail="Email is not registered.")
 
-    if not user:
-        raise HTTPException(status_code=401, detail="Email is not registered.")
-
-    current_time = time.time()
-    lockout_until = user.get("lockout_until", 0)
-
-    if current_time < lockout_until:
-        remaining_seconds = int(lockout_until - current_time)
-        raise HTTPException(
-            status_code=429,
-            detail=f"Too many failed attempts. Try again in {remaining_seconds} seconds."
-        )
-
-    is_verified = verify_password(payload.password, user["password"])
-    if not is_verified:
-        failed_attempts = user.get("failed_attempts", 0) + 1
-        user["failed_attempts"] = failed_attempts
-
-        lockout_time = 0
-        if failed_attempts % 3 == 0:
-            multiplier = failed_attempts // 3
-            lockout_time = multiplier * 30
-            user["lockout_until"] = current_time + lockout_time
-
-        db_manager.write(db)
-
-        if lockout_time > 0:
+        current_time = time.time()
+        lockout_until = user.get("lockout_until", 0)
+        if current_time < lockout_until:
+            remaining_seconds = int(lockout_until - current_time)
             raise HTTPException(
                 status_code=429,
-                detail=f"Too many failed attempts. Account locked for {lockout_time} seconds."
+                detail=f"Too many failed attempts. Try again in {remaining_seconds} seconds."
             )
-        
-        attempts_left = 3 - (failed_attempts % 3)
-        raise HTTPException(
-            status_code=401,
-            detail=f"Incorrect password. {attempts_left} attempt(s) remaining before lockout."
-        )
 
-    user["failed_attempts"] = 0
-    user["lockout_until"] = 0
-    db_manager.write(db)
+        if not verify_password(payload.password, user["password"]):
+            failed_attempts = user.get("failed_attempts", 0) + 1
+            user["failed_attempts"] = failed_attempts
+            lockout_time = 0
+            if failed_attempts % 3 == 0:
+                lockout_time = (failed_attempts // 3) * 30
+                user["lockout_until"] = current_time + lockout_time
+            if lockout_time > 0:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Too many failed attempts. Account locked for {lockout_time} seconds."
+                )
+            attempts_left = 3 - (failed_attempts % 3)
+            raise HTTPException(
+                status_code=401,
+                detail=f"Incorrect password. {attempts_left} attempt(s) remaining before lockout."
+            )
 
-    return {"status": "success", "user_id": user["user_id"]}
+        user["failed_attempts"] = 0
+        user["lockout_until"] = 0
+        return {"status": "success", "user_id": user["user_id"]}
+
+    return db_manager.update(mutate)
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterPayload):
-    db = db_manager.read()
-    if any(u["email"] == payload.email for u in db["users"]):
-        raise HTTPException(status_code=400, detail="Email is already registered.")
+    def mutate(db):
+        if any(u["email"] == payload.email for u in db["users"]):
+            raise HTTPException(status_code=400, detail="Email is already registered.")
+        user_id = db.get("next_user_id", 1)
+        db["next_user_id"] = user_id + 1
+        db["users"].append({
+            "user_id": user_id,
+            "username": payload.username,
+            "email": payload.email,
+            "password": hash_password(payload.password),
+            "projects": []
+        })
+        return {"status": "success", "user_id": user_id}
 
-    user_id = db.get("next_user_id", 1)
-    db["next_user_id"] = user_id + 1
-
-    new_user = {
-        "user_id": user_id,
-        "username": payload.username,
-        "email": payload.email,
-        "password": hash_password(payload.password),
-        "projects": []
-    }
-    db["users"].append(new_user)
-    db_manager.write(db)
-
-    return {"status": "success", "user_id": user_id}
+    return db_manager.update(mutate)
 
 @router.get("/users/{user_id}")
 def get_user(user_id: int):

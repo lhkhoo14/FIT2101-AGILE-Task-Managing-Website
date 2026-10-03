@@ -55,6 +55,27 @@ Open `http://localhost:5500/src/views/login.html`. Keep both terminals running
 while using the application. The API listens on port 8000; the frontend uses
 port 5500.
 
+## Deploying to Render
+
+The repository includes `render.yaml`, which creates three Render resources:
+
+- `fit2101-api`: FastAPI web service
+- `fit2101-frontend`: static frontend site
+- `fit2101-postgres`: PostgreSQL database
+
+To deploy, push this repository to GitHub and choose **New > Blueprint** in
+Render. Select the GitHub repository and apply the Blueprint. Render will set
+`DATABASE_URL` on the API automatically. The first API startup creates the
+PostgreSQL table and imports `server/data/server_database.json` if the table is
+empty.
+
+When Render asks for `CORS_ORIGINS`, enter the frontend URL once it is known,
+for example `https://fit2101-frontend.onrender.com`. The browser client uses
+the local API automatically on localhost and the Render API in production.
+
+The frontend build copies only the public application files into `dist`; the
+server database and backend-only files are not published by the static site.
+
 ## Repository Structure
 
 Update this section as your project grows.

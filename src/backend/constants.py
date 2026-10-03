@@ -1,6 +1,12 @@
+from pyscript import window  # type: ignore
+
 STORAGE_KEY_APP_DATA = "pyscript_app_data"
 ACTIVE_SESSION_KEY = "session_user_id"
-API_URL = "http://127.0.0.1:8000/api"
+API_URL = (
+    "http://127.0.0.1:8000/api"
+    if window.location.hostname in ("localhost", "127.0.0.1")
+    else "https://fit2101-api.onrender.com/api"
+)
 
 DEFAULT_SPRINTS = [
     # No "members" key on the seeded sprints = legacy/open sprint (every user can access it).

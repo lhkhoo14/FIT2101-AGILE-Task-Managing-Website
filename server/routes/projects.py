@@ -18,30 +18,26 @@ class CreateBacklogPayload(BaseModel):
 
 @router.post("/projects", status_code=status.HTTP_201_CREATED)
 def create_project(payload: CreateProjectPayload):
-    db = db_manager.read()
-    user = db_manager.find_user_by_id(payload.user_id)
+    def mutate(db):
+        user = next((u for u in db["users"] if u["user_id"] == payload.user_id), None)
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        project_id = db.get("next_project_id", 1)
+        db["next_project_id"] = project_id + 1
+        new_project = {
+            "project_id": project_id,
+            "name": payload.name,
+            "description": payload.description,
+            "creator": [payload.user_id],
+            "members": [payload.user_id],
+            "backlog": [],
+            "sprints": []
+        }
+        db["projects"][str(project_id)] = new_project
+        user.setdefault("projects", []).append(project_id)
+        return {"status": "success", "project": new_project}
 
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    project_id = db.get("next_project_id", 1)
-    db["next_project_id"] = project_id + 1
-
-    new_project = {
-        "project_id": project_id,
-        "name": payload.name,
-        "description": payload.description,
-        "creator": [payload.user_id],
-        "members": [payload.user_id],
-        "backlog": [],
-        "sprints": []
-    }
-
-    db["projects"][str(project_id)] = new_project
-    user.setdefault("projects", []).append(project_id)
-    db_manager.write(db)
-
-    return {"status": "success", "project": new_project}
+    return db_manager.update(mutate)
 
 @router.get("/users/{user_id}/projects")
 def get_user_projects(user_id: int):
@@ -65,19 +61,18 @@ def get_project_backlog(project_id: int, user_id: int):
 @router.post("/projects/{project_id}/backlog", status_code=status.HTTP_201_CREATED)
 def create_backlog_item(project_id: int, payload: CreateBacklogPayload):
     get_verified_project(project_id, payload.user_id)
-    
-    db = db_manager.read()
-    project = db["projects"][str(project_id)]
 
-    backlog_id = db.get("next_backlog_id", 1)
-    db["next_backlog_id"] = backlog_id + 1
+    def mutate(db):
+        project = db["projects"][str(project_id)]
+        backlog_id = db.get("next_backlog_id", 1)
+        db["next_backlog_id"] = backlog_id + 1
+        item = {
+            "id": backlog_id,
+            "title": payload.title,
+            "tag": payload.tag,
+            "priority": payload.priority
+        }
+        project.setdefault("backlog", []).append(item)
+        return item
 
-    item = {
-        "id": backlog_id,
-        "title": payload.title,
-        "tag": payload.tag,
-        "priority": payload.priority
-    }
-    project.setdefault("backlog", []).append(item)
-    db_manager.write(db)
-    return item
+    return db_manager.update(mutate)
