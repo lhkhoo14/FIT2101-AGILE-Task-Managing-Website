@@ -1,0 +1,662 @@
+/* --- SPRINT DASHBOARD LAYOUT --- */
+.sprint-dashboard-layout {
+  display: grid;
+  grid-template-columns: 240px 280px 1fr;
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+  transition: grid-template-columns 0.3s ease;
+}
+
+.sprint-dashboard-layout:has(#sidebar.collapsed) {
+  grid-template-columns: 80px 440px 1fr;
+}
+
+/* Feature views hide the backlog and expand across the dashboard content area. */
+.sprint-dashboard-layout.members-open {
+  grid-template-columns: 240px minmax(0, 1fr);
+}
+
+.sprint-dashboard-layout.members-open:has(#sidebar.collapsed) {
+  grid-template-columns: 80px minmax(0, 1fr);
+}
+
+.sprint-dashboard-layout.members-open .backlog-sidebar {
+  display: none;
+}
+
+@media (max-width: 1200px) {
+  .sprint-dashboard-layout {
+    grid-template-columns: 240px 1fr;
+  }
+  .backlog-sidebar {
+    grid-column: 1 / -1;
+  }
+}
+
+/* --- PRODUCT BACKLOG SIDEBAR --- */
+.backlog-sidebar {
+  width: auto;
+  background-color: #f4f5f9;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.backlog-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.backlog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  max-height: 70vh;
+}
+
+/* --- SORT CONTROL (top of main content) --- */
+.sort-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sort-label {
+  font-size: 13px;
+  color: #666666;
+  font-weight: 600;
+}
+
+.sort-dropdown {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #dddddd;
+  background-color: #ffffff;
+  font-size: 13px;
+  color: #333333;
+  cursor: pointer;
+}
+
+/* --- SPRINT CARDS GRID --- */
+.sprints-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+/* Two-column roster layout with a narrow-screen stacked fallback. */
+.members-view .content-header {
+  margin-bottom: 8px;
+}
+
+.members-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px;
+}
+
+.member-group-title {
+  margin-bottom: 8px;
+  color: #666666;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.member-count {
+  color: #666666;
+  font-size: 13px;
+}
+
+.member-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid #e2e8f0;
+}
+
+.member-row {
+  min-height: 72px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+/* Each roster row is a keyboard-accessible button that opens member details. */
+.member-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 72px;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.member-trigger:hover .member-details strong,
+.member-trigger:focus-visible .member-details strong {
+  color: #3939b0;
+}
+
+.member-trigger:focus-visible {
+  outline: 2px solid #4747d4;
+  outline-offset: -2px;
+}
+
+.member-avatar {
+  display: grid;
+  flex: 0 0 40px;
+  width: 40px;
+  aspect-ratio: 1;
+  place-items: center;
+  border-radius: 50%;
+  background-color: #e8e8fb;
+  color: #3939b0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.member-details {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.member-details strong {
+  color: #222222;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.member-details span {
+  color: #666666;
+  font-size: 12px;
+}
+
+@media (max-width: 700px) {
+  .members-columns {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+}
+
+/* Contact dialog layout and readable wrapping for long member details. */
+.member-details-modal {
+  max-width: min(420px, 90vw);
+}
+
+.member-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.member-modal-header .modal-title {
+  overflow-wrap: anywhere;
+}
+
+.member-modal-close {
+  display: grid;
+  flex: 0 0 32px;
+  width: 32px;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #666666;
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.member-modal-close:hover,
+.member-modal-close:focus-visible {
+  background: #f4f5f9;
+  color: #222222;
+}
+
+.member-contact-list {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+}
+
+.member-contact-list div {
+  min-width: 0;
+}
+
+.member-contact-list dt {
+  margin-bottom: 4px;
+  color: #666666;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.member-contact-list dd {
+  margin: 0;
+  color: #222222;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.sprint-card {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s, outline 0.15s ease, background-color 0.15s ease;
+  cursor: pointer;
+}
+
+.sprint-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+}
+
+.sprint-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #222222;
+  margin-bottom: 6px;
+}
+
+.sprint-details {
+  font-size: 13px;
+  color: #777777;
+  margin-bottom: 16px;
+}
+
+.sprint-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Drag-and-drop target highlight, used when a backlog card is dragged over a sprint card */
+.sprint-card.card-drop-target {
+  outline: 2px dashed #4747D4;
+  outline-offset: -2px;
+  background-color: #e8e8fb;
+}
+
+/* --- STATUS BADGES (sprint card state) --- */
+.status-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.status-active {
+  background-color: #fef3c7;
+  color: #b45309;
+}
+
+.status-ended {
+  background-color: #eceef2;
+  color: #666666;
+}
+
+/* --- BURNDOWN CHART BUTTON --- */
+.burndown-button {
+  padding: 5px 12px;
+  background-color: #ffffff;
+  color: #4747D4;
+  border: 1px solid #4747D4;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.burndown-button:hover {
+  background-color: #4747D4;
+  color: #ffffff;
+}
+
+/* --- MODAL --- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+}
+
+.modal-box {
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: 24px;
+  width: 360px;
+  max-width: 90vw;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: #222222;
+}
+
+.modal-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #666666;
+  margin: 12px 0 4px;
+}
+
+.modal-input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #dddddd;
+  font-size: 14px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.modal-btn-cancel {
+  padding: 8px 16px;
+  background: none;
+  border: 1px solid #dddddd;
+  border-radius: 20px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #666666;
+}
+
+.modal-btn-submit {
+  padding: 8px 16px;
+  background-color: #4747D4;
+  color: #ffffff;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.modal-btn-submit:hover {
+  background-color: #3939b0;
+}
+
+/* Shared styles for the change-history and contribution panels. */
+.feature-view .content-header {
+  margin-bottom: 12px;
+}
+
+.activity-list,
+.contribution-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid #e2e8f0;
+}
+
+.activity-row,
+.contribution-row {
+  display: grid;
+  gap: 6px;
+  padding: 16px 4px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.activity-summary,
+.contribution-name {
+  color: #222222;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.activity-metadata,
+.contribution-metrics {
+  color: #666666;
+  font-size: 12px;
+}
+
+/* Task rows separate completed work typographically from unfinished work. */
+.contribution-tasks {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.contribution-tasks.empty {
+  color: #666666;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 13px;
+}
+
+.contribution-task {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  font-size: 13px;
+}
+
+.contribution-task-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.contribution-task.incomplete .contribution-task-title {
+  color: #333333;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-weight: 600;
+}
+
+.contribution-task.completed .contribution-task-title {
+  color: #666666;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  text-decoration: line-through;
+}
+
+.contribution-task-status {
+  color: #666666;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 11px;
+}
+
+.feature-empty-state {
+  padding: 20px 4px;
+  color: #666666;
+  font-size: 14px;
+}
+
+/* --- SPRINT CARD: badges, members, locked state --- */
+.sprint-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sprint-members {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 26px;
+  margin-bottom: 14px;
+}
+
+.member-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background-color: #4747D4;
+  color: #ffffff;
+  border: 2px solid #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -8px;
+}
+
+.member-avatar:first-child {
+  margin-left: 0;
+}
+
+.member-avatar-more {
+  background-color: #eceef2;
+  color: #555555;
+}
+
+.members-open {
+  font-size: 12px;
+  color: #888888;
+}
+
+.lock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #888888;
+  margin-left: auto;
+}
+
+.lock-badge .icon {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+}
+
+/* Sprint the current user is not assigned to */
+.sprint-card.sprint-card-locked {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sprint-card.sprint-card-locked:hover {
+  transform: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+}
+
+.sprint-card.card-drop-denied {
+  outline: 2px dashed #c92a2a;
+  outline-offset: -2px;
+  background-color: #fde8e8;
+}
+
+/* --- CREATE SPRINT: member picker --- */
+.members-list {
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid #dddddd;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.member-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #333333;
+}
+
+.member-option:hover {
+  background-color: #f4f5f9;
+}
+
+.member-option input {
+  accent-color: #4747D4;
+}
+
+.member-option-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-color: #4747D4;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.member-option-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.members-empty,
+.members-hint {
+  font-size: 12px;
+  color: #888888;
+  padding: 6px 8px;
+}
+
+.members-hint {
+  padding: 6px 0 0;
+}
+
+/* --- SPRINT TAGS --- */
+.sprint-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.sprint-tag-chip {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 10px;
+  background-color: #e8e8fb;
+  color: #3939b0;
+}
+
+.sprint-tag-chip::before {
+  content: "#";
+  opacity: 0.6;
+}
+
+.sprints-empty {
+  grid-column: 1 / -1;
+  padding: 32px 16px;
+  text-align: center;
+  font-size: 14px;
+  color: #888888;
+}

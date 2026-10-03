@@ -1,0 +1,500 @@
+/* --- SPRINT HEADER --- */
+.sprint-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.sprint-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.return-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background-color: #ffffff;
+  color: #555555;
+  border: 1px solid #e0e0e0;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+}
+
+.return-btn:hover {
+  background-color: #f0f1fa;
+  color: #4747D4;
+  border-color: #4747D4;
+  transform: translateX(-2px);
+  box-shadow: 0 4px 8px rgba(71, 71, 212, 0.12);
+}
+
+.return-btn:active {
+  transform: translateX(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+
+.kanban-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: #4747D4;
+  background-color: #e8e8fb;
+  padding: 4px 12px;
+  border-radius: 12px;
+}
+
+.btn-end-sprint {
+  padding: 10px 20px;
+  background-color: #ffffff;
+  color: #d9534f;
+  border: 1px solid #d9534f;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-end-sprint:hover {
+  background-color: #d9534f;
+  color: #ffffff;
+}
+
+.btn-end-sprint:disabled {
+  background-color: #f0f0f0;
+  color: #999999;
+  border-color: #dddddd;
+  cursor: not-allowed;
+}
+
+/* --- KANBAN BOARD --- */
+.kanban-board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(240px, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
+.kanban-column {
+  background-color: #f4f5f9;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 520px;
+  border: 1px solid #e0e0e0;
+}
+
+.kanban-column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  border-bottom: 3px solid transparent;
+}
+
+.column-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #222222;
+}
+
+.column-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: #555555;
+  background-color: #ffffff;
+  border-radius: 10px;
+  padding: 2px 9px;
+  border: 1px solid #e0e0e0;
+}
+
+.column-subtitle {
+  font-size: 12px;
+  color: #888888;
+  margin-bottom: 12px;
+}
+
+/* Column Accent Border Colors */
+.column-accent-backlog { border-bottom-color: #d9534f; }
+.column-accent-active { border-bottom-color: #f0ad4e; }
+.column-accent-review { border-bottom-color: #5bc0de; }
+.column-accent-completed { border-bottom-color: #5cb85c; }
+
+/* --- COLUMN BODY (drop zone) --- */
+.kanban-column-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px;
+  border-radius: 8px;
+  min-height: 120px;
+  transition: background-color 0.15s ease, outline 0.15s ease;
+}
+
+.kanban-column-body.drag-over {
+  background-color: #e8e8fb;
+  outline: 2px dashed #4747D4;
+  outline-offset: -2px;
+}
+
+/* --- TASK CARDS --- */
+.task-card {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px;
+  cursor: grab;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.task-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.08);
+}
+
+.task-card.dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+
+.task-card-header {
+  margin-bottom: 8px;
+}
+
+.task-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #222222;
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.task-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Tag Badges */
+.tag-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 10px;
+}
+
+.tag-frontend {
+  background-color: #e0f2fe;
+  color: #0369a1;
+}
+
+.tag-backend {
+  background-color: #f3e8ff;
+  color: #7e22ce;
+}
+
+/* Priority Badges */
+.priority-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 10px;
+}
+
+.priority-low {
+  background-color: #dcfce7;
+  color: #15803d;
+}
+
+.priority-medium {
+  background-color: #fef3c7;
+  color: #b45309;
+}
+
+.priority-high {
+  background-color: #fde8e8;
+  color: #c92a2a;
+}
+
+/* Assignee Avatar */
+.assignee-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background-color: #4747D4;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* --- SPRINT ENDED (locked) STATE --- */
+.kanban-board.sprint-ended .task-card {
+  cursor: not-allowed;
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.kanban-board.sprint-ended .kanban-column {
+  background-color: #eceef2;
+}
+
+/* Filter Nav Items in Inner Sidebar */
+.filter-item {
+  cursor: default;
+}
+
+.filter-item:hover {
+  background-color: transparent;
+  color: #555555;
+}
+
+/* --- RESPONSIVE ADJUSTMENTS --- */
+@media (max-width: 1100px) {
+  .kanban-board {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .kanban-board {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- SECTION: Task Detail Modal & Checklist Styles --- */
+
+/* Modal Base (Shared with sprint-dashboard) */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-box {
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: 24px;
+  width: 100%;
+  max-width: 440px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0;
+}
+
+.modal-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #555555;
+}
+
+.modal-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.modal-input:focus {
+  border-color: #4747D4;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.modal-btn-cancel {
+  background-color: transparent;
+  border: 1px solid #d0d0d0;
+  color: #555555;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modal-btn-cancel:hover {
+  background-color: #f4f5f9;
+}
+
+.modal-btn-submit {
+  background-color: #4747D4;
+  border: none;
+  color: #ffffff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modal-btn-submit:hover {
+  background-color: #3636b8;
+}
+
+.modal-btn-submit:disabled,
+.modal-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Checklist & Progress Styles */
+.task-detail-meta {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.task-progress-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.task-progress-bar-bg {
+  flex: 1;
+  height: 8px;
+  background-color: #e8e8fb;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.task-progress-bar-fill {
+  height: 100%;
+  background-color: #4747D4;
+  width: 0%;
+  transition: width 0.25s ease;
+}
+
+.task-progress-text {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #555555;
+  white-space: nowrap;
+}
+
+.checklist-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.checklist-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background-color: #f4f5f9;
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+.checklist-row label {
+  font-size: 0.875rem;
+  color: #333333;
+  cursor: pointer;
+  word-break: break-word;
+}
+
+.checklist-row input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: #4747D4;
+  width: 16px;
+  height: 16px;
+}
+
+.checklist-delete-btn {
+  background: none;
+  border: none;
+  color: #d64545;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: auto;
+}
+
+.checklist-delete-btn:hover {
+  background-color: #fbeaea;
+}
+
+.checklist-empty {
+  font-size: 0.85rem;
+  color: #888888;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.checklist-add-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.card-checklist-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 8px 0;
+}
+
+.card-progress-bar-bg {
+  flex: 1;
+  height: 4px;
+  background-color: #e8e8fb;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.card-progress-bar-fill {
+  height: 100%;
+  background-color: #4747D4;
+  width: 0%;
+}
+
+.card-progress-text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #666666;
+}

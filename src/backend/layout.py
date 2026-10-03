@@ -8,6 +8,12 @@ if "." not in sys.path:
 from pyscript import when, web, window  # type: ignore
 from auth import show_snackbar
 
+import topbar
+
+def validate_session():
+    if not window.localStorage.getItem("session_user_id"):
+        window.location.href = "login.html"
+
 # --- 1. TOGGLE PROFILE DROPDOWN MENU ---
 @when("click", "#profile-menu-btn")
 def toggle_profile_dropdown(event):
@@ -53,46 +59,3 @@ def toggle_sidebar(event):
             sidebar.classes.remove("collapsed")
         else:
             sidebar.classes.add("collapsed")
-
-def render_user_profile(user: dict):
-    name_elem = web.page["#user-display-name"]
-    email_elem = web.page["#user-display-email"]
-
-    if name_elem:
-        name_elem.innerText = user.get("username", "Username")
-    if email_elem:
-        email_elem.innerText = user.get("email", "Email")
-
-async def guard_session(server_data: ServerData) -> dict | None:
-    """Validates session asynchronously against FastAPI backend."""
-    session_id = server_data.get_active_session()
-
-    if session_id is None:
-        window.location.replace("login.html")
-        return None
-
-    # Query FastAPI endpoint for user details
-    user = await server_data.get_user_by_id(session_id)
-    if user is None:
-        print("[Auth Guard] Invalid session or user not found. Redirecting...")
-        server_data.clear_session()
-        window.location.replace("login.html")
-        return None
-
-    return user
-
-async def init_topbar():
-    server_data = ServerData()
-    current_user = await guard_session(server_data)
-
-    if current_user:
-        print(f"Authenticated as: {current_user.get('username')}")
-
-        # Update UI elements with logged-in user details if present
-        render_user_profile(current_user)
-
-asyncio.ensure_future(init_topbar())
-
-@when("click", "#create-project-btn")
-def handle_create_project(event):
-    window.location.href = "create-project.html"

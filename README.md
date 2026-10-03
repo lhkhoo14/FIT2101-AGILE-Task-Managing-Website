@@ -7,6 +7,11 @@ FIT2101 S2 2026 group repository.
 Add your team members and roles here.
 
 Chan Chee Wei (34073981) - Developer
+Loh Ken Yit (35731958) - Deputy Scrum Master, Developer
+Agasti Ngoh Cheng Che (36791407) Product Owner, Developer
+Lye Wei Ho (36286761) Scrum Master, Developer
+Izaan (36784478) secretary, Developer
+Khoo Lip Hong (36391948) Developer
 
 ## Getting Started
 
@@ -15,6 +20,41 @@ Chan Chee Wei (34073981) - Developer
 3. Commit regularly with clear messages.
 4. Open a merge request when your work is ready for review.
 
+## Running the application locally
+
+The login page needs both the static frontend and the FastAPI backend running.
+Run these commands from the repository root. Create a virtual environment if
+you do not already have one:
+
+```powershell
+python -m venv .venv
+```
+
+Install the backend dependencies using the virtual environment's Python:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r server\requirements.txt
+```
+
+Start the API in one terminal (no activation required):
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn main:app --app-dir server --reload --host 127.0.0.1 --port 8000
+```
+Then you can either:
+Right-click `index.html` in the file directory and Click Open with [Live Server]
+
+Or:
+Start the frontend in a second terminal:
+
+```powershell
+python -m http.server 5500
+```
+
+Open `http://localhost:5500/src/views/login.html`. Keep both terminals running
+while using the application. The API listens on port 8000; the frontend uses
+port 5500.
+
 ## Repository Structure
 
 Update this section as your project grows.
@@ -22,27 +62,46 @@ Update this section as your project grows.
 ```
 src/
 ├── backend/
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── server_data.py
-│   │   └── user.py
 │   ├── auth.py
+│   ├── constants.py
+│   ├── create_project.py
+│   ├── dashboard.py
 │   ├── layout.py
 │   ├── login.py
-│   └── signup.py
+│   ├── project_layout.py
+│   ├── server_data.py
+│   ├── signup.py
+│   ├── sprint-dashboard.py
+│   ├── sprint-page.py
+│   └── topbar.py
+|
 ├── components/
 │   ├── avatar.html
+│   ├── project-sidebar.html
 │   ├── sidebar.html
 │   └── topbar.html
+|
 ├── styles/
 │   ├── auth.css
+│   ├── base.css
+│   ├── create-project.css
 │   ├── dashboard.css
 │   ├── layout.css
-│   └── snackbar.css
+│   ├── project-layout.css
+│   ├── snackbar.css
+│   ├── sprint-dashboard.css
+│   ├── sprint-page.css
+│   └── topbar.css
+|
 ├── views/
+│   ├── create-project.html
 │   ├── dashboard.html
 │   ├── login.html
-│   └── signup.html
+│   ├── project-page.html
+│   ├── signup.html
+│   ├── sprint-dashboard.html
+│   └── sprint-page.html
+│
 ├── index.html
 ├── PYSCRIPT_TUTORIAL.md
 ├── README.md
