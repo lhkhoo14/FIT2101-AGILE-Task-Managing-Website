@@ -12,6 +12,8 @@ if "." not in sys.path:
 from pyscript import when, web, window, document  # type: ignore
 from auth import show_snackbar
 from sprint_access import is_sprint_member
+from html import escape
+import charts
 import js  # type: ignore
 
 from server_data import ServerData
@@ -34,6 +36,8 @@ _sprint_ended = False
 _has_access = False
 _active_sprint = None
 _kanban_state = {}
+_assignees = []          # [(user_id, display name)] who can be assigned tasks in this sprint
+_watcher_started = False
 
 # ==========================================
 # URL HELPERS
@@ -103,11 +107,23 @@ def _make_task_card(task, column_key):
         progress_html = ""
     # -----------------------------------
 
+    task_start, task_end = charts.parse_iso(task.get("start_date")), charts.parse_iso(task.get("end_date"))
+    if task_start and task_end:
+        dates_text = f"{charts.format_day(task_start)} \u2192 {charts.format_day(task_end)}"
+    elif task_start:
+        dates_text = f"Starts {charts.format_day(task_start)}"
+    elif task_end:
+        dates_text = f"Due {charts.format_day(task_end)}"
+    else:
+        dates_text = ""
+    dates_html = f'<p class="task-card-dates">{escape(dates_text)}</p>' if dates_text else ""
+
     card.innerHTML = f"""
         <div class="task-card-header">
             <span class="tag-badge tag-{tag}">{tag.capitalize()}</span>
         </div>
-        <p class="task-card-title">{task['title']}</p>
+        <p class="task-card-title">{escape(str(task['title']))}</p>
+        {dates_html}
         {progress_html}
         <div class="task-card-footer">
             <span class="priority-badge priority-{priority}">{priority.capitalize()}</span>
@@ -180,6 +196,14 @@ def _apply_header_and_lock_state(sprint):
     global _sprint_ended
     _sprint_ended = sprint.get("status") == "ended"
 
+    range_el = web.page["sprint-range"]
+    if range_el:
+        start, end = charts.parse_iso(sprint.get("start_date")), charts.parse_iso(sprint.get("end_date"))
+        range_el.textContent = (
+            f"{charts.format_day(start)} \u2013 {charts.format_day(end, True)}" if start and end else ""
+        )
+        range_el.classList.toggle("hidden", not (start and end))
+
     if _sprint_ended:
         board = web.page["kanban-board"]
         if board is not None:
@@ -196,11 +220,49 @@ def _apply_header_and_lock_state(sprint):
         if end_btn is not None:
             end_btn.textContent = "End Sprint"
             end_btn.disabled = False
+            _start_end_watcher()
+
+
+async def _load_assignees(sprint):
+    """Sprint members (or every user, for legacy open sprints) who can be assigned tasks."""
+    member_ids = sprint.get("members")
+    users = []
+    if member_ids is None:
+        users = await server_data.get_users()
+    else:
+        for member_id in member_ids:
+            user = await server_data.get_user_by_id(int(member_id))
+            if user:
+                users.append(user)
+    return [(u["user_id"], u.get("username") or u.get("email") or f"User {u['user_id']}") for u in users]
+
+
+def _start_end_watcher():
+    global _watcher_started
+    if not _watcher_started:
+        _watcher_started = True
+        asyncio.ensure_future(_watch_for_sprint_end())
+
+
+async def _watch_for_sprint_end():
+    """The server completes a sprint once its end date passes; lock an open board when that happens."""
+    global _active_sprint
+    while True:
+        await asyncio.sleep(30)
+        if not _has_access or _sprint_ended or not _project_id or not _sprint_id:
+            continue
+        sprint = _find_sprint(await server_data.get_sprints(_project_id), _sprint_id)
+        if sprint and sprint.get("status") == "ended":
+            _active_sprint = sprint
+            _apply_header_and_lock_state(sprint)
+            if _open_task_id:
+                _render_task_detail_modal()
+            await show_snackbar("This sprint has reached its end date and was completed automatically.")
 
 
 async def _init_page(sprint_id=None):
     """Load the selected sprint, verify membership, and render its board."""
-    global _sprint_id, _sprint_ended, _has_access, _project_id, _active_sprint, _kanban_state
+    global _sprint_id, _sprint_ended, _has_access, _project_id, _active_sprint, _kanban_state, _assignees
     url_sprint_id, _project_id = _get_url_params()
     _sprint_id = sprint_id or url_sprint_id
     _sprint_ended = False
@@ -226,6 +288,7 @@ async def _init_page(sprint_id=None):
         return
     _has_access = True
     _active_sprint = sprint
+    _assignees = await _load_assignees(sprint)
 
     _apply_header_and_lock_state(sprint)
 
@@ -256,6 +319,11 @@ def handle_show_members(event):
     _navigate_to_dashboard(view="members")
 
 
+@when("click", "#nav-effort")
+def handle_show_effort(event):
+    _navigate_to_dashboard(view="effort")
+
+
 @when("click", "#nav-history")
 def handle_show_history(event):
     _navigate_to_dashboard(view="history")
@@ -278,9 +346,9 @@ def _navigate_to_dashboard(view=None, action=None):
         window.parent.postMessage(js.JSON.parse(json.dumps(payload)), str(window.location.origin))
         return
     if action == "create-sprint":
-        window.location.href = "sprint-dashboard.html?modal=create-sprint-modal"
+        window.location.href = f"sprint-dashboard.html?project_id={_project_id}&modal=create-sprint-modal"
     else:
-        window.location.href = f"sprint-dashboard.html?view={view}"
+        window.location.href = f"sprint-dashboard.html?project_id={_project_id}&view={view}"
 
 
 @when("app:activate-sprint-page", "body")
@@ -482,6 +550,8 @@ def _render_task_detail_modal():
 
             items_container.appendChild(row)
 
+    _render_task_assignee_and_dates(task)
+
     # Ended sprint view-only controls
     input_el = web.page["checklist-input"]
     add_btn = web.page["checklist-add-btn"]
@@ -491,6 +561,105 @@ def _render_task_detail_modal():
     else:
         input_el.disabled = False
         add_btn.disabled = False
+
+
+def _render_task_assignee_and_dates(task):
+    """Fill the assignee picker and the start/end date inputs for the open task."""
+    select = web.page["task-assignee-select"]
+    select.innerHTML = ""
+    choices = [("", "Unassigned")] + [(f"id:{uid}", name) for uid, name in _assignees]
+    current_id, current_name = task.get("assignee_id"), task.get("assignee")
+    selected = ""
+    if current_id is not None and any(uid == current_id for uid, _ in _assignees):
+        selected = f"id:{current_id}"
+    elif current_name:
+        match = next((uid for uid, name in _assignees if name == current_name), None)
+        if match is not None:
+            selected = f"id:{match}"
+        else:  # a name that is not a current member (e.g. seeded data): keep it selectable
+            choices.append(("legacy", current_name))
+            selected = "legacy"
+    for value, label in choices:
+        option = document.createElement("option")
+        option.value = value
+        option.textContent = label
+        select.appendChild(option)
+    select.value = selected
+    select.disabled = _sprint_ended
+
+    start_input, end_input = web.page["task-start-input"], web.page["task-end-input"]
+    hint = web.page["task-date-hint"]
+    s_start = charts.parse_iso((_active_sprint or {}).get("start_date"))
+    s_end = charts.parse_iso((_active_sprint or {}).get("end_date"))
+    has_range = s_start is not None and s_end is not None
+    if has_range:
+        start_input.min = end_input.min = s_start.isoformat()
+        start_input.max = end_input.max = s_end.isoformat()
+        hint.textContent = f"Dates must fall within the sprint: {charts.format_day(s_start)} \u2013 {charts.format_day(s_end, True)}."
+    else:
+        hint.textContent = "Task dates are unavailable because this sprint was created without a date range."
+    start_input.value = task.get("start_date") or ""
+    end_input.value = task.get("end_date") or ""
+    start_input.disabled = end_input.disabled = _sprint_ended or not has_range
+    web.page["task-details-save-btn"].disabled = _sprint_ended
+
+
+def _find_open_task():
+    for col_tasks in _kanban_state.values():
+        for t in col_tasks:
+            if _normalized_task_id(t.get("id")) == _normalized_task_id(_open_task_id):
+                return t
+    return None
+
+
+@when("click", "#task-details-save-btn")
+async def handle_save_task_details(event):
+    """Validate and save the open task's assignee and start/end dates."""
+    if _sprint_ended or not _open_task_id:
+        return
+    task = _find_open_task()
+    if task is None:
+        return
+
+    start_text = web.page["task-start-input"].value
+    end_text = web.page["task-end-input"].value
+    start, end = charts.parse_iso(start_text), charts.parse_iso(end_text)
+    s_start = charts.parse_iso((_active_sprint or {}).get("start_date"))
+    s_end = charts.parse_iso((_active_sprint or {}).get("end_date"))
+
+    if start and end and end < start:
+        await show_snackbar("The task end date cannot be before its start date.")
+        return
+    if s_start and s_end:
+        for label, value in (("start", start), ("end", end)):
+            if value and not (s_start <= value <= s_end):
+                await show_snackbar(
+                    f"The task {label} date must be within the sprint "
+                    f"({charts.format_day(s_start)} \u2013 {charts.format_day(s_end, True)})."
+                )
+                return
+
+    chosen = web.page["task-assignee-select"].value
+    previous = {key: task.get(key) for key in ("assignee", "assignee_id", "start_date", "end_date")}
+    if chosen == "":
+        task["assignee"], task["assignee_id"] = None, None
+    elif chosen.startswith("id:"):
+        uid = int(chosen[3:])
+        task["assignee_id"] = uid
+        task["assignee"] = next((name for u, name in _assignees if u == uid), task.get("assignee"))
+    # "legacy" keeps the existing assignee untouched
+    task["start_date"] = start_text or None
+    task["end_date"] = end_text or None
+
+    success, err = await server_data.update_kanban_state(_project_id, _sprint_id, _kanban_state)
+    if not success:
+        task.update(previous)  # roll back the in-memory change so the UI matches the server
+        await show_snackbar(f"Could not save task details: {err}")
+        return
+
+    _render_board(_kanban_state)
+    _render_task_detail_modal()
+    await show_snackbar("Task details saved.")
 
 
 @when("click", "#kanban-board")

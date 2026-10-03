@@ -660,3 +660,113 @@
   font-size: 14px;
   color: #888888;
 }
+
+/* --- SPRINT DATES, BURNDOWN CHART & EFFORT BREAKDOWN --- */
+.sprint-dates {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #4747D4;
+}
+
+.date-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.modal-box.chart-modal-box {
+  max-width: 720px;
+  width: 92vw;
+}
+
+.chart-caption {
+  margin: 0;
+  color: #666666;
+  font-size: 13px;
+}
+
+.burndown-chart,
+.effort-chart {
+  width: 100%;
+}
+
+.chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 18px;
+  font-size: 12px;
+  color: #555555;
+}
+
+.legend-line {
+  display: inline-block;
+  width: 22px;
+  height: 0;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-top: 3px solid #4747D4;
+}
+
+.legend-line.ideal {
+  border-top: 2px dashed #94a3b8;
+}
+
+.chart-summary {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #222222;
+}
+
+.pie-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 32px;
+  margin-top: 12px;
+}
+
+.pie-svg {
+  width: min(320px, 100%);
+  flex: 0 0 auto;
+}
+
+.pie-legend {
+  flex: 1 1 220px;
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pie-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #222222;
+}
+
+.pie-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  flex: 0 0 auto;
+}
+
+.pie-legend-name {
+  font-weight: 600;
+}
+
+.pie-legend-count {
+  margin-left: auto;
+  color: #666666;
+  font-size: 13px;
+}

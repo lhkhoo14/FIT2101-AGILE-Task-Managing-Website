@@ -84,15 +84,27 @@
           frame.contentWindow.postMessage({ type: "activate-sprint-page", sprintId: activeSprintId }, location.origin);
         }
       } else if (event.data?.type === "sprint-dashboard-navigation") {
-        frame.hidden = true;
-        activeSprintId = null;
+        // "Create Sprint" opens its modal on top of the open board, so the user is
+        // not thrown back to the sprint list; every other link leaves the board.
+        if (event.data.action !== "create-sprint") {
+          frame.hidden = true;
+          activeSprintId = null;
+        }
         document.body.dispatchEvent(new CustomEvent("app:sprint-dashboard-navigation", {
           detail: event.data,
         }));
       }
     });
   </script>
+  <script>
+    // Forms must never perform a native submit (it reloads the page and drops
+    // ?project_id=, which bounced the user away). PyScript handlers run async, so
+    // preventDefault has to happen here, synchronously, before they get the event.
+    document.addEventListener("submit", (event) => event.preventDefault(), true);
+  </script>
   <style>
+    /* Dashboard modals must sit above the sprint-board iframe (z-index 1000). */
+    .modal-overlay { z-index: 1100; }
     #sprint-page-frame {
       position: fixed;
       inset: 0;
@@ -154,6 +166,12 @@
     <!-- Project Sidebar -->
     <aside id="project-sidebar" class="sidebar project-sidebar">
       <nav class="sidebar-nav">
+        <!-- Returns to the project dashboard (list of all projects). -->
+        <button type="button" id="nav-projects" class="nav-item nav-projects">
+          <svg viewBox="0 0 24 24" class="icon"><path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/></svg>
+          <span>Projects</span>
+        </button>
+
         <div class="nav-section-title">Views</div>
 
         <button type="button" id="nav-description" class="nav-item">
@@ -224,6 +242,11 @@
           <button type="button" id="nav-contributions" class="nav-item section-item">
             <span class="additional-label"></span>
             <span>Member Contributions</span>
+          </button>
+
+          <button type="button" id="nav-effort" class="nav-item section-item">
+            <span class="additional-label"></span>
+            <span>Effort Breakdown</span>
           </button>
 
           <button type="button" id="nav-history" class="nav-item section-item">
@@ -362,6 +385,19 @@
         <ol id="history-list" class="activity-list"></ol>
       </section>
 
+      <!-- Pie chart of completed tasks per member, optionally filtered to one sprint. -->
+      <section id="effort-view" class="feature-view hidden" aria-labelledby="effort-title">
+        <div class="content-header">
+          <h1 id="effort-title" class="page-title">Effort Breakdown</h1>
+          <div class="sort-container">
+            <label for="effort-sprint-select" class="sort-label">Sprint:</label>
+            <select id="effort-sprint-select" class="sort-dropdown"></select>
+          </div>
+        </div>
+        <p class="chart-caption">Number of tasks each member completed.</p>
+        <div id="effort-chart" class="effort-chart"></div>
+      </section>
+
       <!-- Assigned task totals and status-specific task rows are rendered from sprint board state. -->
       <section id="contributions-view" class="feature-view hidden" aria-labelledby="contributions-title">
         <div class="content-header">
@@ -414,6 +450,18 @@
         <label class="modal-label" for="sprint-details-input">Details</label>
         <input type="text" id="sprint-details-input" class="modal-input" placeholder="Short description">
 
+        <div class="date-row">
+          <div>
+            <label class="modal-label" for="sprint-start-input">Start date</label>
+            <input type="date" id="sprint-start-input" class="modal-input" required>
+          </div>
+          <div>
+            <label class="modal-label" for="sprint-end-input">End date</label>
+            <input type="date" id="sprint-end-input" class="modal-input" required>
+          </div>
+        </div>
+        <p class="members-hint">The sprint completes automatically after its end date.</p>
+
         <label class="modal-label" for="sprint-tags-input">Tags</label>
         <input type="text" id="sprint-tags-input" class="modal-input" placeholder="e.g. frontend, api, urgent"
           autocomplete="off">
@@ -437,6 +485,23 @@
           <button type="submit" class="modal-btn-submit">Create</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Burndown Chart Modal -->
+  <div id="burndown-modal" class="modal-overlay hidden">
+    <div class="modal-box chart-modal-box" role="dialog" aria-modal="true" aria-labelledby="burndown-title">
+      <h2 id="burndown-title" class="modal-title">Burndown Chart</h2>
+      <p id="burndown-subtitle" class="chart-caption"></p>
+      <div id="burndown-chart" class="burndown-chart"></div>
+      <div class="chart-legend">
+        <span><i class="legend-line actual"></i>Remaining tasks</span>
+        <span><i class="legend-line ideal"></i>Ideal burndown</span>
+      </div>
+      <p id="burndown-summary" class="chart-summary"></p>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn-cancel" data-modal="burndown-modal">Close</button>
+      </div>
     </div>
   </div>
 
@@ -471,7 +536,7 @@
 
   <!-- Link settings.json for PyScript backend -->
   <script type="py" config="../../settings.json" src="../backend/project_layout.py"></script>
-  <script type="py" config="../../settings.json" src="../backend/sprint-dashboard.py?v=20261002"></script>
+  <script type="py" config="../../settings.json" src="../backend/sprint-dashboard.py?v=20261003"></script>
 </body>
 
 </html>

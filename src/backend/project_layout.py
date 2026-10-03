@@ -30,6 +30,11 @@ def toggle_sidebar(event):
             sidebar.classes.add("collapsed")
 
 # --- PROJECT NAVIGATION HANDLERS ---
+@when("click", "#nav-projects")
+def handle_nav_projects(event):
+    # Back to the project dashboard (all projects).
+    window.location.href = "dashboard.html"
+
 @when("click", "#nav-description")
 def handle_nav_description(event):
     project_id = get_project_id_from_url()

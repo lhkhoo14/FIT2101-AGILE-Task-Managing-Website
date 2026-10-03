@@ -40,6 +40,10 @@
   <!-- Shared IndexedDB API used to record sprint-board events. -->
   <script src="../backend/history-db.js"></script>
   <script>
+    // Never let a form perform a native submit; PyScript handlers run too late to cancel it.
+    document.addEventListener("submit", (event) => event.preventDefault(), true);
+  </script>
+  <script>
     window.isEmbeddedSprintPage = window.parent !== window;
     window.addEventListener("message", (event) => {
       if (event.source !== window.parent || event.origin !== window.location.origin) return;
@@ -124,6 +128,10 @@
           <span class="additional-label"></span>
           <span>Member Contributions</span>
         </button>
+        <button type="button" id="nav-effort" class="nav-item section-item">
+          <span class="additional-label"></span>
+          <span>Effort Breakdown</span>
+        </button>
         <button type="button" id="nav-history" class="nav-item section-item">
           <span class="additional-label"></span>
           <span>History</span>
@@ -152,6 +160,7 @@
         <div class="sprint-title-group">
           <h1 class="page-title" id="sprint-name">Sprint</h1>
           <span class="kanban-badge">Kanban View</span>
+          <span class="kanban-badge sprint-range-badge" id="sprint-range"></span>
         </div>
         <button type="button" id="end-sprint-btn" class="btn-end-sprint">End Sprint</button>
       </div>
@@ -272,6 +281,22 @@
         <span id="task-progress-text" class="task-progress-text"></span>
       </div>
 
+      <label class="modal-label" for="task-assignee-select">Assignee</label>
+      <select id="task-assignee-select" class="modal-input"></select>
+
+      <div class="task-date-row">
+        <div>
+          <label class="modal-label" for="task-start-input">Task start date</label>
+          <input type="date" id="task-start-input" class="modal-input">
+        </div>
+        <div>
+          <label class="modal-label" for="task-end-input">Task end date</label>
+          <input type="date" id="task-end-input" class="modal-input">
+        </div>
+      </div>
+      <p id="task-date-hint" class="task-date-hint"></p>
+      <button type="button" id="task-details-save-btn" class="modal-btn-submit task-save-btn">Save assignee &amp; dates</button>
+
       <div class="modal-label" style="margin-top: 15px;">Checklist</div>
       <div id="checklist-items" class="checklist-items"></div>
 
@@ -288,7 +313,7 @@
 
   <!-- Link settings.json for PyScript backend -->
   <script type="py" config="../../settings.json" src="../backend/layout.py?v=20261002"></script>
-  <script type="py" config="../../settings.json" src="../backend/sprint-page.py?v=20261002"></script>
+  <script type="py" config="../../settings.json" src="../backend/sprint-page.py?v=20261003"></script>
 </body>
 
 </html>

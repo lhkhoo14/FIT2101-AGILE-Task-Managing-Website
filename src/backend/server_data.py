@@ -264,6 +264,8 @@ class ServerData:
         name: str,
         details: str,
         status: str,
+        start_date: str,
+        end_date: str,
         priority: str = "medium",
         tags: list[str] | None = None,
         members: list[int] | None = None,
@@ -284,6 +286,8 @@ class ServerData:
                     "name": name,
                     "details": details,
                     "status": status,
+                    "start_date": start_date,
+                    "end_date": end_date,
                     "priority": priority,
                     "tags": tags or [],
                     "members": members,
@@ -293,7 +297,10 @@ class ServerData:
             if response.status in (200, 201):
                 return True, "", await response.json()
             err_data = await response.json()
-            return False, err_data.get("detail", "Failed to create sprint."), None
+            detail = err_data.get("detail", "Failed to create sprint.")
+            if isinstance(detail, list):  # FastAPI validation errors arrive as a list
+                detail = "; ".join(str(err.get("msg", "Invalid input")) for err in detail)
+            return False, str(detail), None
         except Exception as e:
             print(f"[API Error] Failed to create sprint: {e}")
             return False, "Unable to connect to the server.", None
@@ -377,7 +384,10 @@ class ServerData:
             if response.status == 200:
                 return True, ""
             err_data = await response.json()
-            return False, err_data.get("detail", "Failed to update board.")
+            detail = err_data.get("detail", "Failed to update board.")
+            if isinstance(detail, list):
+                detail = "; ".join(str(err.get("msg", "Invalid input")) for err in detail)
+            return False, str(detail)
         except Exception as e:
             print(f"[API Error] Failed to update kanban state: {e}")
             return False, "Unable to connect to the server."

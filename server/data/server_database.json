@@ -1,8 +1,8 @@
 {
     "next_user_id": 4,
     "next_project_id": 4,
-    "next_backlog_id": 9,
-    "next_sprint_id": 3,
+    "next_backlog_id": 11,
+    "next_sprint_id": 5,
     "users": [
         {
             "user_id": 1,
@@ -159,7 +159,72 @@
                 3
             ],
             "backlog": [],
-            "sprints": []
+            "sprints": [
+                {
+                    "id": "3",
+                    "name": "1",
+                    "details": "testing",
+                    "status": "active",
+                    "priority": "high",
+                    "tags": [
+                        "frontend"
+                    ],
+                    "members": [
+                        3
+                    ],
+                    "created_by": 3,
+                    "created_at": 1791005753761,
+                    "kanban_state": {
+                        "backlog": [
+                            {
+                                "id": "task-9",
+                                "title": "Task 4",
+                                "tag": "frontend",
+                                "priority": "high",
+                                "assignee": null
+                            }
+                        ],
+                        "active": [],
+                        "review": [],
+                        "completed": []
+                    }
+                },
+                {
+                    "id": "4",
+                    "name": "Sprint 5",
+                    "details": "testing",
+                    "status": "active",
+                    "start_date": "2026-10-03",
+                    "end_date": "2026-10-06",
+                    "priority": "low",
+                    "tags": [
+                        "cooked"
+                    ],
+                    "members": [
+                        1,
+                        2,
+                        3
+                    ],
+                    "created_by": 3,
+                    "created_at": 1791014833649,
+                    "kanban_state": {
+                        "backlog": [
+                            {
+                                "id": "task-10",
+                                "title": "Task 4",
+                                "tag": "backend",
+                                "priority": "medium",
+                                "assignee": null,
+                                "start_date": null,
+                                "end_date": null
+                            }
+                        ],
+                        "active": [],
+                        "review": [],
+                        "completed": []
+                    }
+                }
+            ]
         }
     }
 }
