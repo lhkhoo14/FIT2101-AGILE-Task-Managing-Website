@@ -62,15 +62,21 @@ The repository includes `render.yaml`, which creates two Render resources:
 - `fit2101-api`: FastAPI web service
 - `fit2101-frontend`: static frontend site
 
+The API is explicitly configured with Render's `free` web-service plan. It may
+sleep when inactive, but it does not require the paid $7 plan. Supabase stores
+the persistent database separately.
+
 To deploy, push this repository to GitHub and choose **New > Blueprint** in
 Render. Select the GitHub repository and apply the Blueprint. During setup,
 provide `DATABASE_URL` using a connection string from Neon, Supabase, or
 another PostgreSQL provider. The first API startup creates the PostgreSQL table
 and imports `server/data/server_database.json` if the table is empty.
 
-When Render asks for `CORS_ORIGINS`, enter the frontend URL once it is known,
-for example `https://fit2101-frontend.onrender.com`. The browser client uses
-the local API automatically on localhost and the Render API in production.
+After Render creates the frontend, optionally add `CORS_ORIGINS` to the API
+service using the actual frontend URL, for example
+`https://fit2101-frontend.onrender.com`. It is intentionally not requested
+during initial Blueprint setup because that URL does not exist yet. Until it is
+set, the API uses its development-friendly wildcard CORS default.
 
 The frontend build copies only the public application files into `dist`; the
 server database and backend-only files are not published by the static site.
