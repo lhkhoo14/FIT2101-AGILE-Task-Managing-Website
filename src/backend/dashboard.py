@@ -1,12 +1,17 @@
 import sys
 import asyncio
-from pyscript import web, window, document  # type: ignore
+from pyscript import when, web, window, document  # type: ignore
 from pyodide.ffi import create_proxy  # type: ignore
 
 if "." not in sys.path:
     sys.path.append(".")
 
 from server_data import ServerData
+
+
+@when("click", "#create-project-btn")
+def handle_create_project_click(event):
+    window.location.replace("create-project.html")
 
 def handle_project_click(event):
     """Navigates to project-page.html using the selected project ID."""
