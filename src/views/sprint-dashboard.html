@@ -19,6 +19,8 @@
     };
 
     (function () {
+      // Authentication still uses the session ID required by ServerData when
+      // it sends the current user_id to FastAPI. Sprint data is not stored here.
       const activeSession = localStorage.getItem(CONFIG.STORAGE_KEY_ACTIVE_SESSION);
 
       // If on dashboard and NO session exists, redirect to login
@@ -40,6 +42,11 @@
   <link rel="stylesheet" href="../styles/snackbar.css">
   <!-- Shared IndexedDB API for reading and recording sprint change history. -->
   <script src="../backend/history-db.js"></script>
+  <!--
+    The dashboard owns the sprint list. It warms one sprint-page runtime in a
+    hidden iframe so opening a board reuses PyScript instead of reloading it.
+    The iframe sends navigation messages back when its sidebar is used.
+  -->
   <script>
     let activeSprintId = null;
     const sprintFrame = () => document.getElementById("sprint-page-frame");

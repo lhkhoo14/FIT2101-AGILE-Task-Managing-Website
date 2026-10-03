@@ -17,7 +17,9 @@ import js  # type: ignore
 from server_data import ServerData
 import topbar
 
-# --- CURRENT USER (for checklist ownership checks) ---
+# ServerData owns the FastAPI session and provides the sprint/project API.
+# The page keeps only the currently displayed board in memory; every mutation
+# is persisted with update_kanban_state on the server.
 server_data = ServerData()
 _current_user_id = server_data.get_active_session()
 
@@ -32,9 +34,6 @@ _sprint_ended = False
 _has_access = False
 _active_sprint = None
 _kanban_state = {}
-
-FLASH_KEY = "flash_snackbar"
-
 
 # ==========================================
 # URL HELPERS
@@ -57,6 +56,7 @@ def _find_sprint(sprints, sprint_id):
     )
 
 async def _persist_kanban_state(state):
+    """Persist the current in-memory board through the FastAPI client."""
     success, err = await server_data.update_kanban_state(_project_id, _sprint_id, state)
     if not success:
         await show_snackbar(f"Failed to update board: {err}")
@@ -125,7 +125,7 @@ async def _current_actor():
 
 
 async def _record_change(action, sprint, task=None, from_status=None, to_status=None):
-    # Persist a timestamped sprint-board event in the shared IndexedDB store.
+    # The activity feed remains browser-local; the sprint board itself is API-backed.
     actor = await _current_actor()
     entry = {
         "action": action,
@@ -199,6 +199,7 @@ def _apply_header_and_lock_state(sprint):
 
 
 async def _init_page(sprint_id=None):
+    """Load the selected sprint, verify membership, and render its board."""
     global _sprint_id, _sprint_ended, _has_access, _project_id, _active_sprint, _kanban_state
     url_sprint_id, _project_id = _get_url_params()
     _sprint_id = sprint_id or url_sprint_id
@@ -218,8 +219,10 @@ async def _init_page(sprint_id=None):
     # Only members assigned to this sprint may open its page (this also covers
     # anyone who types the sprint_id into the URL directly).
     if not is_sprint_member(sprint, _current_user_id):
-        window.sessionStorage.setItem(FLASH_KEY, "You are not assigned to that sprint.")
-        window.location.href = f"sprint-dashboard.html?project_id={_project_id}"
+        window.location.href = (
+            f"sprint-dashboard.html?project_id={_project_id}"
+            "&view=sprints&message=You%20are%20not%20assigned%20to%20that%20sprint."
+        )
         return
     _has_access = True
     _active_sprint = sprint
@@ -269,6 +272,7 @@ def handle_unavailable_settings(event):
 
 
 def _navigate_to_dashboard(view=None, action=None):
+    """Return to the live dashboard iframe or navigate to a standalone dashboard."""
     if window.isEmbeddedSprintPage:
         payload = {"type": "sprint-dashboard-navigation", "view": view, "action": action}
         window.parent.postMessage(js.JSON.parse(json.dumps(payload)), str(window.location.origin))

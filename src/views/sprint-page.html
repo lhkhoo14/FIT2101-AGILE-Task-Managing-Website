@@ -19,6 +19,8 @@
     };
 
     (function () {
+      // This is only the FastAPI session guard. Sprint and Kanban data are
+      // loaded through ServerData, not from browser storage.
       const activeSession = localStorage.getItem(CONFIG.STORAGE_KEY_ACTIVE_SESSION);
       if (!activeSession || activeSession.trim() === "") {
         window.location.replace(CONFIG.VIEW_LOGIN);

@@ -14,17 +14,19 @@ from auth import show_snackbar
 import js  # type: ignore[reportMissingImports]
 from server_data import ServerData
 
+# ServerData is the client-side gateway for all sprint-dashboard API calls.
+# The dashboard never owns sprint data; it asks FastAPI for the current project
+# state and re-renders the affected UI after successful mutations.
 server_data = ServerData()
 from sprint_access import (
     is_sprint_member, sort_sprints, normalize_tags, filter_sprints_by_tag,
     PRIORITY_ORDER, DEFAULT_PRIORITY,
 )
 
-FLASH_KEY = "flash_snackbar"  # one-shot message set by other pages (e.g. sprint-page access denied)
 COLUMN_ORDER = ["backlog", "active", "review", "completed"]
 
-# Retrieve the project selected by the user. Do not silently fall back to
-# another user's project when this page is opened without a project_id.
+# The project ID scopes every dashboard API request. Refuse to guess a project
+# when the page was opened without an explicit project_id in the URL.
 url_params = window.URLSearchParams.new(window.location.search)
 project_id_param = url_params.get("project_id")
 if not project_id_param or not project_id_param.isdigit():
@@ -91,6 +93,7 @@ def _make_backlog_card(item):
 
 # Render all product-backlog cards and update their displayed count.
 async def render_backlog_list():
+    """Fetch the product backlog from FastAPI and rebuild its sidebar list."""
     items = await server_data.get_backlog_items(PROJECT_ID)
     list_el = web.page["backlog-list"]
     list_el.innerHTML = ""
@@ -165,7 +168,8 @@ def handle_card_drag_leave(event):
 
 @when("drop", ".sprints-grid")
 async def handle_card_drop(event):
-    # Move the API-backed backlog item into the selected sprint.
+    # Validate membership with the API-backed sprint record, then ask FastAPI
+    # to atomically move the backlog item into that sprint's Kanban backlog.
     event.preventDefault()
     card = event.target.closest(".sprint-card")
     if not card:
@@ -272,6 +276,7 @@ def _make_sprint_card(item, users):
 
 # Refresh the sprint grid from saved sprint records.
 async def render_sprints_grid():
+    """Fetch, filter, sort, and render the project's sprint cards."""
     sort_select = web.page["sort-select"]
     sort_key = sort_select.value if sort_select is not None else "date"
     search_input = web.page["global-search"]
@@ -302,7 +307,8 @@ def handle_sort_change(event):
     render_sprints_grid()
 
 
-# Read history events from IndexedDB and convert JavaScript records to Python objects.
+# History is still a browser-only activity feed. Sprint/project data itself is
+# not stored here; it comes from FastAPI through ServerData.
 async def _load_change_history():
     entries = await window.sprintHistoryDb.getAll()
     return json.loads(str(js.JSON.stringify(entries)))
@@ -450,7 +456,8 @@ async def render_member_contributions():
         contribution_list.appendChild(card)
 
 
-# Display one dashboard panel and keep its navigation item and layout in sync.
+# Switch the visible dashboard panel without navigating away from the page.
+# History and contribution data are fetched only when their panels are opened.
 def _show_dashboard_view(view_id):
     view_ids = ["sprints-view", "members-view", "history-view", "contributions-view"]
     nav_ids = ["nav-all-projects", "nav-members", "nav-history", "nav-contributions"]
@@ -496,6 +503,7 @@ async def handle_show_contributions(event):
 
 @when("app:sprint-dashboard-navigation", "body")
 async def handle_sprint_page_navigation(event):
+    """Handle navigation messages from the sprint board iframe."""
     detail = event.detail
     if detail.action == "create-sprint":
         await _render_member_options()
@@ -608,6 +616,7 @@ def handle_backdrop_click(event):
 # Validate and persist new sprint records from the create-sprint dialog.
 @when("submit", "#create-sprint-form")
 async def handle_create_sprint_submit(event):
+    """Validate the form and create the sprint through FastAPI."""
     event.preventDefault()
     name = web.page["sprint-name-input"].value.strip()
     details = web.page["sprint-details-input"].value.strip()
@@ -644,6 +653,7 @@ async def handle_create_sprint_submit(event):
 # Validate and persist new product-backlog tasks from the create-task dialog.
 @when("submit", "#create-task-form")
 async def handle_create_task_submit(event):
+    """Create a product-backlog item through FastAPI without blocking the UI."""
     event.preventDefault()
     title = web.page["task-title-input"].value.strip()
     tag = web.page["task-tag-input"].value
@@ -671,6 +681,8 @@ async def handle_create_task_submit(event):
 @when("click", ".sprints-grid")
 async def handle_sprint_card_click(event):
     # Open the selected sprint board unless the chart control was clicked.
+    # The dashboard keeps one hidden iframe warm so this transition does not
+    # restart PyScript for every sprint selection.
     if event.target.closest(".burndown-button"):
         return
     card = event.target.closest(".sprint-card")
@@ -688,7 +700,8 @@ async def handle_sprint_card_click(event):
     window.openSprintBoard(sprint_id)
 
 
-# Build the initial dashboard from saved sprint and backlog data.
+# Initial load: fetch the sprint cards first, warm the board iframe, then fetch
+# the backlog and its per-sprint counts. All persistent data comes from FastAPI.
 async def initialize_dashboard():
     await render_sprints_grid()
     first_available_card = document.querySelector('.sprint-card[data-member="true"]')
@@ -717,10 +730,9 @@ requested_modal = dashboard_params.get("modal")
 if requested_modal == "create-sprint-modal":
     _open_modal(requested_modal)
 
-# One-shot message left by another page (e.g. redirected from a sprint you're not assigned to)
-_flash = window.sessionStorage.getItem(FLASH_KEY)
-if _flash:
-    window.sessionStorage.removeItem(FLASH_KEY)
-    _notify(_flash)
+# A redirect can carry a short user-facing message without browser storage.
+message = dashboard_params.get("message")
+if message:
+    _notify(message)
 
 asyncio.ensure_future(initialize_dashboard())
