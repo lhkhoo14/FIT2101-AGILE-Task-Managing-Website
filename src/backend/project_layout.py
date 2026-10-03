@@ -38,7 +38,7 @@ def handle_nav_description(event):
 @when("click", "#nav-members")
 def handle_nav_members(event):
     project_id = get_project_id_from_url()
-    window.location.href = f"project-members.html?project_id={project_id}"
+    window.location.href = f"project-page.html?project_id={project_id}&view=members"
 
 @when("click", "#nav-sprints")
 def handle_nav_sprints(event):

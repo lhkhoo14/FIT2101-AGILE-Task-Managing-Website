@@ -53,6 +53,21 @@ def get_user_projects(user_id: int):
 def get_project(project_id: int, user_id: int):
     return get_verified_project(project_id, user_id)
 
+
+@router.get("/projects/{project_id}/members")
+def get_project_members(project_id: int, user_id: int):
+    project = get_verified_project(project_id, user_id)
+    member_ids = set(project.get("members", []))
+    return [
+        {
+            "user_id": user["user_id"],
+            "username": user.get("username", "Unknown user"),
+            "email": user.get("email", ""),
+        }
+        for user in db_manager.read().get("users", [])
+        if user.get("user_id") in member_ids
+    ]
+
 @router.get("/projects/{project_id}/backlog")
 def get_project_backlog(project_id: int, user_id: int):
     project = get_verified_project(project_id, user_id)

@@ -719,7 +719,7 @@ async def initialize_dashboard():
     first_available_card = document.querySelector('.sprint-card[data-member="true"]')
     if first_available_card:
         window.prepareSprintBoard(first_available_card.getAttribute("data-sprint-id"))
-    await asyncio.gather(render_backlog_list(), _refresh_all_card_badges())
+    await render_backlog_list()
 
 # Restore the panel requested by a sprint-page sidebar link, or open its modal.
 dashboard_params = js.URLSearchParams.new(window.location.search)

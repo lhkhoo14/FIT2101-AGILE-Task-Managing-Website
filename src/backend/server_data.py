@@ -194,6 +194,22 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to fetch project: {e}")
             return None
+
+    async def get_project_members(self, project_id: int) -> list[dict]:
+        """Fetch the members of a project from FastAPI."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return []
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/members?user_id={user_id}",
+                method="GET",
+                headers={"Content-Type": "application/json"},
+            )
+            return await response.json() if response.status == 200 else []
+        except Exception as e:
+            print(f"[API Error] Failed to fetch project members: {e}")
+            return []
     
     # --- Backlog & Sprint API Calls ---
     async def get_backlog_items(self, project_id: int) -> list[dict]:

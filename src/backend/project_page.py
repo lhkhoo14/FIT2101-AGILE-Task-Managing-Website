@@ -1,6 +1,7 @@
 import sys
 import asyncio
 import js  # type: ignore
+from html import escape
 from pyscript import window, web, document  # type: ignore
 
 if "." not in sys.path:
@@ -33,6 +34,25 @@ def load_default_view(project: Project):
         """
 
 
+async def load_members_view(project_id):
+    members = await ServerData().get_project_members(project_id)
+    content_el = web.page["#project-view-content"]
+    if not content_el:
+        return
+    if not members:
+        content_el.innerHTML = "<p class='no-projects'>No project members found.</p>"
+        return
+    rows = "".join(
+        f"<li class='member-row'><strong>{escape(member.get('username', 'Unknown user'))}</strong>"
+        f"<span>{escape(member.get('email', ''))}</span></li>"
+        for member in members
+    )
+    content_el.innerHTML = f"""
+        <div class="content-header"><h1 class="page-title">Project Members</h1></div>
+        <ul class="member-list">{rows}</ul>
+    """
+
+
 async def init_project_page():
     project_id = get_project_id_from_url()
 
@@ -44,7 +64,10 @@ async def init_project_page():
     # Fixed: Added 'await' to resolve the coroutine
     project = await db.get_project_by_id(project_id)
 
-    if project:
+    view = js.URLSearchParams.new(window.location.search).get("view")
+    if project and view == "members":
+        await load_members_view(project_id)
+    elif project:
         load_default_view(project)
     else:
         content_el = web.page["#project-view-content"]

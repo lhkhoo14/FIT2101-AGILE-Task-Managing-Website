@@ -277,10 +277,11 @@ def _navigate_to_dashboard(view=None, action=None):
         payload = {"type": "sprint-dashboard-navigation", "view": view, "action": action}
         window.parent.postMessage(js.JSON.parse(json.dumps(payload)), str(window.location.origin))
         return
+    project_query = f"&project_id={_project_id}" if _project_id else ""
     if action == "create-sprint":
-        window.location.href = "sprint-dashboard.html?modal=create-sprint-modal"
+        window.location.href = f"sprint-dashboard.html?modal=create-sprint-modal{project_query}"
     else:
-        window.location.href = f"sprint-dashboard.html?view={view}"
+        window.location.href = f"sprint-dashboard.html?view={view}{project_query}"
 
 
 @when("app:activate-sprint-page", "body")
