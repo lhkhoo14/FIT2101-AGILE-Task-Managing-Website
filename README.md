@@ -57,17 +57,16 @@ port 5500.
 
 ## Deploying to Render
 
-The repository includes `render.yaml`, which creates three Render resources:
+The repository includes `render.yaml`, which creates two Render resources:
 
 - `fit2101-api`: FastAPI web service
 - `fit2101-frontend`: static frontend site
-- `fit2101-postgres`: PostgreSQL database
 
 To deploy, push this repository to GitHub and choose **New > Blueprint** in
-Render. Select the GitHub repository and apply the Blueprint. Render will set
-`DATABASE_URL` on the API automatically. The first API startup creates the
-PostgreSQL table and imports `server/data/server_database.json` if the table is
-empty.
+Render. Select the GitHub repository and apply the Blueprint. During setup,
+provide `DATABASE_URL` using a connection string from Neon, Supabase, or
+another PostgreSQL provider. The first API startup creates the PostgreSQL table
+and imports `server/data/server_database.json` if the table is empty.
 
 When Render asks for `CORS_ORIGINS`, enter the frontend URL once it is known,
 for example `https://fit2101-frontend.onrender.com`. The browser client uses
