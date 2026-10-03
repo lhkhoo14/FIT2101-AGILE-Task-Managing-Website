@@ -53,7 +53,7 @@ async def list_projects():
     if not grid:
         return
 
-    grid.innerHTML = ""  # Clear hardcoded placeholder cards
+    grid.innerHTML = ""  # Replace the loading state with API results.
 
     if not projects:
         grid.innerHTML = "<p class='no-projects'>No projects found. Click 'Create' to get started!</p>"

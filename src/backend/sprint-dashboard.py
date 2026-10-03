@@ -60,12 +60,12 @@ async def _users_by_id(sprints):
         for user_id in (sprint.get("members") or [])
         if str(user_id).isdigit()
     }
-    users = {}
-    for user_id in user_ids:
-        user = await server_data.get_user_by_id(user_id)
-        if user:
-            users[user_id] = user
-    return users
+    users = await server_data.get_users()
+    return {
+        int(user["user_id"]): user
+        for user in users
+        if int(user["user_id"]) in user_ids
+    }
 
 
 def _notify(message):
@@ -112,10 +112,13 @@ async def _refresh_card_badge(sprint_id):
 
 
 async def _refresh_all_card_badges():
+    refreshes = []
     for card in document.querySelectorAll(".sprint-card"):
         sprint_id = card.getAttribute("data-sprint-id")
         if sprint_id:
-            await _refresh_card_badge(sprint_id)
+            refreshes.append(_refresh_card_badge(sprint_id))
+    if refreshes:
+        await asyncio.gather(*refreshes)
 
 
 # --- Drag and Drop Logic ---
@@ -653,7 +656,7 @@ async def handle_create_sprint_submit(event):
 # Validate and persist new product-backlog tasks from the create-task dialog.
 @when("submit", "#create-task-form")
 async def handle_create_task_submit(event):
-    """Create a product-backlog item through FastAPI without blocking the UI."""
+    """Create a product-backlog item and refresh the list after the API responds."""
     event.preventDefault()
     title = web.page["task-title-input"].value.strip()
     tag = web.page["task-tag-input"].value
@@ -661,21 +664,30 @@ async def handle_create_task_submit(event):
     if not title:
         return
 
-    async def process_create_task():
-        success, err, item = await server_data.create_backlog_item(PROJECT_ID, title, tag, priority)
-        if success:
-            await record_change(
-                f"created backlog task {title}",
-                task_id=item.get("id") if item else None,
-                task_title=title,
-            )
-            await render_backlog_list()
-        else:
-            _notify(err)
+    form = event.currentTarget
+    submit_button = form.querySelector("button[type='submit']")
+    if submit_button is not None:
+        submit_button.disabled = True
 
-    asyncio.ensure_future(process_create_task())
-    event.currentTarget.reset()
-    _close_modal("create-task-modal")
+    try:
+        success, err, item = await server_data.create_backlog_item(
+            PROJECT_ID, title, tag, priority
+        )
+        if not success:
+            _notify(err)
+            return
+
+        await render_backlog_list()
+        form.reset()
+        _close_modal("create-task-modal")
+        asyncio.ensure_future(record_change(
+            f"created backlog task {title}",
+            task_id=item.get("id") if item else None,
+            task_title=title,
+        ))
+    finally:
+        if submit_button is not None:
+            submit_button.disabled = False
 
 
 @when("click", ".sprints-grid")
@@ -707,8 +719,7 @@ async def initialize_dashboard():
     first_available_card = document.querySelector('.sprint-card[data-member="true"]')
     if first_available_card:
         window.prepareSprintBoard(first_available_card.getAttribute("data-sprint-id"))
-    await render_backlog_list()
-    await _refresh_all_card_badges()
+    await asyncio.gather(render_backlog_list(), _refresh_all_card_badges())
 
 # Restore the panel requested by a sprint-page sidebar link, or open its modal.
 dashboard_params = js.URLSearchParams.new(window.location.search)
