@@ -27,6 +27,13 @@
       if (!activeSession || activeSession.trim() === "") {
         window.location.replace(CONFIG.VIEW_LOGIN);
       }
+
+      // A sprint dashboard without a project scope cannot create or load data.
+      // Redirect before PyScript renders an interactive but invalid dashboard.
+      const projectId = new URLSearchParams(window.location.search).get("project_id");
+      if (!projectId || !/^\d+$/.test(projectId)) {
+        window.location.replace(CONFIG.VIEW_DASHBOARD);
+      }
     })();
   </script>
 
