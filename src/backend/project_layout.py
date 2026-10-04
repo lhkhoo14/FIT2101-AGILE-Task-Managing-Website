@@ -13,11 +13,26 @@ def get_project_id_from_url():
     return params.get("project_id")
 
 
+def _highlight_active_nav():
+    # The page reloads per view, so the nav item matching ?view= is marked here.
+    view = js.URLSearchParams.new(window.location.search).get("view")
+    active_id = "#nav-members" if view == "members" else "#nav-description"
+    for nav_id in ("#nav-description", "#nav-members"):
+        item = web.page[nav_id]
+        if item is None:
+            continue
+        if nav_id == active_id:
+            item.classList.add("active")
+        else:
+            item.classList.remove("active")
+
+
 def init_project_layout():
     project_id = get_project_id_from_url()
     project_name_el = web.page["#project-name-display"]
     if project_name_el and project_id:
         project_name_el.textContent = f"Project {project_id}"
+    _highlight_active_nav()
 
 @when("click", "#toggle-sidebar-btn")
 def toggle_sidebar(event):

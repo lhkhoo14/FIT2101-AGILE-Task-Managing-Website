@@ -4,6 +4,17 @@ import json
 
 from constants import ACTIVE_SESSION_KEY, API_URL
 
+
+class Project:
+    """A project record returned by the FastAPI projects endpoints."""
+
+    def __init__(self, id: int, name: str, description: str, status: str) -> None:
+        self.id = id
+        self.name = name
+        self.description = description
+        self.status = status
+
+
 class ServerData:
     def __init__(self, session_key : str = ACTIVE_SESSION_KEY, api_url : str = API_URL):
         self.logged_in_user_id: int | None = None
@@ -439,11 +450,3 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to update sprint status: {e}")
             return False, "Unable to connect to the server.", None
-
-
-class Project:
-    def __init__(self, id: int, name: str, description: str, status: str) -> None:
-        self.id = id
-        self.name = name
-        self.description = description
-        self.status = status
