@@ -195,6 +195,49 @@ class ServerData:
             print(f"[API Error] Failed to fetch project: {e}")
             return None
     
+    async def get_project_members(self, project_id: int) -> dict | None:
+        """Fetches project members, contributors and roles from FastAPI."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return None
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/members?user_id={user_id}",
+                method="GET",
+                headers={"Content-Type": "application/json"}
+            )
+            if response.status == 200:
+                return await response.json()
+
+            print(f"[API Error] Failed to fetch project members: {response.status}")
+            return None
+        except Exception as e:
+            print(f"[API Error] Failed to fetch project members: {e}")
+            return None
+
+    async def add_project_member(self, project_id: int, username: str) -> tuple[bool, str]:
+        """Adds an existing user to a project by username."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "No active session."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/members",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id, "username": username})
+            )
+            if response.status == 200:
+                return True, "Member added successfully."
+
+            data = await response.json()
+            return False, data.get("detail", "Failed to add member.")
+        except Exception as e:
+            print(f"[API Error] Failed to add project member: {e}")
+            return False, "Failed to add member."
+
     # --- Backlog & Sprint API Calls ---
     async def get_backlog_items(self, project_id: int) -> list[dict]:
         """Fetches product backlog items from server database."""

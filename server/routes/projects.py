@@ -16,6 +16,26 @@ class CreateBacklogPayload(BaseModel):
     tag: str
     priority: str
 
+class AddMemberPayload(BaseModel):
+    user_id: int
+    username: str
+
+def ensure_member_fields(project: dict) -> None:
+    """Backfills `contribute` and `roles` on projects created before member roles existed.
+
+    The project creator becomes Product Owner and everyone else a plain Member.
+    """
+    members = project.get("members", [])
+    if "contribute" not in project:
+        project["contribute"] = list(members)
+    if "roles" not in project:
+        owners = [uid for uid in project.get("creator", []) if uid in members]
+        project["roles"] = {
+            "Product Owner": owners,
+            "Scrum Master": [],
+            "Member": [uid for uid in members if uid not in owners],
+        }
+
 @router.post("/projects", status_code=status.HTTP_201_CREATED)
 def create_project(payload: CreateProjectPayload):
     db = db_manager.read()
@@ -33,6 +53,12 @@ def create_project(payload: CreateProjectPayload):
         "description": payload.description,
         "creator": [payload.user_id],
         "members": [payload.user_id],
+        "contribute": [payload.user_id],
+        "roles": {
+            "Product Owner": [payload.user_id],
+            "Scrum Master": [],
+            "Member": []
+        },
         "backlog": [],
         "sprints": []
     }
@@ -56,6 +82,17 @@ def get_user_projects(user_id: int):
 @router.get("/projects/{project_id}")
 def get_project(project_id: int, user_id: int):
     return get_verified_project(project_id, user_id)
+
+@router.get("/projects/{project_id}/members")
+def get_project_members(project_id: int, user_id: int):
+    project = get_verified_project(project_id, user_id)
+    ensure_member_fields(project)
+
+    return {
+        "members": project.get("members", []),
+        "contribute": project.get("contribute", []),
+        "roles": project.get("roles", {})
+    }
 
 @router.get("/projects/{project_id}/backlog")
 def get_project_backlog(project_id: int, user_id: int):
@@ -81,3 +118,39 @@ def create_backlog_item(project_id: int, payload: CreateBacklogPayload):
     project.setdefault("backlog", []).append(item)
     db_manager.write(db)
     return item
+
+@router.post("/projects/{project_id}/members")
+def add_project_member(project_id: int, payload: AddMemberPayload):
+    db = db_manager.read()
+    project = db.get("projects", {}).get(str(project_id))
+
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if payload.user_id not in project.get("members", []):
+        raise HTTPException(status_code=403, detail="You are not a member of this project")
+
+    member = next(
+        (user for user in db.get("users", []) if user.get("username") == payload.username),
+        None
+    )
+    if member is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    member_id = member["user_id"]
+    if member_id in project.get("members", []):
+        raise HTTPException(status_code=409, detail="User is already a project member")
+
+    ensure_member_fields(project)
+    project["members"].append(member_id)
+    project["contribute"].append(member_id)
+    project["roles"].setdefault("Member", []).append(member_id)
+
+    db_manager.write(db)
+
+    return {
+        "status": "success",
+        "member_id": member_id,
+        "username": member["username"],
+        "role": "Member"
+    }
