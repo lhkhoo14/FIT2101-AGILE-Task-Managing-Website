@@ -33,6 +33,8 @@ def create_project(payload: CreateProjectPayload):
         "description": payload.description,
         "creator": [payload.user_id],
         "members": [payload.user_id],
+        "contribute": [payload.user_id],
+        "roles": {},
         "backlog": [],
         "sprints": []
     }
@@ -56,6 +58,16 @@ def get_user_projects(user_id: int):
 @router.get("/projects/{project_id}")
 def get_project(project_id: int, user_id: int):
     return get_verified_project(project_id, user_id)
+
+@router.get("/projects/{project_id}/members")
+def get_project_members(project_id: int, user_id: int):
+    project = get_verified_project(project_id, user_id)
+
+    return {
+        "members": project.get("members", []),
+        "contribute": project.get("contribute", []),
+        "roles": project.get("roles", {})
+    }
 
 @router.get("/projects/{project_id}/backlog")
 def get_project_backlog(project_id: int, user_id: int):
