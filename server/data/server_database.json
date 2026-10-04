@@ -208,20 +208,30 @@
                     "created_by": 3,
                     "created_at": 1791014833649,
                     "kanban_state": {
-                        "backlog": [
+                        "backlog": [],
+                        "active": [],
+                        "review": [],
+                        "completed": [
                             {
                                 "id": "task-10",
                                 "title": "Task 4",
                                 "tag": "backend",
                                 "priority": "medium",
-                                "assignee": null,
+                                "assignee": "Bob The",
                                 "start_date": null,
-                                "end_date": null
+                                "end_date": null,
+                                "checklist": [
+                                    {
+                                        "id": "1791095089109",
+                                        "text": "test",
+                                        "done": true,
+                                        "created_by": 3
+                                    }
+                                ],
+                                "assignee_id": 3,
+                                "completed_at": "2026-10-04"
                             }
-                        ],
-                        "active": [],
-                        "review": [],
-                        "completed": []
+                        ]
                     }
                 }
             ]
