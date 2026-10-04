@@ -25,6 +25,18 @@ import topbar
 server_data = ServerData()
 _current_user_id = server_data.get_active_session()
 
+# --- TEMP DEMO ROLE (stand-in until the user model has a real role field) ---
+_DEMO_ROLE_KEY = "demo_role"
+
+
+def _get_current_role():
+    role = window.localStorage.getItem(_DEMO_ROLE_KEY)
+    return role if role in ("manager", "employee") else "employee"
+
+
+def _is_manager():
+    return _get_current_role() == "manager"
+
 # ==========================================
 # CONSTANTS & GLOBAL STATE
 # ==========================================
@@ -38,6 +50,7 @@ _active_sprint = None
 _kanban_state = {}
 _assignees = []          # [(user_id, display name)] who can be assigned tasks in this sprint
 _watcher_started = False
+_search_query = ""
 
 # ==========================================
 # URL HELPERS
@@ -118,6 +131,14 @@ def _make_task_card(task, column_key):
         dates_text = ""
     dates_html = f'<p class="task-card-dates">{escape(dates_text)}</p>' if dates_text else ""
 
+    # --- TIME LOG BADGE HTML ---
+    _, _, time_status, _ = _time_log_summary(task)
+    if time_status:
+        time_html = f'<div class="card-time-log">⏱ {escape(time_status)}</div>'
+    else:
+        time_html = ""
+    # ---------------------------
+
     card.innerHTML = f"""
         <div class="task-card-header">
             <span class="tag-badge tag-{tag}">{tag.capitalize()}</span>
@@ -125,6 +146,7 @@ def _make_task_card(task, column_key):
         <p class="task-card-title">{escape(str(task['title']))}</p>
         {dates_html}
         {progress_html}
+        {time_html}
         <div class="task-card-footer">
             <span class="priority-badge priority-{priority}">{priority.capitalize()}</span>
             {avatar_html}
@@ -163,13 +185,21 @@ async def _record_change(action, sprint, task=None, from_status=None, to_status=
     await window.sprintHistoryDb.add(js.JSON.parse(json.dumps(entry)))
 
 
+def _task_matches_search(task, query):
+    if not query:
+        return True
+    query = query.lower()
+    return query in str(task.get("title", "")).lower() or query in str(task.get("tag", "")).lower()
+
+
 def _render_board(state):
     for column_key in COLUMN_ORDER:
         body = web.page[f"column-{column_key}"]
         if body:
             body.innerHTML = ""
             for task in state.get(column_key, []):
-                body.appendChild(_make_task_card(task, column_key))
+                if _task_matches_search(task, _search_query):
+                    body.appendChild(_make_task_card(task, column_key))
     _refresh_all_counts()
 
 def _update_column_count(column_key):
@@ -292,6 +322,10 @@ async def _init_page(sprint_id=None):
 
     _apply_header_and_lock_state(sprint)
 
+    role_select = web.page["demo-role-select"]
+    if role_select is not None:
+        role_select.value = _get_current_role()
+
     state = await server_data.get_kanban_state(_project_id, _sprint_id)
     if state is None:
         state = {column: [] for column in COLUMN_ORDER}
@@ -390,19 +424,24 @@ async def handle_card_drop(event):
     if source_column == target_column:
         return
 
-    # Enforce workflow rule: tasks can only be moved forward
-    if _column_index(target_column) < _column_index(source_column):
-        await show_snackbar("Tasks can only be pushed forward on the board.")
-        return
+    if not _is_manager():
+        # Employees: forward-only, and cannot self-move into Completed
+        if _column_index(target_column) < _column_index(source_column):
+            await show_snackbar("Tasks can only be pushed forward on the board.")
+            return
 
-    # --- INSERTED CHECK: Gate forward moves if task has unchecked items ---
-    checklist = task.get("checklist", [])
-    if any(not item.get("done", False) for item in checklist):
-        asyncio.ensure_future(
-            show_snackbar("Complete all checklist items before moving this task forward.")
-        )
-        return
-    # ----------------------------------------------------------------------
+        if target_column == "completed":
+            await show_snackbar("Only a manager can move a task to Completed.")
+            return
+
+        # Gate forward moves if the task has unchecked checklist items
+        checklist = task.get("checklist", [])
+        if any(not item.get("done", False) for item in checklist):
+            asyncio.ensure_future(
+                show_snackbar("Complete all checklist items before moving this task forward.")
+            )
+            return
+    # Managers: no restrictions — any direction, any column
 
     state[source_column].remove(task)
     task.pop("status", None)
@@ -442,6 +481,13 @@ async def handle_end_sprint(event):
 
     asyncio.ensure_future(show_snackbar("Sprint ended. Board is now locked."))
 
+# --- Search Bar
+@when("input", "#global-search")
+def handle_search_input(event):
+    global _search_query
+    _search_query = event.target.value.strip()
+    _render_board(_kanban_state)
+
 # --- SECTION: Task Checklist & Detail Modal ---
 
 _open_task_id = None
@@ -464,10 +510,12 @@ def _render_task_detail_modal():
 
     kanban_state = _kanban_state
     task = None
-    for col_tasks in kanban_state.values():
+    task_column = None
+    for col_key, col_tasks in kanban_state.items():
         for t in col_tasks:
             if _normalized_task_id(t.get("id")) == _normalized_task_id(_open_task_id):
                 task = t
+                task_column = col_key
                 break
         if task:
             break
@@ -475,6 +523,8 @@ def _render_task_detail_modal():
     if not task:
         _close_task_detail_modal()
         return
+
+    is_manager = _is_manager()
 
     # Title
     web.page["task-detail-title"].textContent = task.get("title", "Task Details")
@@ -561,6 +611,87 @@ def _render_task_detail_modal():
     else:
         input_el.disabled = False
         add_btn.disabled = False
+
+    # --- Manager Feedback (Review tab only) ---
+    feedback_section = web.page["review-feedback-section"]
+    if task_column == "review":
+        feedback_section.classList.remove("hidden")
+
+        messages_el = web.page["feedback-messages"]
+        messages_el.innerHTML = ""
+        feedback_list = task.get("feedback") or []
+        if not feedback_list:
+            empty_div = document.createElement("div")
+            empty_div.className = "feedback-empty"
+            empty_div.textContent = "No feedback yet."
+            messages_el.appendChild(empty_div)
+        else:
+            for msg in feedback_list:
+                msg_div = document.createElement("div")
+                msg_div.className = "feedback-message"
+
+                text_span = document.createElement("span")
+                author_span = document.createElement("span")
+                author_span.className = "feedback-author"
+                author_span.textContent = f"{msg.get('author', 'Manager')}:"
+                text_span.appendChild(author_span)
+                text_span.appendChild(document.createTextNode(f" {msg.get('text', '')}"))
+                msg_div.appendChild(text_span)
+
+                # Only the manager who posted it can delete their own feedback
+                is_own_feedback = (
+                    is_manager
+                    and _current_user_id is not None
+                    and msg.get("author_id") == _current_user_id
+                )
+                if is_own_feedback and not _sprint_ended:
+                    delete_btn = document.createElement("button")
+                    delete_btn.type = "button"
+                    delete_btn.className = "feedback-delete-btn"
+                    delete_btn.title = "Delete this feedback"
+                    delete_btn.dataset.feedbackId = str(msg.get("id", ""))
+                    delete_btn.textContent = "×"
+                    msg_div.appendChild(delete_btn)
+
+                messages_el.appendChild(msg_div)
+
+        feedback_input = web.page["feedback-input"]
+        feedback_btn = web.page["feedback-add-btn"]
+        can_post = is_manager and not _sprint_ended
+        feedback_input.disabled = not can_post
+        feedback_btn.disabled = not can_post
+    else:
+        feedback_section.classList.add("hidden")
+
+    # --- Time Log UI ---
+    started_fmt, ended_fmt, duration_str, status_txt = _time_log_summary(task)
+    start_btn = web.page["start-task-btn"]
+    end_btn = web.page["end-task-btn"]
+    status_el = web.page["time-log-status"]
+
+    time_log = task.get("time_log") or {}
+    has_started = bool(time_log.get("started_at"))
+    has_ended = bool(time_log.get("ended_at"))
+
+    if _sprint_ended:
+        start_btn.disabled = True
+        end_btn.disabled = True
+    else:
+        start_btn.disabled = has_started
+        end_btn.disabled = (not has_started) or has_ended
+
+    status_el.innerHTML = ""
+    if not has_started:
+        status_el.textContent = "Not started yet."
+    else:
+        lines = [f"Started: {started_fmt}"]
+        if has_ended:
+            lines.append(f"Ended: {ended_fmt}")
+            lines.append(f"Duration: {duration_str}")
+        for line in lines:
+            line_div = document.createElement("div")
+            line_div.textContent = line
+            status_el.appendChild(line_div)
 
 
 def _render_task_assignee_and_dates(task):
@@ -787,6 +918,162 @@ async def handle_checklist_delete(event):
     _render_task_detail_modal()
     _render_board(kanban_state)
 
+@when("submit", "#feedback-add-form")
+async def handle_add_feedback(event):
+    event.preventDefault()
+    if _sprint_ended or not _open_task_id or not _is_manager():
+        return
+
+    input_el = web.page["feedback-input"]
+    text = input_el.value.strip()
+    if not text:
+        return
+
+    target_task = _find_open_task()
+    if target_task is None:
+        return
+
+    if not target_task.get("feedback"):
+        target_task["feedback"] = []
+
+    target_task["feedback"].append({
+        "id": str(int(time.time() * 1000)),
+        "text": text,
+        "author": await _current_actor(),
+        "author_id": _current_user_id,
+    })
+    await _persist_kanban_state(_kanban_state)
+
+    input_el.value = ""
+    _render_task_detail_modal()
+
+
+@when("click", "#feedback-messages")
+async def handle_delete_feedback(event):
+    if _sprint_ended or not _open_task_id or not _is_manager():
+        return
+
+    target = event.target
+    if not target.classList.contains("feedback-delete-btn"):
+        return
+
+    feedback_id = target.dataset.feedbackId
+
+    target_task = _find_open_task()
+    if target_task is None:
+        return
+
+    feedback_list = target_task.get("feedback") or []
+    msg_to_delete = next((m for m in feedback_list if str(m.get("id")) == feedback_id), None)
+
+    # Guard: only the manager who posted it may delete it
+    if msg_to_delete is None:
+        return
+    if _current_user_id is None or msg_to_delete.get("author_id") != _current_user_id:
+        asyncio.ensure_future(
+            show_snackbar("You can only delete feedback you posted.")
+        )
+        return
+
+    target_task["feedback"] = [m for m in feedback_list if str(m.get("id")) != feedback_id]
+    await _persist_kanban_state(_kanban_state)
+    _render_task_detail_modal()
+
+
+@when("change", "#demo-role-select")
+def handle_role_change(event):
+    window.localStorage.setItem(_DEMO_ROLE_KEY, event.target.value)
+    _render_board(_kanban_state)
+    if _open_task_id:
+        _render_task_detail_modal()
+
+
+# --- SECTION: Task Time Logging ---
+
+def _time_log_summary(task):
+    time_log = task.get("time_log")
+    if not time_log:
+        return "", "", "", ""
+
+    started_at_str = time_log.get("started_at")
+    ended_at_str = time_log.get("ended_at")
+
+    started_fmt = ""
+    ended_fmt = ""
+    duration_str = ""
+    status_txt = ""
+
+    if started_at_str:
+        try:
+            dt_start = datetime.fromisoformat(started_at_str)
+            started_fmt = dt_start.strftime("%b %d, %Y %I:%M %p")
+            status_txt = "In progress"
+        except ValueError:
+            pass
+
+    if ended_at_str and started_at_str:
+        try:
+            dt_start = datetime.fromisoformat(started_at_str)
+            dt_end = datetime.fromisoformat(ended_at_str)
+            ended_fmt = dt_end.strftime("%b %d, %Y %I:%M %p")
+
+            total_seconds = int((dt_end - dt_start).total_seconds())
+            if total_seconds < 0:
+                total_seconds = 0
+
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
+
+            if hours > 0:
+                duration_str = f"{hours}h {minutes}m"
+            else:
+                duration_str = f"{minutes}m"
+
+            status_txt = duration_str
+        except ValueError:
+            pass
+
+    return started_fmt, ended_fmt, duration_str, status_txt
+
+
+@when("click", "#start-task-btn")
+async def handle_start_task(event):
+    if _sprint_ended or not _open_task_id:
+        return
+
+    target_task = _find_open_task()
+    if target_task is None:
+        return
+
+    time_log = target_task.get("time_log")
+    if not time_log:
+        time_log = {}
+        target_task["time_log"] = time_log
+
+    if not time_log.get("started_at"):
+        time_log["started_at"] = datetime.now().isoformat()
+        await _persist_kanban_state(_kanban_state)
+        _render_task_detail_modal()
+        _render_board(_kanban_state)
+
+
+@when("click", "#end-task-btn")
+async def handle_end_task(event):
+    if _sprint_ended or not _open_task_id:
+        return
+
+    target_task = _find_open_task()
+    if target_task is None:
+        return
+
+    time_log = target_task.get("time_log")
+    if time_log and time_log.get("started_at") and not time_log.get("ended_at"):
+        time_log["ended_at"] = datetime.now().isoformat()
+        await _persist_kanban_state(_kanban_state)
+        _render_task_detail_modal()
+        _render_board(_kanban_state)
+
+
 def _close_task_detail_modal():
     global _open_task_id
     _open_task_id = None
@@ -814,4 +1101,4 @@ if _page_params.get("prewarm") == "1":
         str(window.location.origin),
     )
 else:
-    asyncio.ensure_future(_init_page())
+    asyncio.ensure_future(_init_page())

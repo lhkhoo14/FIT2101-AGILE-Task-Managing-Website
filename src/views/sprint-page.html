@@ -79,6 +79,12 @@
       <input type="text" id="global-search" class="search-input" placeholder="Search tasks or tags...">
     </div>
 
+    <!-- TEMP demo-only role switch — remove once real User.role exists -->
+    <select id="demo-role-select" class="demo-role-select" title="Demo: view board as this role">
+      <option value="employee">View as: Employee</option>
+      <option value="manager">View as: Manager</option>
+    </select>
+
     <!-- Profile Picture & Dropdown Menu -->
     <div class="profile-menu-container">
       <button type="button" id="profile-menu-btn" class="profile-btn" aria-label="User Profile">
@@ -305,6 +311,24 @@
         <button type="submit" id="checklist-add-btn" class="modal-btn-submit">Add</button>
       </form>
 
+      <!-- Time Log Section -->
+      <div id="time-log-label" class="modal-label" style="margin-top: 15px;">Time Log</div>
+      <div id="time-log-buttons" class="time-log-buttons">
+        <button type="button" id="start-task-btn" class="modal-btn-submit">Start Task</button>
+        <button type="button" id="end-task-btn" class="modal-btn-cancel">End Task</button>
+      </div>
+      <div id="time-log-status" class="time-log-status"></div>
+
+      <!-- Manager Feedback / Review Chat -->
+      <div id="review-feedback-section" class="review-feedback-section hidden">
+        <div class="modal-label" style="margin-top: 15px;">Manager Feedback</div>
+        <div id="feedback-messages" class="feedback-messages"></div>
+        <form id="feedback-add-form" class="checklist-add-form">
+          <input type="text" id="feedback-input" class="modal-input" placeholder="Post feedback..." />
+          <button type="submit" id="feedback-add-btn" class="modal-btn-submit">Post</button>
+        </form>
+      </div>
+
       <div class="modal-actions" style="margin-top: 20px;">
         <button type="button" id="task-detail-close-btn" class="modal-btn-cancel">Close</button>
       </div>
@@ -313,7 +337,7 @@
 
   <!-- Link settings.json for PyScript backend -->
   <script type="py" config="../../settings.json" src="../backend/layout.py?v=20261002"></script>
-  <script type="py" config="../../settings.json" src="../backend/sprint-page.py?v=20261003"></script>
+  <script type="py" config="../../settings.json" src="../backend/sprint-page.py?v=20261004"></script>
 </body>
 
-</html>
+</html>

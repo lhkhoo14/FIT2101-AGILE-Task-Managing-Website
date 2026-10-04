@@ -1,7 +1,7 @@
 {
     "next_user_id": 4,
     "next_project_id": 4,
-    "next_backlog_id": 11,
+    "next_backlog_id": 13,
     "next_sprint_id": 6,
     "users": [
         {
@@ -192,7 +192,14 @@
             "members": [
                 3
             ],
-            "backlog": [],
+            "backlog": [
+                {
+                    "id": 12,
+                    "title": "test",
+                    "tag": "backend",
+                    "priority": "medium"
+                }
+            ],
             "sprints": [
                 {
                     "id": "3",
@@ -244,7 +251,21 @@
                     "kanban_state": {
                         "backlog": [],
                         "active": [],
-                        "review": [],
+                        "review": [
+                            {
+                                "id": "task-11",
+                                "title": "test",
+                                "tag": "backend",
+                                "priority": "medium",
+                                "assignee": null,
+                                "start_date": null,
+                                "end_date": null,
+                                "time_log": {
+                                    "started_at": "2026-10-04T15:20:02.616000",
+                                    "ended_at": "2026-10-04T15:20:03.232000"
+                                }
+                            }
+                        ],
                         "completed": [
                             {
                                 "id": "task-10",
