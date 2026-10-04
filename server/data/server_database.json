@@ -2,7 +2,7 @@
     "next_user_id": 4,
     "next_project_id": 4,
     "next_backlog_id": 11,
-    "next_sprint_id": 5,
+    "next_sprint_id": 6,
     "users": [
         {
             "user_id": 1,
@@ -44,18 +44,6 @@
                 1
             ],
             "backlog": [
-                {
-                    "id": 4,
-                    "title": "test 1231",
-                    "tag": "frontend",
-                    "priority": "medium"
-                },
-                {
-                    "id": 5,
-                    "title": "testfrontendlow",
-                    "tag": "frontend",
-                    "priority": "low"
-                },
                 {
                     "id": 6,
                     "title": "testbackendlow",
@@ -131,6 +119,52 @@
                         "active": [],
                         "review": [],
                         "completed": []
+                    }
+                },
+                {
+                    "id": "5",
+                    "name": "testing charts",
+                    "details": "testing burndown chart",
+                    "status": "active",
+                    "start_date": "2026-10-03",
+                    "end_date": "2026-10-05",
+                    "priority": "medium",
+                    "tags": [
+                        "test"
+                    ],
+                    "members": [
+                        1,
+                        2,
+                        3
+                    ],
+                    "created_by": 1,
+                    "created_at": 1791015813465,
+                    "kanban_state": {
+                        "backlog": [
+                            {
+                                "id": "task-5",
+                                "title": "testfrontendlow",
+                                "tag": "frontend",
+                                "priority": "low",
+                                "assignee": null,
+                                "start_date": null,
+                                "end_date": null
+                            }
+                        ],
+                        "active": [],
+                        "review": [],
+                        "completed": [
+                            {
+                                "id": "task-4",
+                                "title": "test 1231",
+                                "tag": "frontend",
+                                "priority": "medium",
+                                "assignee": null,
+                                "start_date": null,
+                                "end_date": null,
+                                "completed_at": "2026-10-03"
+                            }
+                        ]
                     }
                 }
             ]
