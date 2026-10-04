@@ -34,23 +34,37 @@ def load_default_view(project: Project):
         """
 
 
+def _initials(name: str) -> str:
+    parts = name.replace("@", " ").replace(".", " ").split()
+    return "".join(part[0] for part in parts[:2]).upper() or "?"
+
+
 async def load_members_view(project_id):
-    members = await ServerData().get_project_members(project_id)
+    team = await ServerData().get_project_team(project_id)
     content_el = web.page["#project-view-content"]
     if not content_el:
         return
-    if not members:
-        content_el.innerHTML = "<p class='no-projects'>No project members found.</p>"
-        return
-    rows = "".join(
-        f"<li class='member-row'><strong>{escape(member.get('username', 'Unknown user'))}</strong>"
-        f"<span>{escape(member.get('email', ''))}</span></li>"
-        for member in members
+
+    header = (
+        '<div class="content-header"><h1 class="page-title">Project Members</h1>'
+        f'<span class="member-count">{len(team)} member{"s" if len(team) != 1 else ""}</span></div>'
     )
-    content_el.innerHTML = f"""
-        <div class="content-header"><h1 class="page-title">Project Members</h1></div>
-        <ul class="member-list">{rows}</ul>
-    """
+    if not team:
+        content_el.innerHTML = f"{header}<p class='no-projects'>No project members found.</p>"
+        return
+
+    def row_html(member):
+        name = member.get("username") or member.get("email") or "Unknown user"
+        email = member.get("email", "")
+        return (
+            "<li class='member-row'><div class='member-row-content'>"
+            f"<span class='member-avatar' aria-hidden='true'>{escape(_initials(name))}</span>"
+            f"<span class='member-details'><strong>{escape(name)}</strong>"
+            f"<span>{escape(email)}</span></span></div></li>"
+        )
+
+    rows = "".join(row_html(member) for member in team)
+    content_el.innerHTML = f"{header}<ul class='member-list'>{rows}</ul>"
 
 
 async def init_project_page():

@@ -1,7 +1,7 @@
 {
     "next_user_id": 4,
-    "next_project_id": 4,
-    "next_backlog_id": 9,
+    "next_project_id": 5,
+    "next_backlog_id": 10,
     "next_sprint_id": 3,
     "users": [
         {
@@ -9,7 +9,9 @@
             "username": "wa",
             "email": "wa@gmail.com",
             "password": "$2b$12$SV.Re86eHEZ1kJND/kfE8e4HAm5BJtJxjxTrhmut6wrb/Jk6d/nXC",
-            "projects": [],
+            "projects": [
+                4
+            ],
             "failed_attempts": 0,
             "lockout_until": 0
         },
@@ -128,7 +130,15 @@
                                 "assignee": null
                             }
                         ],
-                        "active": [],
+                        "active": [
+                            {
+                                "id": "task-9",
+                                "title": "test me to the moon",
+                                "tag": "frontend",
+                                "priority": "low",
+                                "assignee": null
+                            }
+                        ],
                         "review": [],
                         "completed": []
                     }
@@ -157,6 +167,19 @@
             ],
             "members": [
                 3
+            ],
+            "backlog": [],
+            "sprints": []
+        },
+        "4": {
+            "project_id": 4,
+            "name": "test",
+            "description": "big testing",
+            "creator": [
+                1
+            ],
+            "members": [
+                1
             ],
             "backlog": [],
             "sprints": []

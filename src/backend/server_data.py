@@ -210,6 +210,24 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to fetch project members: {e}")
             return []
+
+    async def get_project_team(self, project_id: int) -> list[dict]:
+        """Project members plus everyone assigned to any of its sprints.
+
+        A project only records its creator in `members`, so the members assigned
+        to the project's sprints are unioned in to describe the whole team.
+        """
+        member_ids = {
+            int(member["user_id"])
+            for member in await self.get_project_members(project_id)
+        }
+        for sprint in await self.get_sprints(project_id):
+            for member_id in (sprint.get("members") or []):
+                if str(member_id).isdigit():
+                    member_ids.add(int(member_id))
+
+        users = await self.get_users()
+        return [user for user in users if int(user["user_id"]) in member_ids]
     
     # --- Backlog & Sprint API Calls ---
     async def get_backlog_items(self, project_id: int) -> list[dict]:

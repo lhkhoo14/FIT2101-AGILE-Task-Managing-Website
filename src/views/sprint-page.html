@@ -12,19 +12,40 @@
 
   <script>
     const CONFIG = {
-      STORAGE_KEY_APP_DATA: "pyscript_app_data",
       STORAGE_KEY_ACTIVE_SESSION: "session_user_id",
+      STORAGE_KEY_ACTIVE_PROJECT: "active_project_id",
       VIEW_LOGIN: "login.html",
       VIEW_DASHBOARD: "dashboard.html"
     };
 
     (function () {
-      // This is only the FastAPI session guard. Sprint and Kanban data are
-      // loaded through ServerData, not from browser storage.
+      // 1. Require a login session (ServerData sends this user_id to FastAPI).
       const activeSession = localStorage.getItem(CONFIG.STORAGE_KEY_ACTIVE_SESSION);
       if (!activeSession || activeSession.trim() === "") {
         window.location.replace(CONFIG.VIEW_LOGIN);
+        return;
       }
+
+      // 2. Resolve the project scope. Remember the last project opened in this
+      //    tab so a link that lost its ?project_id= query still resolves.
+      const params = new URLSearchParams(window.location.search);
+      let projectId = params.get("project_id");
+      if (projectId && /^\d+$/.test(projectId)) {
+        sessionStorage.setItem(CONFIG.STORAGE_KEY_ACTIVE_PROJECT, projectId);
+      } else {
+        projectId = sessionStorage.getItem(CONFIG.STORAGE_KEY_ACTIVE_PROJECT);
+      }
+
+      // 3. A sprint board without a project scope cannot load or create data.
+      if (!projectId || !/^\d+$/.test(projectId)) {
+        window.location.replace(CONFIG.VIEW_DASHBOARD);
+        return;
+      }
+
+      // 4. Put the resolved project back in the URL so the Python modules, which
+      //    read project_id from window.location.search, need no fallback logic.
+      params.set("project_id", projectId);
+      window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
     })();
   </script>
 
@@ -275,7 +296,7 @@
       <div class="modal-label" style="margin-top: 15px;">Checklist</div>
       <div id="checklist-items" class="checklist-items"></div>
 
-      <form id="checklist-add-form" class="checklist-add-form">
+      <form id="checklist-add-form" class="checklist-add-form" onsubmit="event.preventDefault();">
         <input type="text" id="checklist-input" class="modal-input" placeholder="Add a sub-item..." />
         <button type="submit" id="checklist-add-btn" class="modal-btn-submit">Add</button>
       </form>

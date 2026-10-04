@@ -12,28 +12,40 @@
 
   <script>
     const CONFIG = {
-      STORAGE_KEY_APP_DATA: "pyscript_app_data",
       STORAGE_KEY_ACTIVE_SESSION: "session_user_id",
+      STORAGE_KEY_ACTIVE_PROJECT: "active_project_id",
       VIEW_LOGIN: "login.html",
       VIEW_DASHBOARD: "dashboard.html"
     };
 
     (function () {
-      // Authentication still uses the session ID required by ServerData when
-      // it sends the current user_id to FastAPI. Sprint data is not stored here.
+      // 1. Require a login session (ServerData sends this user_id to FastAPI).
       const activeSession = localStorage.getItem(CONFIG.STORAGE_KEY_ACTIVE_SESSION);
-
-      // If on dashboard and NO session exists, redirect to login
       if (!activeSession || activeSession.trim() === "") {
         window.location.replace(CONFIG.VIEW_LOGIN);
+        return;
       }
 
-      // A sprint dashboard without a project scope cannot create or load data.
-      // Redirect before PyScript renders an interactive but invalid dashboard.
-      const projectId = new URLSearchParams(window.location.search).get("project_id");
+      // 2. Resolve the project scope. Remember the last project opened in this
+      //    tab so a link that lost its ?project_id= query still resolves.
+      const params = new URLSearchParams(window.location.search);
+      let projectId = params.get("project_id");
+      if (projectId && /^\d+$/.test(projectId)) {
+        sessionStorage.setItem(CONFIG.STORAGE_KEY_ACTIVE_PROJECT, projectId);
+      } else {
+        projectId = sessionStorage.getItem(CONFIG.STORAGE_KEY_ACTIVE_PROJECT);
+      }
+
+      // 3. A sprint dashboard without a project scope cannot load or create data.
       if (!projectId || !/^\d+$/.test(projectId)) {
         window.location.replace(CONFIG.VIEW_DASHBOARD);
+        return;
       }
+
+      // 4. Put the resolved project back in the URL so the Python modules, which
+      //    read project_id from window.location.search, need no fallback logic.
+      params.set("project_id", projectId);
+      window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
     })();
   </script>
 
@@ -42,6 +54,8 @@
   <link rel="stylesheet" href="../styles/topbar.css">
   <!-- Layout Stylesheet -->
   <link rel="stylesheet" href="../styles/project-layout.css">
+  <!-- Shared member roster styles -->
+  <link rel="stylesheet" href="../styles/members.css">
   <!-- Page Stylesheet -->
   <link rel="stylesheet" href="../styles/sprint-dashboard.css">
   <link rel="stylesheet" href="../styles/sprint-page.css">
@@ -297,68 +311,13 @@
         </div>
       </section>
 
-      <!-- Sprint roster grouped by project role; data attributes provide future contact fields. -->
+      <!-- Roster is rendered from the project's real members (render_members_view). -->
       <section id="members-view" class="members-view hidden" aria-labelledby="members-title">
         <div class="content-header">
-          <h1 id="members-title" class="page-title">Sprint Members</h1>
-          <span class="member-count">6 members</span>
+          <h1 id="members-title" class="page-title">Project Members</h1>
+          <span id="member-count" class="member-count"></span>
         </div>
-        <div class="members-columns">
-          <section class="member-group" aria-labelledby="member-roles-title">
-            <h2 id="member-roles-title" class="member-group-title">Project Leadership</h2>
-            <ul class="member-list">
-              <li class="member-row">
-                <button type="button" class="member-trigger" data-member-name="Agasti Ngoh Cheng Che"
-                  data-member-phone="" data-member-email="">
-                  <span class="member-avatar" aria-hidden="true">AC</span>
-                  <span class="member-details"><strong>Agasti Ngoh Cheng Che</strong><span>Product Owner,
-                      Developer</span></span>
-                </button>
-              </li>
-              <li class="member-row">
-                <button type="button" class="member-trigger" data-member-name="Lye Wei Ho" data-member-phone=""
-                  data-member-email="">
-                  <span class="member-avatar" aria-hidden="true">WH</span>
-                  <span class="member-details"><strong>Lye Wei Ho</strong><span>Scrum Master, Developer</span></span>
-                </button>
-              </li>
-              <li class="member-row">
-                <button type="button" class="member-trigger" data-member-name="Loh Ken Yit" data-member-phone=""
-                  data-member-email="">
-                  <span class="member-avatar" aria-hidden="true">KY</span>
-                  <span class="member-details"><strong>Loh Ken Yit</strong><span>Deputy Scrum Master,
-                      Developer</span></span>
-                </button>
-              </li>
-              <li class="member-row">
-                <button type="button" class="member-trigger" data-member-name="Izaan" data-member-phone=""
-                  data-member-email="">
-                  <span class="member-avatar" aria-hidden="true">I</span>
-                  <span class="member-details"><strong>Izaan</strong><span>Secretary, Developer</span></span>
-                </button>
-              </li>
-            </ul>
-          </section>
-          <section class="member-group" aria-labelledby="member-developers-title">
-            <h2 id="member-developers-title" class="member-group-title">Developers</h2>
-            <ul class="member-list">
-              <li class="member-row">
-                <button type="button" class="member-trigger" data-member-name="Chan Chee Wei" data-member-phone=""
-                  data-member-email="">
-                  <span class="member-avatar" aria-hidden="true">CW</span>
-                  <span class="member-details"><strong>Chan Chee Wei</strong><span>Developer</span></span>
-                </button>
-              </li>
-              <li class="member-row">
-                <button type="button" class="member-trigger" data-member-name="Khoo Lip Hong" data-member-phone=""
-                  data-member-email="">
-                  <span class="member-avatar" aria-hidden="true">LH</span>
-                  <span class="member-details"><strong>Khoo Lip Hong</strong><span>Developer</span></span>
-                </button>
-              </li>
-            </ul>
-          </section>
-        </div>
+        <ul id="sprint-member-list" class="member-list"></ul>
       </section>
 
       <!-- Change events are populated from the shared IndexedDB history store. -->
@@ -414,7 +373,7 @@
   <div id="create-sprint-modal" class="modal-overlay hidden">
     <div class="modal-box">
       <h2 class="modal-title">Create Sprint</h2>
-      <form id="create-sprint-form">
+      <form id="create-sprint-form" onsubmit="event.preventDefault();">
         <label class="modal-label" for="sprint-name-input">Sprint Name</label>
         <input type="text" id="sprint-name-input" class="modal-input" required>
 
@@ -451,7 +410,7 @@
   <div id="create-task-modal" class="modal-overlay hidden">
     <div class="modal-box">
       <h2 class="modal-title">Create Task</h2>
-      <form id="create-task-form">
+      <form id="create-task-form" onsubmit="event.preventDefault();">
         <label class="modal-label" for="task-title-input">Task Title</label>
         <input type="text" id="task-title-input" class="modal-input" required>
 
@@ -478,7 +437,7 @@
 
   <!-- Link settings.json for PyScript backend -->
   <script type="py" config="../../settings.json" src="../backend/project_layout.py"></script>
-  <script type="py" config="../../settings.json" src="../backend/sprint-dashboard.py?v=20261003"></script>
+  <script type="py" config="../../settings.json" src="../backend/sprint-dashboard.py?v=20261004"></script>
 </body>
 
 </html>

@@ -58,17 +58,13 @@ def clear_errors(field_ids: list[str]):
                 error_elem.classes.remove("show")
 
 async def show_snackbar(message: str, duration: float = 2.5):
-    print("[Debug] 1. Entering show_snackbar")
     snackbar = get_dom_element("snackbar")
     
     if snackbar is not None:
-        print("[Debug] 2. Displaying snackbar UI")
         snackbar.innerText = message
         snackbar.classes.add("show")
         
-        print(f"[Debug] 3. Starting asyncio.sleep({duration})...")
         await asyncio.sleep(duration)
-        print("[Debug] 4. Finished asyncio.sleep, hiding snackbar")
         
         snackbar.classes.remove("show")
 

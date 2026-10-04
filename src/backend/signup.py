@@ -21,7 +21,6 @@ async def handle_signup(event):
         event.preventDefault()
 
     db = ServerData()
-    print(db.logged_in_user_id)
 
     clear_errors(["username", "email", "password", "confirm-password"])
 
@@ -53,10 +52,8 @@ async def handle_signup(event):
     if has_error:
         return
 
-    print(db.logged_in_user_id)
     try:
         success, message = await db.register_user(username, email, password)
-        print(f"Register result: {success}, {message}")
         
         if success:
             await show_snackbar("Account Created! Redirecting to login...")

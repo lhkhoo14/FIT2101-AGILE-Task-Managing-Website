@@ -89,103 +89,7 @@
   gap: 16px;
 }
 
-/* Two-column roster layout with a narrow-screen stacked fallback. */
-.members-view .content-header {
-  margin-bottom: 8px;
-}
-
-.members-columns {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 28px;
-}
-
-.member-group-title {
-  margin-bottom: 8px;
-  color: #666666;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.member-count {
-  color: #666666;
-  font-size: 13px;
-}
-
-.member-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  border-top: 1px solid #e2e8f0;
-}
-
-.member-row {
-  min-height: 72px;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-/* Each roster row is a keyboard-accessible button that opens member details. */
-.member-trigger {
-  display: flex;
-  width: 100%;
-  min-height: 72px;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 4px;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-}
-
-.member-trigger:hover .member-details strong,
-.member-trigger:focus-visible .member-details strong {
-  color: #3939b0;
-}
-
-.member-trigger:focus-visible {
-  outline: 2px solid #4747d4;
-  outline-offset: -2px;
-}
-
-.member-avatar {
-  display: grid;
-  flex: 0 0 40px;
-  width: 40px;
-  aspect-ratio: 1;
-  place-items: center;
-  border-radius: 50%;
-  background-color: #e8e8fb;
-  color: #3939b0;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.member-details {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.member-details strong {
-  color: #222222;
-  font-size: 14px;
-  overflow-wrap: anywhere;
-}
-
-.member-details span {
-  color: #666666;
-  font-size: 12px;
-}
-
-@media (max-width: 700px) {
-  .members-columns {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 20px;
-  }
-}
+/* Member roster styles are defined in members.css (shared with the project page). */
 
 /* Contact dialog layout and readable wrapping for long member details. */
 .member-details-modal {
@@ -510,7 +414,7 @@
   margin-bottom: 14px;
 }
 
-.member-avatar {
+.sprint-member-avatar {
   width: 26px;
   height: 26px;
   border-radius: 50%;
@@ -525,11 +429,11 @@
   margin-left: -8px;
 }
 
-.member-avatar:first-child {
+.sprint-member-avatar:first-child {
   margin-left: 0;
 }
 
-.member-avatar-more {
+.sprint-member-avatar-more {
   background-color: #eceef2;
   color: #555555;
 }
