@@ -57,12 +57,17 @@ def render_members(members, contribute_ids, roles):
         user_id = user.get("user_id")
         username = user.get("username", "Unknown User")
 
+        profile_photo = user.get(
+            "profile_photo",
+            "../assets/default-profile.svg"
+        )
         role = get_role_for_member(user_id, roles)
 
         member_data.append({
             "user_id": user_id,
             "username": username,
-            "role": role
+            "role": role,
+            "profile_photo": profile_photo
         })
 
     member_data.sort(
@@ -85,16 +90,16 @@ def render_members(members, contribute_ids, roles):
     for member in member_data:
         username = member["username"]
         role = member["role"]
+        profile_photo = member["profile_photo"]
 
-        # Use the first letter as a simple avatar until profile photos
-        # are supported by the user data model.
-        initial = username[0].upper() if username else "?"
-
+    
         cards_html += f"""
             <div class="member-card">
-                <div class="member-avatar">
-                    {initial}
-                </div>
+                <img
+                    class="member-avatar"
+                    src="{profile_photo}"
+                    alt="Profile photo of {username}"
+                >
 
                 <div class="member-info">
                     <h2>{username}</h2>

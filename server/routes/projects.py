@@ -34,7 +34,10 @@ def create_project(payload: CreateProjectPayload):
         "creator": [payload.user_id],
         "members": [payload.user_id],
         "contribute": [payload.user_id],
-        "roles": {},
+        "roles": {
+            "Product Owner": [payload.user_id],
+            "Scrum Master": [],
+            "Member": [] },
         "backlog": [],
         "sprints": []
     }

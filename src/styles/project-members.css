@@ -20,13 +20,7 @@
     width: 56px;
     height: 56px;
     border-radius: 50%;
-    background: #4747D4;
-    color: #ffffff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 22px;
-    font-weight: 600;
+    object-fit: cover;
     flex-shrink: 0;
 }
 

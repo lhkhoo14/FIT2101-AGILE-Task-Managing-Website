@@ -90,7 +90,15 @@ def get_user(user_id: int):
     user = db_manager.find_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return {"user_id": user["user_id"], "username": user["username"], "email": user["email"]}
+    return {
+    "user_id": user["user_id"],
+    "username": user["username"],
+    "email": user["email"],
+    "profile_photo": user.get(
+        "profile_photo",
+        "../assets/default-profile.svg"
+    )
+}
 
 @router.get("/users")
 def get_users(user_id: int):
@@ -99,6 +107,14 @@ def get_users(user_id: int):
 
     db = db_manager.read()
     return [
-        {"user_id": user["user_id"], "username": user["username"], "email": user["email"]}
-        for user in db["users"]
-    ]
+    {
+        "user_id": user["user_id"],
+        "username": user["username"],
+        "email": user["email"],
+        "profile_photo": user.get(
+            "profile_photo",
+            "../assets/default-profile.svg"
+        )
+    }
+    for user in db["users"]
+]
