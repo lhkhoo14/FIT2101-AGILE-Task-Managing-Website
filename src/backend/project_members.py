@@ -2,7 +2,7 @@ import sys
 import asyncio
 import js
 
-from pyscript import web, window
+from pyscript import web, window, when
 
 if "." not in sys.path:
     sys.path.append(".")
@@ -110,6 +110,83 @@ def render_members(members, contribute_ids, roles):
 
     container.innerHTML = cards_html
 
+@when("click", "#add-member-btn")
+def show_add_member_form(event):
+    form = web.page["#add-member-form"]
+
+    if form:
+        form.classes.remove("hidden")
+
+
+@when("click", "#cancel-add-member")
+def hide_add_member_form(event):
+    form = web.page["#add-member-form"]
+
+    if form:
+        form.classes.add("hidden")
+
+
+@when("click", "#confirm-add-member")
+async def add_member(event):
+    project_id = get_project_id_from_url()
+
+    username_input = web.page["#member-username"]
+    error_element = web.page["#add-member-error"]
+
+    if not project_id or not username_input:
+        return
+
+    username = username_input.value.strip()
+
+    if not username:
+        if error_element:
+            error_element.textContent = "Please enter a username."
+        return
+
+    db = ServerData()
+
+    success, message = await db.add_project_member(
+        project_id,
+        username
+    )
+
+    if not success:
+        if error_element:
+            error_element.textContent = message
+        return
+
+    username_input.value = ""
+
+    form = web.page["#add-member-form"]
+
+    if form:
+        form.classes.add("hidden")
+
+    # Reload the Members page so the new member appears.
+    window.location.reload()
+
+def populate_member_dropdown(users, existing_member_ids):
+    dropdown = web.page["#member-username"]
+
+    if not dropdown:
+        return
+
+    options_html = '<option value="">Select a member</option>'
+
+    for user in users:
+        username = user.get("username", "")
+        user_id = user.get("user_id")
+
+        if user_id in existing_member_ids:
+            continue
+
+        options_html += f'''
+            <option value="{username}" data-user-id="{user_id}">
+                {username}
+            </option>
+        '''
+
+    dropdown.innerHTML = options_html
 
 async def init_members_page():
     project_id = get_project_id_from_url()
@@ -138,7 +215,8 @@ async def init_members_page():
     roles = project_members.get("roles", {})
 
     users = await db.get_users()
-
+    populate_member_dropdown(users, project_members.get("members", [])
+)
     render_members(users, contribute_ids, roles)
 
 

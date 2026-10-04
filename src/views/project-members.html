@@ -85,10 +85,32 @@
         <!-- Main content area where description view gets dynamically rendered -->
         <main id="project-members-content" class="main-content">
     <div class="content-header">
-        <h1 class="page-title">Team Contribution</h1>
-        <p class="page-subtitle">
-            Project members and their assigned roles
-        </p>
+        <div>
+            <h1 class="page-title">Team Contribution</h1>
+            <p class="page-subtitle">
+                Project members and their assigned roles
+            </p>
+        </div>
+
+        <button id="add-member-btn" class="add-member-btn">
+            + Add Member
+        </button>
+    </div>
+
+    <div id="add-member-form" class="add-member-form hidden">
+        <select id="member-username">
+            <option value="">Select a member</option>
+        </select>
+
+        <button id="confirm-add-member" class="confirm-member-btn">
+            Add
+        </button>
+
+        <button id="cancel-add-member" class="cancel-member-btn">
+            Cancel
+        </button>
+
+        <p id="add-member-error"></p>
     </div>
 
     <div id="member-cards" class="member-cards">

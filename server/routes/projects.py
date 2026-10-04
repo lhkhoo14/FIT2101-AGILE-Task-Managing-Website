@@ -16,6 +16,10 @@ class CreateBacklogPayload(BaseModel):
     tag: str
     priority: str
 
+class AddMemberPayload(BaseModel):
+    user_id: int
+    username: str
+
 @router.post("/projects", status_code=status.HTTP_201_CREATED)
 def create_project(payload: CreateProjectPayload):
     db = db_manager.read()
@@ -96,3 +100,68 @@ def create_backlog_item(project_id: int, payload: CreateBacklogPayload):
     project.setdefault("backlog", []).append(item)
     db_manager.write(db)
     return item
+
+@router.post("/projects/{project_id}/members")
+def add_project_member(project_id: int, payload: AddMemberPayload):
+
+    db = db_manager.read()
+
+    project = db.get("projects", {}).get(str(project_id))
+
+    if project is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Project not found"
+        )
+
+    if payload.user_id not in project.get("members", []):
+        raise HTTPException(
+            status_code=403,
+            detail="You are not a member of this project"
+        )
+
+    member = next(
+        (
+            user
+            for user in db.get("users", [])
+            if user.get("username") == payload.username
+        ),
+        None
+    )
+
+    if member is None:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    member_id = member["user_id"]
+
+    if member_id in project.get("members", []):
+        raise HTTPException(
+            status_code=409,
+            detail="User is already a project member"
+        )
+
+    project.setdefault("members", []).append(member_id)
+    project.setdefault("contribute", []).append(member_id)
+
+    roles = project.setdefault(
+        "roles",
+        {
+            "Product Owner": [],
+            "Scrum Master": [],
+            "Member": []
+        }
+    )
+
+    roles.setdefault("Member", []).append(member_id)
+
+    db_manager.write(db)
+
+    return {
+        "status": "success",
+        "member_id": member_id,
+        "username": member["username"],
+        "role": "Member"
+    }

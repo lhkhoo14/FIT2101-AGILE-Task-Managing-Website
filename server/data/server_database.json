@@ -1,6 +1,6 @@
 {
-    "next_user_id": 7,
-    "next_project_id": 8,
+    "next_user_id": 8,
+    "next_project_id": 9,
     "next_backlog_id": 10,
     "next_sprint_id": 3,
     "users": [
@@ -54,6 +54,15 @@
             "username": "Bob",
             "email": "bob@test.com",
             "password": "$2b$12$uQdBAinGPb.eD30SxA86beUF7DPIaFVoEpwzZ2h8Ox7Uw7upt0Uu2",
+            "projects": [],
+            "failed_attempts": 0,
+            "lockout_until": 0
+        },
+        {
+            "user_id": 7,
+            "username": "cat",
+            "email": "cat@test.com",
+            "password": "$2b$12$/UoYtDIGa9z2QTavOuoGGeBPDGhu22bZ.qLZ.Vhc0CYeNUtylbxAm",
             "projects": [],
             "failed_attempts": 0,
             "lockout_until": 0
@@ -247,11 +256,13 @@
             ],
             "members": [
                 4,
-                5,6
+                5,
+                6
             ],
             "contribute": [
                 4,
-                5,6
+                5,
+                6
             ],
             "roles": {
                 "Product Owner": [
@@ -260,7 +271,45 @@
                 "Scrum Master": [
                     5
                 ],
-                "Member": [6]
+                "Member": [
+                    6
+                ]
+            },
+            "backlog": [],
+            "sprints": []
+        },
+        "8": {
+            "project_id": 8,
+            "name": "memebr addition",
+            "description": "memberrrrrr",
+            "creator": [
+                7
+            ],
+            "members": [
+                7,
+                6,
+                5,
+                4,
+                3
+            ],
+            "contribute": [
+                7,
+                6,
+                5,
+                4,
+                3
+            ],
+            "roles": {
+                "Product Owner": [
+                    7
+                ],
+                "Scrum Master": [],
+                "Member": [
+                    6,
+                    5,
+                    4,
+                    3
+                ]
             },
             "backlog": [],
             "sprints": []
