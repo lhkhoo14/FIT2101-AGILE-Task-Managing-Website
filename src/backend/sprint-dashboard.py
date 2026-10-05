@@ -134,13 +134,24 @@ async def _refresh_card_badge(sprint_id):
 
 
 async def _refresh_all_card_badges():
-    refreshes = []
+    # CHANGE: refresh every badge from ONE batched board request. This used to
+    # call get_sprint_backlog once per sprint card, so the dashboard's main load
+    # path still made a round trip (and a server authorization read) per sprint
+    # even after the contributions/effort panels were batched.
+    if not PROJECT_ID:
+        return
+    all_states = await server_data.get_project_kanban_states(PROJECT_ID)
     for card in document.querySelectorAll(".sprint-card"):
         sprint_id = card.getAttribute("data-sprint-id")
-        if sprint_id:
-            refreshes.append(_refresh_card_badge(sprint_id))
-    if refreshes:
-        await asyncio.gather(*refreshes)
+        if not sprint_id:
+            continue
+        badge = document.getElementById(f"backlog-count-{sprint_id}")
+        if badge is None:
+            continue
+        # Counted the same way get_sprint_backlog does: tasks in every column.
+        state = all_states.get(sprint_id) or {}
+        count = sum(len(tasks) for tasks in state.values())
+        badge.textContent = f"{count} backlog item{'s' if count != 1 else ''}"
 
 
 # --- Drag and Drop Logic ---
@@ -326,8 +337,21 @@ async def render_sprints_grid():
         grid.appendChild(empty)
 
 
+# CHANGE: the search box re-rendered the whole sprint grid on every keystroke,
+# which meant two API round trips (sprints + users) per character typed. A short
+# debounce means a burst of typing costs one render instead of one per letter.
+_search_pending = None
+
 @when("input", "#global-search")
 async def handle_search_input(event):
+    global _search_pending
+    if _search_pending is not None:
+        _search_pending.cancel()
+    _search_pending = asyncio.ensure_future(_debounced_render())
+
+
+async def _debounced_render():
+    await asyncio.sleep(0.3)
     await render_sprints_grid()
 
 
