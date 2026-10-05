@@ -47,6 +47,17 @@ body {
     fill: #9e9e9e;
 }
 
+/* CHANGE: the login/signup avatar used to be a hard-coded inline <svg> sitting in
+   this div. It now loads src/assets/default-profile.svg, so you can swap in your
+   own image by dropping it in src/assets/ and changing the src on the <img>.
+   This rule handles the sizing and circular crop for any image. */
+.profile-pic img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
 .input-group {
     margin-bottom: 16px;
     text-align: left;

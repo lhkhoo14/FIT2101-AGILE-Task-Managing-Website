@@ -7,12 +7,13 @@ from html import escape
 if "." not in sys.path:
     sys.path.append(".")
 
-from datetime import datetime
+from datetime import date, datetime
 
 from pyscript import when, web, window, document  # type: ignore[reportMissingImports]
 from auth import show_snackbar
 import js  # type: ignore[reportMissingImports]
 from server_data import ServerData
+import charts
 
 # ServerData is the client-side gateway for all sprint-dashboard API calls.
 # The dashboard never owns sprint data; it asks FastAPI for the current project
@@ -70,6 +71,19 @@ async def _users_by_id(sprints):
 
 def _notify(message):
     asyncio.ensure_future(show_snackbar(message))
+
+
+def _today():
+    """Today's date in the browser's local timezone."""
+    now = js.Date.new()
+    return date(int(now.getFullYear()), int(now.getMonth()) + 1, int(now.getDate()))
+
+
+def _date_range_text(sprint):
+    start, end = charts.parse_iso(sprint.get("start_date")), charts.parse_iso(sprint.get("end_date"))
+    if start is None or end is None:
+        return ""
+    return f"{charts.format_day(start)} \u2013 {charts.format_day(end, True)}"
 
 
 # Build one draggable product-backlog task card.
@@ -269,9 +283,13 @@ def _make_sprint_card(item, users):
     )
     tags_block = f'<div class="sprint-tags">{tags_html}</div>' if tags_html else ""
 
+    dates_text = _date_range_text(item)
+    dates_block = f'<p class="sprint-dates">{escape(dates_text)}</p>' if dates_text else ""
+
     card.innerHTML = f"""
         <h3 class="sprint-title">{escape(item['name'])}</h3>
         <p class="sprint-details">{escape(item.get('details', ''))}</p>
+        {dates_block}
         {tags_block}
         <div class="sprint-members">{_members_html(item, users)}{lock_html}</div>
         <div class="sprint-footer">
@@ -309,13 +327,13 @@ async def render_sprints_grid():
 
 
 @when("input", "#global-search")
-def handle_search_input(event):
-    render_sprints_grid()
+async def handle_search_input(event):
+    await render_sprints_grid()
 
 
 @when("change", "#sort-select")
-def handle_sort_change(event):
-    render_sprints_grid()
+async def handle_sort_change(event):
+    await render_sprints_grid()
 
 
 # History is still a browser-only activity feed. Sprint/project data itself is
@@ -506,8 +524,8 @@ async def render_member_contributions():
 # Switch the visible dashboard panel without navigating away from the page.
 # History and contribution data are fetched only when their panels are opened.
 def _show_dashboard_view(view_id):
-    view_ids = ["sprints-view", "members-view", "history-view", "contributions-view"]
-    nav_ids = ["nav-all-projects", "nav-members", "nav-history", "nav-contributions"]
+    view_ids = ["sprints-view", "members-view", "history-view", "contributions-view", "effort-view"]
+    nav_ids = ["nav-all-projects", "nav-members", "nav-history", "nav-contributions", "nav-effort"]
     is_feature_view = view_id != "sprints-view"
     document.querySelector(".sprint-dashboard-layout").classList.toggle("members-open", is_feature_view)
     for current_view in view_ids:
@@ -517,6 +535,7 @@ def _show_dashboard_view(view_id):
         "members-view": "nav-members",
         "history-view": "nav-history",
         "contributions-view": "nav-contributions",
+        "effort-view": "nav-effort",
     }[view_id]
     for nav_id in nav_ids:
         web.page[nav_id].classList.toggle("active", nav_id == active_nav)
@@ -549,12 +568,96 @@ async def handle_show_contributions(event):
     _show_dashboard_view("contributions-view")
 
 
+# --- Effort breakdown: pie chart of completed tasks per member ---
+async def render_effort_breakdown(selected_sprint_id=None):
+    """Rebuild the sprint filter and draw the completed-tasks-per-member pie chart."""
+    sprints = await server_data.get_sprints(PROJECT_ID)
+
+    select = web.page["effort-sprint-select"]
+    if selected_sprint_id is None:
+        selected_sprint_id = select.value or "all"
+    select.innerHTML = ""
+    options = [("all", "All sprints")] + [(str(s["id"]), s.get("name", "Sprint")) for s in sprints]
+    for value, label in options:
+        option = document.createElement("option")
+        option.value = value
+        option.textContent = label
+        select.appendChild(option)
+    if selected_sprint_id not in [value for value, _ in options]:
+        selected_sprint_id = "all"
+    select.value = selected_sprint_id
+
+    chosen = [s for s in sprints if selected_sprint_id == "all" or str(s["id"]) == selected_sprint_id]
+    states = []
+    for sprint in chosen:
+        state = await server_data.get_kanban_state(PROJECT_ID, sprint["id"])
+        if state is not None:
+            states.append(state)
+
+    counts = charts.effort_counts(states)
+    container = web.page["effort-chart"]
+    if not counts:
+        container.innerHTML = '<p class="feature-empty-state">No tasks have been completed yet.</p>'
+        return
+    container.innerHTML = (
+        f'<div class="pie-wrap">{charts.pie_svg(counts)}'
+        f'<ul class="pie-legend">{charts.pie_legend_html(counts)}</ul></div>'
+    )
+
+
+@when("change", "#effort-sprint-select")
+async def handle_effort_sprint_change(event):
+    await render_effort_breakdown(event.target.value)
+
+
+@when("click", "#nav-effort")
+async def handle_show_effort(event):
+    await render_effort_breakdown()
+    _show_dashboard_view("effort-view")
+
+
+# --- Burndown chart for one sprint ---
+async def open_burndown(sprint_id):
+    sprints = await server_data.get_sprints(PROJECT_ID)
+    sprint = next((s for s in sprints if str(s.get("id")) == str(sprint_id)), None)
+    if sprint is None:
+        return
+    if not is_sprint_member(sprint, current_user_id):
+        _notify("You are not assigned to this sprint.")
+        return
+
+    web.page["burndown-title"].textContent = f"Burndown \u2013 {sprint.get('name', 'Sprint')}"
+    chart_box = web.page["burndown-chart"]
+    summary = web.page["burndown-summary"]
+    state = await server_data.get_kanban_state(PROJECT_ID, sprint["id"])
+    series = charts.burndown_series(sprint, state, _today())
+
+    if series is None:
+        web.page["burndown-subtitle"].textContent = ""
+        chart_box.innerHTML = '<p class="feature-empty-state">This sprint has no start/end dates, so a burndown chart is not available.</p>'
+        summary.textContent = ""
+    else:
+        web.page["burndown-subtitle"].textContent = _date_range_text(sprint)
+        if series["total"] == 0:
+            chart_box.innerHTML = '<p class="feature-empty-state">No tasks in this sprint yet. Drag tasks from the product backlog onto the sprint to track them here.</p>'
+            summary.textContent = ""
+        else:
+            chart_box.innerHTML = charts.burndown_svg(series)
+            percent = round(series["completed"] / series["total"] * 100)
+            summary.textContent = (
+                f"{series['completed']} of {series['total']} tasks completed ({percent}%)."
+                + (" Sprint ended." if sprint.get("status") == "ended" else "")
+            )
+    _open_modal("burndown-modal")
+
+
 @when("app:sprint-dashboard-navigation", "body")
 async def handle_sprint_page_navigation(event):
     """Handle navigation messages from the sprint board iframe."""
     detail = event.detail
     if detail.action == "create-sprint":
         await _render_member_options()
+        _prepare_sprint_date_inputs()
         _open_modal("create-sprint-modal")
         return
 
@@ -563,6 +666,7 @@ async def handle_sprint_page_navigation(event):
         "members": "members-view",
         "history": "history-view",
         "contributions": "contributions-view",
+        "effort": "effort-view",
     }
     view_id = view_ids.get(detail.view)
     if view_id is None:
@@ -573,6 +677,8 @@ async def handle_sprint_page_navigation(event):
         await render_members_view()
     elif detail.view == "contributions":
         await render_member_contributions()
+    elif detail.view == "effort":
+        await render_effort_breakdown()
     _show_dashboard_view(view_id)
 
 
@@ -641,9 +747,28 @@ def handle_close_member_details(event):
     _close_modal("member-details-modal")
 
 
+def _prepare_sprint_date_inputs():
+    """Dates start empty (the user must choose them) but cannot be in the past."""
+    today_text = _today().isoformat()
+    start_input, end_input = web.page["sprint-start-input"], web.page["sprint-end-input"]
+    start_input.min = today_text
+    end_input.min = today_text
+
+
+@when("change", "#sprint-start-input")
+def handle_sprint_start_change(event):
+    # The end date can never precede the chosen start date.
+    start_input, end_input = web.page["sprint-start-input"], web.page["sprint-end-input"]
+    if start_input.value:
+        end_input.min = max(start_input.value, _today().isoformat())
+        if end_input.value and end_input.value < end_input.min:
+            end_input.value = ""
+
+
 @when("click", "#create-sprint-btn")
 async def handle_open_create_sprint(event):
     await _render_member_options()
+    _prepare_sprint_date_inputs()
     _open_modal("create-sprint-modal")
 
 
@@ -681,6 +806,19 @@ async def handle_create_sprint_submit(event):
         _notify("Open this sprint dashboard from a project first.")
         return
 
+    start_text = web.page["sprint-start-input"].value
+    end_text = web.page["sprint-end-input"].value
+    start, end = charts.parse_iso(start_text), charts.parse_iso(end_text)
+    if start is None or end is None:
+        _notify("Please choose both a sprint start date and end date.")
+        return
+    if end < start:
+        _notify("The sprint end date cannot be before the start date.")
+        return
+    if end < _today():
+        _notify("The sprint end date cannot be in the past.")
+        return
+
     now_ms = int(time.time() * 1000)
     tags = normalize_tags(web.page["sprint-tags-input"].value)
     members = _selected_member_ids()
@@ -689,6 +827,8 @@ async def handle_create_sprint_submit(event):
         name,
         details or "No description",
         "active",
+        start_text,
+        end_text,
         priority=priority,
         tags=tags,
         members=members,
@@ -753,13 +893,14 @@ async def handle_sprint_card_click(event):
     # Open the selected sprint board unless the chart control was clicked.
     # The dashboard keeps one hidden iframe warm so this transition does not
     # restart PyScript for every sprint selection.
-    if event.target.closest(".burndown-button"):
-        return
     card = event.target.closest(".sprint-card")
     if not card:
         return
     sprint_id = card.getAttribute("data-sprint-id")
     if not sprint_id:
+        return
+    if event.target.closest(".burndown-button"):
+        await open_burndown(sprint_id)
         return
     sprints = await server_data.get_sprints(PROJECT_ID)
     sprint = next((s for s in sprints if str(s.get("id")) == str(sprint_id)), None)
@@ -790,6 +931,7 @@ view_ids = {
     "members": "members-view",
     "history": "history-view",
     "contributions": "contributions-view",
+    "effort": "effort-view",
 }
 if requested_view in view_ids:
     if requested_view == "history":
@@ -798,10 +940,13 @@ if requested_view in view_ids:
         asyncio.ensure_future(render_members_view())
     elif requested_view == "contributions":
         asyncio.ensure_future(render_member_contributions())
+    elif requested_view == "effort":
+        asyncio.ensure_future(render_effort_breakdown())
     _show_dashboard_view(view_ids[requested_view])
 
 requested_modal = dashboard_params.get("modal")
 if requested_modal == "create-sprint-modal":
+    _prepare_sprint_date_inputs()
     _open_modal(requested_modal)
 
 # A redirect can carry a short user-facing message without browser storage.

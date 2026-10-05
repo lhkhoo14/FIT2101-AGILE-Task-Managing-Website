@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sprint - Brand Name</title>
+  <title>Sprint - John Monash</title>
 
   <!-- PyScript Core CDN -->
   <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
@@ -12,40 +12,19 @@
 
   <script>
     const CONFIG = {
+      STORAGE_KEY_APP_DATA: "pyscript_app_data",
       STORAGE_KEY_ACTIVE_SESSION: "session_user_id",
-      STORAGE_KEY_ACTIVE_PROJECT: "active_project_id",
       VIEW_LOGIN: "login.html",
       VIEW_DASHBOARD: "dashboard.html"
     };
 
     (function () {
-      // 1. Require a login session (ServerData sends this user_id to FastAPI).
+      // This is only the FastAPI session guard. Sprint and Kanban data are
+      // loaded through ServerData, not from browser storage.
       const activeSession = localStorage.getItem(CONFIG.STORAGE_KEY_ACTIVE_SESSION);
       if (!activeSession || activeSession.trim() === "") {
         window.location.replace(CONFIG.VIEW_LOGIN);
-        return;
       }
-
-      // 2. Resolve the project scope. Remember the last project opened in this
-      //    tab so a link that lost its ?project_id= query still resolves.
-      const params = new URLSearchParams(window.location.search);
-      let projectId = params.get("project_id");
-      if (projectId && /^\d+$/.test(projectId)) {
-        sessionStorage.setItem(CONFIG.STORAGE_KEY_ACTIVE_PROJECT, projectId);
-      } else {
-        projectId = sessionStorage.getItem(CONFIG.STORAGE_KEY_ACTIVE_PROJECT);
-      }
-
-      // 3. A sprint board without a project scope cannot load or create data.
-      if (!projectId || !/^\d+$/.test(projectId)) {
-        window.location.replace(CONFIG.VIEW_DASHBOARD);
-        return;
-      }
-
-      // 4. Put the resolved project back in the URL so the Python modules, which
-      //    read project_id from window.location.search, need no fallback logic.
-      params.set("project_id", projectId);
-      window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
     })();
   </script>
 
@@ -55,11 +34,15 @@
   <!-- Layout Stylesheet -->
   <link rel="stylesheet" href="../styles/project-layout.css">
   <!-- Page Stylesheet -->
-  <link rel="stylesheet" href="../styles/sprint-page.css">
+  <link rel="stylesheet" href="../styles/sprint-page.css?v=20261005">
   <!-- Snackbar Stylesheet -->
   <link rel="stylesheet" href="../styles/snackbar.css">
   <!-- Shared IndexedDB API used to record sprint-board events. -->
   <script src="../backend/history-db.js"></script>
+  <script>
+    // Never let a form perform a native submit; PyScript handlers run too late to cancel it.
+    document.addEventListener("submit", (event) => event.preventDefault(), true);
+  </script>
   <script>
     window.isEmbeddedSprintPage = window.parent !== window;
     window.addEventListener("message", (event) => {
@@ -84,7 +67,7 @@
           <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
         </svg>
       </button>
-      <span class="brand-title">Brand Name</span>
+      <span class="brand-title">John Monash</span>
     </div>
 
     <!-- Rounded Search Bar (Middle) -->
@@ -95,6 +78,12 @@
       </svg>
       <input type="text" id="global-search" class="search-input" placeholder="Search tasks or tags...">
     </div>
+
+    <!-- TEMP demo-only role switch — remove once real User.role exists -->
+    <select id="demo-role-select" class="demo-role-select" title="Demo: view board as this role">
+      <option value="employee">View as: Employee</option>
+      <option value="manager">View as: Manager</option>
+    </select>
 
     <!-- Profile Picture & Dropdown Menu -->
     <div class="profile-menu-container">
@@ -145,13 +134,13 @@
           <span class="additional-label"></span>
           <span>Member Contributions</span>
         </button>
+        <button type="button" id="nav-effort" class="nav-item section-item">
+          <span class="additional-label"></span>
+          <span>Effort Breakdown</span>
+        </button>
         <button type="button" id="nav-history" class="nav-item section-item">
           <span class="additional-label"></span>
           <span>History</span>
-        </button>
-        <button type="button" id="nav-members" class="nav-item section-item">
-          <span class="additional-label"></span>
-          <span>Members</span>
         </button>
       </nav>
 
@@ -173,6 +162,7 @@
         <div class="sprint-title-group">
           <h1 class="page-title" id="sprint-name">Sprint</h1>
           <span class="kanban-badge">Kanban View</span>
+          <span class="kanban-badge sprint-range-badge" id="sprint-range"></span>
         </div>
         <button type="button" id="end-sprint-btn" class="btn-end-sprint">End Sprint</button>
       </div>
@@ -293,13 +283,47 @@
         <span id="task-progress-text" class="task-progress-text"></span>
       </div>
 
+      <label class="modal-label" for="task-assignee-select">Assignee</label>
+      <select id="task-assignee-select" class="modal-input"></select>
+
+      <div class="task-date-row">
+        <div>
+          <label class="modal-label" for="task-start-input">Task start date</label>
+          <input type="date" id="task-start-input" class="modal-input">
+        </div>
+        <div>
+          <label class="modal-label" for="task-end-input">Task end date</label>
+          <input type="date" id="task-end-input" class="modal-input">
+        </div>
+      </div>
+      <p id="task-date-hint" class="task-date-hint"></p>
+      <button type="button" id="task-details-save-btn" class="modal-btn-submit task-save-btn">Save assignee &amp; dates</button>
+
       <div class="modal-label" style="margin-top: 15px;">Checklist</div>
       <div id="checklist-items" class="checklist-items"></div>
 
-      <form id="checklist-add-form" class="checklist-add-form" onsubmit="event.preventDefault();">
+      <form id="checklist-add-form" class="checklist-add-form">
         <input type="text" id="checklist-input" class="modal-input" placeholder="Add a sub-item..." />
         <button type="submit" id="checklist-add-btn" class="modal-btn-submit">Add</button>
       </form>
+
+      <!-- Time Log Section -->
+      <div id="time-log-label" class="modal-label" style="margin-top: 15px;">Time Log</div>
+      <div id="time-log-buttons" class="time-log-buttons">
+        <button type="button" id="start-task-btn" class="modal-btn-submit">Start Task</button>
+        <button type="button" id="end-task-btn" class="modal-btn-cancel">End Task</button>
+      </div>
+      <div id="time-log-status" class="time-log-status"></div>
+
+      <!-- Manager Feedback / Review Chat -->
+      <div id="review-feedback-section" class="review-feedback-section hidden">
+        <div class="modal-label" style="margin-top: 15px;">Manager Feedback</div>
+        <div id="feedback-messages" class="feedback-messages"></div>
+        <form id="feedback-add-form" class="checklist-add-form">
+          <input type="text" id="feedback-input" class="modal-input" placeholder="Post feedback..." />
+          <button type="submit" id="feedback-add-btn" class="modal-btn-submit">Post</button>
+        </form>
+      </div>
 
       <div class="modal-actions" style="margin-top: 20px;">
         <button type="button" id="task-detail-close-btn" class="modal-btn-cancel">Close</button>
@@ -308,8 +332,8 @@
   </div>
 
   <!-- Link settings.json for PyScript backend -->
-  <script type="py" config="../../settings.json" src="../backend/layout.py?v=20261003"></script>
-  <script type="py" config="../../settings.json" src="../backend/sprint-page.py?v=20261003"></script>
+  <script type="py" config="../../settings.json" src="../backend/layout.py?v=20261002"></script>
+  <script type="py" config="../../settings.json" src="../backend/sprint-page.py?v=20261005"></script>
 </body>
 
-</html>
+</html>

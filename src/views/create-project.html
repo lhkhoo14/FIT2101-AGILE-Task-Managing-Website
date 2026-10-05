@@ -17,7 +17,7 @@
     <!-- Dashboard styles for matching appearance -->
     <link rel="stylesheet" href="../styles/dashboard.css">
 
-    <link rel="stylesheet" href="../styles/create-project.css">
+    <link rel="stylesheet" href="../styles/create-project.css?v=20261005">
 </head>
 
 <body>
@@ -54,6 +54,27 @@
                     ></textarea>
 
                     <div id="project-description-error" class="error-message"></div>
+                </div>
+
+                <!-- CHANGE: new "Add Members" section. The create-project API takes
+                     only a name and description, so there is no way to attach
+                     members up front. Instead this list is filled with every
+                     registered user, and each ticked username is added to the
+                     project right after it is created (see create_project.py). -->
+                <div class="form-group">
+                    <label class="form-label" for="project-members">
+                        Add Members
+                    </label>
+
+                    <p class="form-hint">
+                        Optional. Tick everyone who should have access to this project.
+                    </p>
+
+                    <div id="project-members" class="members-checkbox-list">
+                        <p class="members-loading">Loading members...</p>
+                    </div>
+
+                    <div id="project-members-error" class="error-message"></div>
                 </div>
 
                 <div class="button-container">

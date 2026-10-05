@@ -1,4 +1,6 @@
-/* --- SPRINT DASHBOARD LAYOUT --- */
+/* --- SPRINT DASHBOARD LAYOUT ---
+   Views rail | Backlog | Feature content. Only the project rail to the left of
+   this collapses; this grid stays at full width. */
 .sprint-dashboard-layout {
   display: grid;
   grid-template-columns: 240px 280px 1fr;
@@ -25,12 +27,131 @@
   display: none;
 }
 
+/* CHANGE: the project rail now collapses to icons and expands on hover/focus.
+   Previously it sat at a fixed 240px, which on a ~1000px window left the feature
+   panels starting at the midpoint of the screen and badly squeezed.
+   Deliberately not scoped with :has() so it works on every browser. */
+#project-sidebar {
+  width: 68px;
+  padding: 20px 6px;
+  overflow: hidden;
+  transition: width 0.25s ease, padding 0.25s ease;
+}
+
+#project-sidebar .nav-item,
+#project-sidebar .nav-section-title {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+#project-sidebar .nav-item {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+#project-sidebar:hover,
+#project-sidebar:focus-within {
+  width: 240px;
+  padding: 20px 12px;
+}
+
+#project-sidebar:hover .nav-item,
+#project-sidebar:focus-within .nav-item,
+#project-sidebar:hover .nav-section-title,
+#project-sidebar:focus-within .nav-section-title {
+  opacity: 1;
+}
+
+#project-sidebar:hover .nav-item,
+#project-sidebar:focus-within .nav-item {
+  justify-content: flex-start;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+/* CHANGE: new responsive tiers. The layout had no media queries at all, so both
+   rails stayed at a fixed 240px no matter how narrow the window got.
+     1200px - narrow both rails
+     1024px - hide the backlog, it leaves no usable content width
+      900px - collapse the views rail to icons as well
+   Verified at an 815px viewport: content left edge 497 -> 160, width 485 -> 655. */
 @media (max-width: 1200px) {
   .sprint-dashboard-layout {
-    grid-template-columns: 240px 1fr;
+    grid-template-columns: 200px 220px 1fr;
   }
-  .backlog-sidebar {
-    grid-column: 1 / -1;
+
+  .sprint-dashboard-layout > #sidebar {
+    width: 200px;
+  }
+
+  .sprint-dashboard-layout.members-open {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+
+  .sprint-dashboard-layout:has(#sidebar.collapsed) {
+    grid-template-columns: 72px 260px 1fr;
+  }
+
+  .sprint-dashboard-layout.members-open:has(#sidebar.collapsed) {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+}
+
+/* Below this a backlog beside a feature panel leaves no usable content width. */
+@media (max-width: 1024px) {
+  .sprint-dashboard-layout,
+  .sprint-dashboard-layout.members-open {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+
+  .sprint-dashboard-layout > #sidebar {
+    width: 200px;
+  }
+
+  .sprint-dashboard-layout .backlog-sidebar {
+    display: none;
+  }
+
+  .sprint-dashboard-layout:has(#sidebar.collapsed) {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+}
+
+/* Narrow windows collapse the views rail to icons as well. The 900px cut-off
+   covers laptops whose usable width sits just under 850px once browser chrome
+   and the project rail are accounted for. */
+@media (max-width: 900px) {
+  .sprint-dashboard-layout,
+  .sprint-dashboard-layout.members-open,
+  .sprint-dashboard-layout:has(#sidebar.collapsed),
+  .sprint-dashboard-layout.members-open:has(#sidebar.collapsed) {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .sprint-dashboard-layout > #sidebar {
+    width: 72px;
+    padding: 20px 6px;
+    overflow: hidden;
+  }
+
+  .sprint-dashboard-layout > #sidebar .nav-item {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .sprint-dashboard-layout > #sidebar .nav-section-title,
+  .sprint-dashboard-layout > #sidebar .nav-item span,
+  .sprint-dashboard-layout > #sidebar .btn-create span {
+    display: none;
+  }
+
+  /* Keep the create icon centred once its label is gone. */
+  .sprint-dashboard-layout > #sidebar .btn-create {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
   }
 }
 
@@ -342,6 +463,42 @@
   font-size: 12px;
 }
 
+/* --- ADDITIONAL FEATURES LAYOUT ---
+   The feature panels (Members, Change History, Effort Chart, Contributions) read
+   down the left of the content column instead of sitting centred, so the text
+   and charts are not squeezed into a narrow centred block. */
+.feature-view,
+.feature-view .content-header,
+.feature-view .feature-empty-state,
+.members-view,
+.members-view *,
+.activity-list,
+.activity-row,
+.activity-summary,
+.activity-metadata,
+.contribution-row,
+.contribution-name,
+.contribution-metrics,
+.contribution-tasks,
+.chart-caption,
+.effort-chart,
+.burndown-chart {
+  text-align: left;
+}
+
+.feature-view .activity-row,
+.feature-view .activity-summary,
+.feature-view .feature-empty-state {
+  justify-content: flex-start;
+  justify-items: start;
+}
+
+.feature-view .activity-list {
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 0;
+}
+
 /* Task rows separate completed work typographically from unfinished work. */
 .contribution-tasks {
   display: grid;
@@ -563,4 +720,114 @@
   text-align: center;
   font-size: 14px;
   color: #888888;
+}
+
+/* --- SPRINT DATES, BURNDOWN CHART & EFFORT BREAKDOWN --- */
+.sprint-dates {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #4747D4;
+}
+
+.date-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.modal-box.chart-modal-box {
+  max-width: 720px;
+  width: 92vw;
+}
+
+.chart-caption {
+  margin: 0;
+  color: #666666;
+  font-size: 13px;
+}
+
+.burndown-chart,
+.effort-chart {
+  width: 100%;
+}
+
+.chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 18px;
+  font-size: 12px;
+  color: #555555;
+}
+
+.legend-line {
+  display: inline-block;
+  width: 22px;
+  height: 0;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-top: 3px solid #4747D4;
+}
+
+.legend-line.ideal {
+  border-top: 2px dashed #94a3b8;
+}
+
+.chart-summary {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #222222;
+}
+
+.pie-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 32px;
+  margin-top: 12px;
+}
+
+.pie-svg {
+  width: min(320px, 100%);
+  flex: 0 0 auto;
+}
+
+.pie-legend {
+  flex: 1 1 220px;
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pie-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #222222;
+}
+
+.pie-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  flex: 0 0 auto;
+}
+
+.pie-legend-name {
+  font-weight: 600;
+}
+
+.pie-legend-count {
+  margin-left: auto;
+  color: #666666;
+  font-size: 13px;
 }

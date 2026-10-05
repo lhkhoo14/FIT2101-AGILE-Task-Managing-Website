@@ -1,17 +1,15 @@
 {
     "next_user_id": 4,
-    "next_project_id": 5,
-    "next_backlog_id": 10,
-    "next_sprint_id": 3,
+    "next_project_id": 4,
+    "next_backlog_id": 13,
+    "next_sprint_id": 6,
     "users": [
         {
             "user_id": 1,
             "username": "wa",
             "email": "wa@gmail.com",
             "password": "$2b$12$SV.Re86eHEZ1kJND/kfE8e4HAm5BJtJxjxTrhmut6wrb/Jk6d/nXC",
-            "projects": [
-                4
-            ],
+            "projects": [],
             "failed_attempts": 0,
             "lockout_until": 0
         },
@@ -46,18 +44,6 @@
                 1
             ],
             "backlog": [
-                {
-                    "id": 4,
-                    "title": "test 1231",
-                    "tag": "frontend",
-                    "priority": "medium"
-                },
-                {
-                    "id": 5,
-                    "title": "testfrontendlow",
-                    "tag": "frontend",
-                    "priority": "low"
-                },
                 {
                     "id": 6,
                     "title": "testbackendlow",
@@ -130,17 +116,55 @@
                                 "assignee": null
                             }
                         ],
-                        "active": [
-                            {
-                                "id": "task-9",
-                                "title": "test me to the moon",
-                                "tag": "frontend",
-                                "priority": "low",
-                                "assignee": null
-                            }
-                        ],
+                        "active": [],
                         "review": [],
                         "completed": []
+                    }
+                },
+                {
+                    "id": "5",
+                    "name": "testing charts",
+                    "details": "testing burndown chart",
+                    "status": "active",
+                    "start_date": "2026-10-03",
+                    "end_date": "2026-10-05",
+                    "priority": "medium",
+                    "tags": [
+                        "test"
+                    ],
+                    "members": [
+                        1,
+                        2,
+                        3
+                    ],
+                    "created_by": 1,
+                    "created_at": 1791015813465,
+                    "kanban_state": {
+                        "backlog": [],
+                        "active": [],
+                        "review": [
+                            {
+                                "id": "task-5",
+                                "title": "testfrontendlow",
+                                "tag": "frontend",
+                                "priority": "low",
+                                "assignee": null,
+                                "start_date": null,
+                                "end_date": null
+                            }
+                        ],
+                        "completed": [
+                            {
+                                "id": "task-4",
+                                "title": "test 1231",
+                                "tag": "frontend",
+                                "priority": "medium",
+                                "assignee": null,
+                                "start_date": null,
+                                "end_date": null,
+                                "completed_at": "2026-10-03"
+                            }
+                        ]
                     }
                 }
             ]
@@ -168,21 +192,150 @@
             "members": [
                 3
             ],
-            "backlog": [],
-            "sprints": []
-        },
-        "4": {
-            "project_id": 4,
-            "name": "test",
-            "description": "big testing",
-            "creator": [
-                1
+            "backlog": [
+                {
+                    "id": 12,
+                    "title": "test",
+                    "tag": "backend",
+                    "priority": "medium"
+                }
             ],
-            "members": [
-                1
-            ],
-            "backlog": [],
-            "sprints": []
+            "sprints": [
+                {
+                    "id": "3",
+                    "name": "1",
+                    "details": "testing",
+                    "status": "active",
+                    "priority": "high",
+                    "tags": [
+                        "frontend"
+                    ],
+                    "members": [
+                        3
+                    ],
+                    "created_by": 3,
+                    "created_at": 1791005753761,
+                    "kanban_state": {
+                        "backlog": [],
+                        "active": [],
+                        "review": [
+                            {
+                                "id": "task-9",
+                                "title": "Task 4",
+                                "tag": "frontend",
+                                "priority": "high",
+                                "assignee": null,
+                                "checklist": [
+                                    {
+                                        "id": "1791162246981",
+                                        "text": "Check 2",
+                                        "done": false,
+                                        "created_by": 3
+                                    }
+                                ]
+                            }
+                        ],
+                        "completed": []
+                    }
+                },
+                {
+                    "id": "4",
+                    "name": "Sprint 5",
+                    "details": "testing",
+                    "status": "active",
+                    "start_date": "2026-10-03",
+                    "end_date": "2026-10-06",
+                    "priority": "low",
+                    "tags": [
+                        "cooked"
+                    ],
+                    "members": [
+                        1,
+                        2,
+                        3
+                    ],
+                    "created_by": 3,
+                    "created_at": 1791014833649,
+                    "kanban_state": {
+                        "backlog": [],
+                        "active": [],
+                        "review": [
+                            {
+                                "id": "task-11",
+                                "title": "test",
+                                "tag": "backend",
+                                "priority": "medium",
+                                "assignee": null,
+                                "start_date": null,
+                                "end_date": null,
+                                "time_log": {
+                                    "started_at": "2026-10-04T15:20:02.616000",
+                                    "ended_at": "2026-10-04T15:20:03.232000"
+                                },
+                                "checklist": [
+                                    {
+                                        "id": "1791162551305",
+                                        "text": "Check 2",
+                                        "done": false,
+                                        "created_by": 3
+                                    },
+                                    {
+                                        "id": "1791162553456",
+                                        "text": "Check 1",
+                                        "done": false,
+                                        "created_by": 3
+                                    },
+                                    {
+                                        "id": "1791162555041",
+                                        "text": "test",
+                                        "done": false,
+                                        "created_by": 3
+                                    },
+                                    {
+                                        "id": "1791162560761",
+                                        "text": "idek bruh",
+                                        "done": false,
+                                        "created_by": 3
+                                    }
+                                ]
+                            }
+                        ],
+                        "completed": [
+                            {
+                                "id": "task-10",
+                                "title": "Task 4",
+                                "tag": "backend",
+                                "priority": "medium",
+                                "assignee": "Bob The",
+                                "start_date": null,
+                                "end_date": null,
+                                "checklist": [
+                                    {
+                                        "id": "1791095089109",
+                                        "text": "test",
+                                        "done": true,
+                                        "created_by": 3
+                                    },
+                                    {
+                                        "id": "1791162065521",
+                                        "text": "Check 2",
+                                        "done": true,
+                                        "created_by": 3
+                                    },
+                                    {
+                                        "id": "1791162084459",
+                                        "text": "Check 2",
+                                        "done": true,
+                                        "created_by": 3
+                                    }
+                                ],
+                                "assignee_id": 3,
+                                "completed_at": "2026-10-05"
+                            }
+                        ]
+                    }
+                }
+            ]
         }
     }
 }

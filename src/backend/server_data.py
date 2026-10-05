@@ -206,32 +206,19 @@ class ServerData:
             print(f"[API Error] Failed to fetch project: {e}")
             return None
 
-    async def get_project_members(self, project_id: int) -> list[dict]:
-        """Fetch the members of a project from FastAPI."""
-        user_id = self.get_active_session()
-        if user_id is None:
-            return []
-        try:
-            response = await pyfetch(
-                f"{self.api_url}/projects/{project_id}/members?user_id={user_id}",
-                method="GET",
-                headers={"Content-Type": "application/json"},
-            )
-            return await response.json() if response.status == 200 else []
-        except Exception as e:
-            print(f"[API Error] Failed to fetch project members: {e}")
-            return []
-
     async def get_project_team(self, project_id: int) -> list[dict]:
         """Project members plus everyone assigned to any of its sprints.
 
-        A project only records its creator in `members`, so the members assigned
-        to the project's sprints are unioned in to describe the whole team.
+        The members endpoint returns {members, contribute, roles}, so the roster
+        is built from those member ids (plus each sprint's members) and resolved
+        against the registered users.
         """
-        member_ids = {
-            int(member["user_id"])
-            for member in await self.get_project_members(project_id)
-        }
+        member_ids = set()
+        payload = await self.get_project_members(project_id) or {}
+        for member_id in payload.get("members", []) or []:
+            if str(member_id).isdigit():
+                member_ids.add(int(member_id))
+
         for sprint in await self.get_sprints(project_id):
             for member_id in (sprint.get("members") or []):
                 if str(member_id).isdigit():
@@ -240,6 +227,49 @@ class ServerData:
         users = await self.get_users()
         return [user for user in users if int(user["user_id"]) in member_ids]
     
+    async def get_project_members(self, project_id: int) -> dict | None:
+        """Fetches project members, contributors and roles from FastAPI."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return None
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/members?user_id={user_id}",
+                method="GET",
+                headers={"Content-Type": "application/json"}
+            )
+            if response.status == 200:
+                return await response.json()
+
+            print(f"[API Error] Failed to fetch project members: {response.status}")
+            return None
+        except Exception as e:
+            print(f"[API Error] Failed to fetch project members: {e}")
+            return None
+
+    async def add_project_member(self, project_id: int, username: str) -> tuple[bool, str]:
+        """Adds an existing user to a project by username."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "No active session."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/members",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id, "username": username})
+            )
+            if response.status == 200:
+                return True, "Member added successfully."
+
+            data = await response.json()
+            return False, data.get("detail", "Failed to add member.")
+        except Exception as e:
+            print(f"[API Error] Failed to add project member: {e}")
+            return False, "Failed to add member."
+
     # --- Backlog & Sprint API Calls ---
     async def get_backlog_items(self, project_id: int) -> list[dict]:
         """Fetches product backlog items from server database."""
@@ -309,6 +339,8 @@ class ServerData:
         name: str,
         details: str,
         status: str,
+        start_date: str,
+        end_date: str,
         priority: str = "medium",
         tags: list[str] | None = None,
         members: list[int] | None = None,
@@ -329,6 +361,8 @@ class ServerData:
                     "name": name,
                     "details": details,
                     "status": status,
+                    "start_date": start_date,
+                    "end_date": end_date,
                     "priority": priority,
                     "tags": tags or [],
                     "members": members,
@@ -338,7 +372,10 @@ class ServerData:
             if response.status in (200, 201):
                 return True, "", await response.json()
             err_data = await response.json()
-            return False, err_data.get("detail", "Failed to create sprint."), None
+            detail = err_data.get("detail", "Failed to create sprint.")
+            if isinstance(detail, list):  # FastAPI validation errors arrive as a list
+                detail = "; ".join(str(err.get("msg", "Invalid input")) for err in detail)
+            return False, str(detail), None
         except Exception as e:
             print(f"[API Error] Failed to create sprint: {e}")
             return False, "Unable to connect to the server.", None
@@ -422,7 +459,10 @@ class ServerData:
             if response.status == 200:
                 return True, ""
             err_data = await response.json()
-            return False, err_data.get("detail", "Failed to update board.")
+            detail = err_data.get("detail", "Failed to update board.")
+            if isinstance(detail, list):
+                detail = "; ".join(str(err.get("msg", "Invalid input")) for err in detail)
+            return False, str(detail)
         except Exception as e:
             print(f"[API Error] Failed to update kanban state: {e}")
             return False, "Unable to connect to the server."

@@ -6,6 +6,9 @@ from security import hash_password, verify_password
 
 router = APIRouter()
 
+# Fallback avatar (path is relative to src/views/, where the pages that display it live).
+DEFAULT_PROFILE_PHOTO = "../assets/default-profile.svg"
+
 class LoginPayload(BaseModel):
     email: EmailStr
     password: str
@@ -78,7 +81,12 @@ def get_user(user_id: int):
     user = db_manager.find_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return {"user_id": user["user_id"], "username": user["username"], "email": user["email"]}
+    return {
+        "user_id": user["user_id"],
+        "username": user["username"],
+        "email": user["email"],
+        "profile_photo": user.get("profile_photo", DEFAULT_PROFILE_PHOTO)
+    }
 
 @router.get("/users")
 def get_users(user_id: int):
@@ -87,6 +95,11 @@ def get_users(user_id: int):
 
     db = db_manager.read()
     return [
-        {"user_id": user["user_id"], "username": user["username"], "email": user["email"]}
+        {
+            "user_id": user["user_id"],
+            "username": user["username"],
+            "email": user["email"],
+            "profile_photo": user.get("profile_photo", DEFAULT_PROFILE_PHOTO)
+        }
         for user in db["users"]
     ]

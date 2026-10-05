@@ -14,17 +14,12 @@ def get_project_id_from_url():
 
 
 def _highlight_active_nav():
-    # The page reloads per view, so the nav item matching ?view= is marked here.
-    view = js.URLSearchParams.new(window.location.search).get("view")
-    active_id = "#nav-members" if view == "members" else "#nav-description"
-    for nav_id in ("#nav-description", "#nav-members"):
-        item = web.page[nav_id]
-        if item is None:
-            continue
-        if nav_id == active_id:
-            item.classList.add("active")
-        else:
-            item.classList.remove("active")
+    # CHANGE: was reading ?view= and highlighting #nav-members when it matched.
+    # Members are a separate page now and mark their own nav item, so this page
+    # only ever highlights Description.
+    item = web.page["#nav-description"]
+    if item is not None:
+        item.classList.add("active")
 
 
 def init_project_layout():
@@ -45,6 +40,11 @@ def toggle_sidebar(event):
             sidebar.classes.add("collapsed")
 
 # --- PROJECT NAVIGATION HANDLERS ---
+@when("click", "#nav-projects")
+def handle_nav_projects(event):
+    # Back to the project dashboard (all projects).
+    window.location.href = "dashboard.html"
+
 @when("click", "#nav-description")
 def handle_nav_description(event):
     project_id = get_project_id_from_url()
@@ -52,8 +52,10 @@ def handle_nav_description(event):
 
 @when("click", "#nav-members")
 def handle_nav_members(event):
+    # CHANGE: was project-page.html?view=members, which rendered the simple roster
+    # on this page. Members now have their own page, so the sidebar button opens it.
     project_id = get_project_id_from_url()
-    window.location.href = f"project-page.html?project_id={project_id}&view=members"
+    window.location.href = f"project-members.html?project_id={project_id}"
 
 @when("click", "#nav-sprints")
 def handle_nav_sprints(event):

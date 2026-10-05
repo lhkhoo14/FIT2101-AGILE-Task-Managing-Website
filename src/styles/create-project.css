@@ -84,3 +84,57 @@
     background: #eeeeee;
     color: #333333;
 }
+
+/* CHANGE: new "Add Members" checkbox list for the Create Project page.
+   Scoped to this page rather than reusing members.css, which styles the
+   read-only roster on the sprint dashboard. */
+.form-hint {
+    margin: 0 0 10px;
+    color: #666666;
+    font-size: 13px;
+}
+
+.members-checkbox-list {
+    max-height: 190px;
+    overflow-y: auto;
+    border: 1px solid #cccccc;
+    border-radius: 8px;
+    padding: 6px;
+    background: #ffffff;
+}
+
+.members-loading,
+.members-empty {
+    margin: 0;
+    padding: 10px;
+    color: #666666;
+    font-size: 13px;
+}
+
+.member-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: left;
+}
+
+.member-checkbox:hover {
+    background: #f4f4f8;
+}
+
+.member-checkbox-input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    flex-shrink: 0;
+    cursor: pointer;
+    accent-color: #4747d4;
+}
+
+.member-name {
+    font-size: 14px;
+    color: #333333;
+}

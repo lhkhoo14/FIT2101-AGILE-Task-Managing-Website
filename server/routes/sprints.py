@@ -2,14 +2,39 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from database_manager import db_manager
 from dependencies import get_verified_project
+import sprint_logic
 
 router = APIRouter()
+
+EMPTY_KANBAN = {"backlog": [], "active": [], "review": [], "completed": []}
+
+
+def _load_project(project_id: int, user_id: int):
+    """
+    Verify membership, then load the DB with overdue sprints automatically completed.
+    Returns (db, project). The DB is written back only if a sprint was auto-completed.
+    """
+    get_verified_project(project_id, user_id)
+    db = db_manager.read()
+    project = db["projects"][str(project_id)]
+    if sprint_logic.auto_complete_sprints(project):
+        db_manager.write(db)
+    return db, project
+
+
+def _find_sprint(project, sprint_id):
+    sprint = next((s for s in project.get("sprints", []) if str(s["id"]) == str(sprint_id)), None)
+    if not sprint:
+        raise HTTPException(status_code=404, detail="Sprint not found")
+    return sprint
 
 class CreateSprintPayload(BaseModel):
     user_id: int
     name: str
     details: str
     status: str
+    start_date: str
+    end_date: str
     priority: str = "medium"
     tags: list[str] = Field(default_factory=list)
     members: list[int] | None = None
@@ -29,120 +54,130 @@ class UpdateSprintStatusPayload(BaseModel):
 
 @router.get("/projects/{project_id}/sprints")
 def get_project_sprints(project_id: int, user_id: int):
-    project = get_verified_project(project_id, user_id)
+    _, project = _load_project(project_id, user_id)
     return project.get("sprints", [])
 
 @router.post("/projects/{project_id}/sprints", status_code=status.HTTP_201_CREATED)
 def create_sprint(project_id: int, payload: CreateSprintPayload):
-    get_verified_project(project_id, payload.user_id)
+    try:
+        start, end = sprint_logic.validate_sprint_dates(payload.start_date, payload.end_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
-    def mutate(db):
-        project = db["projects"][str(project_id)]
-        sprint_id = db.get("next_sprint_id", 1)
-        db["next_sprint_id"] = sprint_id + 1
-        sprint = {
-            "id": str(sprint_id),
-            "name": payload.name,
-            "details": payload.details,
-            "status": payload.status,
-            "priority": payload.priority,
-            "tags": payload.tags,
-            "members": payload.members,
-            "created_by": payload.user_id,
-            "created_at": payload.created_at,
-            "kanban_state": {
-                "backlog": [], "active": [], "review": [], "completed": []
-            }
+    db, project = _load_project(project_id, payload.user_id)
+
+    sprint_id = db.get("next_sprint_id", 1)
+    db["next_sprint_id"] = sprint_id + 1
+
+    sprint = {
+        "id": str(sprint_id),
+        "name": payload.name,
+        "details": payload.details,
+        "status": payload.status,
+        "start_date": start.isoformat(),
+        "end_date": end.isoformat(),
+        "priority": payload.priority,
+        "tags": payload.tags,
+        "members": payload.members,
+        "created_by": payload.user_id,
+        "created_at": payload.created_at,
+        "kanban_state": {
+            "backlog": [],
+            "active": [],
+            "review": [],
+            "completed": []
         }
-        project.setdefault("sprints", []).append(sprint)
-        return sprint
-
-    return db_manager.update(mutate)
+    }
+    project.setdefault("sprints", []).append(sprint)
+    db_manager.write(db)
+    return sprint
 
 @router.get("/projects/{project_id}/sprints/{sprint_id}")
 def get_sprint(project_id: int, sprint_id: str, user_id: int):
-    project = get_verified_project(project_id, user_id)
-    sprint = next((s for s in project.get("sprints", []) if str(s["id"]) == str(sprint_id)), None)
-    if not sprint:
-        raise HTTPException(status_code=404, detail="Sprint not found")
-    return sprint
+    _, project = _load_project(project_id, user_id)
+    return _find_sprint(project, sprint_id)
 
 @router.patch("/projects/{project_id}/sprints/{sprint_id}/status")
 def update_sprint_status(project_id: int, sprint_id: str, payload: UpdateSprintStatusPayload):
-    get_verified_project(project_id, payload.user_id)
+    if payload.status not in ("active", "ended"):
+        raise HTTPException(status_code=422, detail="Status must be 'active' or 'ended'.")
 
-    def mutate(db):
-        project = db["projects"][str(project_id)]
-        sprint = next((s for s in project.get("sprints", []) if str(s["id"]) == str(sprint_id)), None)
-        if not sprint:
-            raise HTTPException(status_code=404, detail="Sprint not found")
-        sprint["status"] = payload.status
-        return {"status": "success", "sprint": sprint}
+    db, project = _load_project(project_id, payload.user_id)
+    sprint = _find_sprint(project, sprint_id)
 
-    return db_manager.update(mutate)
+    if sprint.get("status") == "ended" and payload.status == "active":
+        raise HTTPException(status_code=409, detail="An ended sprint cannot be reopened.")
+
+    sprint["status"] = payload.status
+    if payload.status == "ended":
+        sprint.setdefault("ended_at", sprint_logic.today().isoformat())
+    db_manager.write(db)
+    return {"status": "success", "sprint": sprint}
 
 @router.get("/projects/{project_id}/sprints/{sprint_id}/kanban")
 def get_kanban_state(project_id: int, sprint_id: str, user_id: int):
     sprint = get_sprint(project_id, sprint_id, user_id)
-    return sprint.get("kanban_state", {
+    return sprint.get("kanban_state", dict(EMPTY_KANBAN))
+
+@router.put("/projects/{project_id}/sprints/{sprint_id}/kanban")
+def save_kanban_state(project_id: int, sprint_id: str, payload: SaveKanbanStatePayload):
+    db, project = _load_project(project_id, payload.user_id)
+    sprint = _find_sprint(project, sprint_id)
+
+    if sprint.get("status") == "ended":
+        raise HTTPException(status_code=409, detail="This sprint has ended and can no longer be changed.")
+
+    try:
+        sprint_logic.validate_task_dates(payload.state, sprint)
+        sprint_logic.validate_completion_checklists(sprint.get("kanban_state", {}), payload.state)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    sprint_logic.stamp_completions(sprint.get("kanban_state", {}), payload.state, sprint)
+    sprint["kanban_state"] = payload.state
+    db_manager.write(db)
+    return {"status": "success"}
+
+@router.post("/projects/{project_id}/sprints/{sprint_id}/backlog")
+def move_backlog_to_sprint(project_id: int, sprint_id: str, payload: MoveBacklogPayload):
+    db, project = _load_project(project_id, payload.user_id)
+
+    backlog = project.get("backlog", [])
+    item_idx = next((i for i, item in enumerate(backlog) if str(item["id"]) == str(payload.backlog_id)), None)
+    if item_idx is None:
+        raise HTTPException(status_code=404, detail="Backlog item not found in project backlog")
+
+    sprint = _find_sprint(project, sprint_id)
+    if sprint.get("status") == "ended":
+        raise HTTPException(status_code=409, detail="This sprint has ended; tasks can no longer be added.")
+
+    item = backlog.pop(item_idx)
+    kanban = sprint.setdefault("kanban_state", {
         "backlog": [],
         "active": [],
         "review": [],
         "completed": []
     })
 
-@router.put("/projects/{project_id}/sprints/{sprint_id}/kanban")
-def save_kanban_state(project_id: int, sprint_id: str, payload: SaveKanbanStatePayload):
-    get_verified_project(project_id, payload.user_id)
-
-    def mutate(db):
-        project = db["projects"][str(project_id)]
-        sprint = next((s for s in project.get("sprints", []) if str(s["id"]) == str(sprint_id)), None)
-        if not sprint:
-            raise HTTPException(status_code=404, detail="Sprint not found")
-        sprint["kanban_state"] = payload.state
-        return {"status": "success"}
-
-    return db_manager.update(mutate)
-
-@router.post("/projects/{project_id}/sprints/{sprint_id}/backlog")
-def move_backlog_to_sprint(project_id: int, sprint_id: str, payload: MoveBacklogPayload):
-    get_verified_project(project_id, payload.user_id)
-
-    def mutate(db):
-        project = db["projects"][str(project_id)]
-        backlog = project.get("backlog", [])
-        item_idx = next((i for i, item in enumerate(backlog) if str(item["id"]) == str(payload.backlog_id)), None)
-        if item_idx is None:
-            raise HTTPException(status_code=404, detail="Backlog item not found in project backlog")
-        sprint = next((s for s in project.get("sprints", []) if str(s["id"]) == str(sprint_id)), None)
-        if not sprint:
-            raise HTTPException(status_code=404, detail="Sprint not found")
-        item = backlog.pop(item_idx)
-        kanban = sprint.setdefault("kanban_state", {
-            "backlog": [], "active": [], "review": [], "completed": []
-        })
-        kanban.setdefault("backlog", []).append({
-            "id": f"task-{item['id']}",
-            "title": item["title"],
-            "tag": item["tag"],
-            "priority": item["priority"],
-            "assignee": None
-        })
-        return {"status": "success"}
-
-    return db_manager.update(mutate)
+    task_card = {
+        "id": f"task-{item['id']}",
+        "title": item["title"],
+        "tag": item["tag"],
+        "priority": item["priority"],
+        "assignee": None,
+        "start_date": None,
+        "end_date": None
+    }
+    kanban.setdefault("backlog", []).append(task_card)
+    
+    db_manager.write(db)
+    return {"status": "success"}
 
 @router.get("/projects/{project_id}/sprints/{sprint_id}/backlog")
 def get_sprint_backlog(project_id: int, sprint_id: str, user_id: int):
     sprint = get_sprint(project_id, sprint_id, user_id)
-    kanban = sprint.get("kanban_state", {
-        "backlog": [],
-        "active": [],
-        "review": [],
-        "completed": []
-    })
-    
+    kanban = sprint.get("kanban_state", dict(EMPTY_KANBAN))
+
     # Flatten items from all kanban columns into a single list with a status field
     items = []
     for column, tasks in kanban.items():

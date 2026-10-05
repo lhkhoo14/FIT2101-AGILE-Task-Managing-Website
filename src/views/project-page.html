@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Project - Brand Name</title>
+    <title>Project - John Monash</title>
 
     <!-- PyScript Core CDN -->
     <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
@@ -15,8 +15,10 @@
     <link rel="stylesheet" href="../styles/topbar.css">
     <!-- Layout Stylesheet -->
     <link rel="stylesheet" href="../styles/project-layout.css">
-    <!-- Member roster Stylesheet -->
-    <link rel="stylesheet" href="../styles/members.css">
+    <!-- CHANGE: members.css link removed from this page. It used to style the simple
+         member roster that lived here. That roster has been removed in favour of
+         project-members.html (add member, roles, contributions), which the sidebar
+         Members button now opens via project_layout.py. -->
     <!-- Snackbar Stylesheet -->
     <link rel="stylesheet" href="../styles/snackbar.css">
 </head>
@@ -29,7 +31,7 @@
                     <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
                 </svg>
             </button>
-            <span class="brand-title">Brand Name</span>
+            <span class="brand-title">John Monash</span>
         </div>
 
         <!-- Rounded Search Bar (Middle) -->
@@ -66,6 +68,12 @@
     <div class="dashboard-layout">
         <aside id="project-sidebar" class="sidebar project-sidebar">
             <nav class="sidebar-nav">
+                <!-- Returns to the project dashboard (list of all projects). -->
+                <button type="button" id="nav-projects" class="nav-item nav-projects">
+                  <svg viewBox="0 0 24 24" class="icon"><path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/></svg>
+                  <span>Projects</span>
+                </button>
+
                 <div class="nav-section-title">Views</div>
 
                 <button type="button" id="nav-description" class="nav-item active">
