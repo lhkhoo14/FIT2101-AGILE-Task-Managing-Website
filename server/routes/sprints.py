@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from database_manager import db_manager
-from dependencies import get_verified_project
+from dependencies import verify_project_access
 import sprint_logic
 
 router = APIRouter()
@@ -14,9 +14,11 @@ def _load_project(project_id: int, user_id: int):
     Verify membership, then load the DB with overdue sprints automatically completed.
     Returns (db, project). The DB is written back only if a sprint was auto-completed.
     """
-    get_verified_project(project_id, user_id)
+    # CHANGE: read the database exactly once. This used to call
+    # get_verified_project() (which reads) and then read again, costing two
+    # connections per sprint request.
     db = db_manager.read()
-    project = db["projects"][str(project_id)]
+    project = verify_project_access(db.get("projects", {}).get(str(project_id)), user_id)
     if sprint_logic.auto_complete_sprints(project):
         db_manager.write(db)
     return db, project
@@ -118,6 +120,20 @@ def update_sprint_status(project_id: int, sprint_id: str, payload: UpdateSprintS
 def get_kanban_state(project_id: int, sprint_id: str, user_id: int):
     sprint = get_sprint(project_id, sprint_id, user_id)
     return sprint.get("kanban_state", dict(EMPTY_KANBAN))
+
+@router.get("/projects/{project_id}/kanban-states")
+def get_all_kanban_states(project_id: int, user_id: int):
+    """Every sprint's board for this project, keyed by sprint id.
+
+    CHANGE: batch endpoint. The dashboard used to call the per-sprint kanban
+    route once per sprint, so a project with 10 sprints cost 10 round trips
+    (and 10 authorization reads). This returns all of them from one read.
+    """
+    _, project = _load_project(project_id, user_id)
+    return {
+        str(sprint["id"]): sprint.get("kanban_state") or dict(EMPTY_KANBAN)
+        for sprint in project.get("sprints", [])
+    }
 
 @router.put("/projects/{project_id}/sprints/{sprint_id}/kanban")
 def save_kanban_state(project_id: int, sprint_id: str, payload: SaveKanbanStatePayload):

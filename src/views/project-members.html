@@ -8,6 +8,11 @@
     <!-- PyScript Core CDN -->
     <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
     <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
+  <!-- CHANGE: open the DNS/TLS connections to the PyScript CDN and the Render API while
+       the page is still parsing, so booting Pyodide and the first API fetch do not
+       each pay for a separate handshake. -->
+  <link rel="preconnect" href="https://pyscript.net" crossorigin>
+  <link rel="dns-prefetch" href="https://fit2101-api.onrender.com">
 
     <link rel="stylesheet" href="../styles/base.css">
     <!-- Top Bar Stylesheet -->

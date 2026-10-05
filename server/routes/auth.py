@@ -90,10 +90,11 @@ def get_user(user_id: int):
 
 @router.get("/users")
 def get_users(user_id: int):
-    if not db_manager.find_user_by_id(user_id):
-        raise HTTPException(status_code=401, detail="Session is invalid.")
-
+    # CHANGE: single read. find_user_by_id() reads the database again to validate
+    # a session we can check against the snapshot we are about to return anyway.
     db = db_manager.read()
+    if not any(u["user_id"] == user_id for u in db.get("users", [])):
+        raise HTTPException(status_code=401, detail="Session is invalid.")
     return [
         {
             "user_id": user["user_id"],

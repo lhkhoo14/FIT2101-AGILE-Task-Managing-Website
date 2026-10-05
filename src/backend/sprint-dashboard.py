@@ -455,9 +455,11 @@ async def render_member_contributions():
         for name in members
     }
 
-    sprints = await server_data.get_sprints(PROJECT_ID)
-    for sprint in sprints:
-        state = await server_data.get_kanban_state(PROJECT_ID, sprint["id"])
+    # CHANGE: fetch every board in one batched request instead of one request
+    # per sprint. This was the N+1 that dominated the dashboard's load time.
+    all_states = await server_data.get_project_kanban_states(PROJECT_ID)
+    for sprint in await server_data.get_sprints(PROJECT_ID):
+        state = all_states.get(str(sprint["id"]))
         if state is None:
             continue
         for column in COLUMN_ORDER:
@@ -588,11 +590,14 @@ async def render_effort_breakdown(selected_sprint_id=None):
     select.value = selected_sprint_id
 
     chosen = [s for s in sprints if selected_sprint_id == "all" or str(s["id"]) == selected_sprint_id]
-    states = []
-    for sprint in chosen:
-        state = await server_data.get_kanban_state(PROJECT_ID, sprint["id"])
-        if state is not None:
-            states.append(state)
+    # CHANGE: fetch every board in one batched request instead of one request
+    # per sprint. This was the N+1 that dominated the dashboard's load time.
+    all_states = await server_data.get_project_kanban_states(PROJECT_ID)
+    states = [
+        all_states[str(sprint["id"])]
+        for sprint in chosen
+        if str(sprint["id"]) in all_states
+    ]
 
     counts = charts.effort_counts(states)
     container = web.page["effort-chart"]
