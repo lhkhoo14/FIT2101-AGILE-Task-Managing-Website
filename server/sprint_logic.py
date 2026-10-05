@@ -77,6 +77,33 @@ def validate_task_dates(state: Dict[str, Any], sprint: Dict[str, Any]) -> None:
                     )
 
 
+def unchecked_checklist_items(task: Dict[str, Any]) -> list:
+    """Checklist items on a task that have not been ticked off yet."""
+    return [item for item in (task.get("checklist") or []) if not item.get("done")]
+
+
+def validate_completion_checklists(old_state: Dict[str, Any], new_state: Dict[str, Any]) -> None:
+    """
+    A task may only ENTER 'completed' once every checklist item is ticked off.
+    Tasks that were already completed before this save are left alone (legacy data).
+    Enforced here so the rule holds no matter which client sends the board.
+    """
+    already_completed = {
+        str(t.get("id")) for t in (old_state or {}).get("completed", []) or []
+    }
+    for task in new_state.get("completed", []) or []:
+        if str(task.get("id")) in already_completed:
+            continue
+        pending = unchecked_checklist_items(task)
+        if pending:
+            title = task.get("title", "Task")
+            noun = "item" if len(pending) == 1 else "items"
+            raise ValueError(
+                f"'{title}' still has {len(pending)} unchecked checklist {noun}. "
+                "Tick them all off before moving it to Completed."
+            )
+
+
 def stamp_completions(old_state: Dict[str, Any], new_state: Dict[str, Any],
                       sprint: Dict[str, Any], today_date: Optional[date] = None) -> None:
     """

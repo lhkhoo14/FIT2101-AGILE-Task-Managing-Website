@@ -77,6 +77,7 @@ async def _persist_kanban_state(state):
     success, err = await server_data.update_kanban_state(_project_id, _sprint_id, state)
     if not success:
         await show_snackbar(f"Failed to update board: {err}")
+    return success
 
 
 def _normalized_task_id(task_id):
@@ -441,14 +442,31 @@ async def handle_card_drop(event):
                 show_snackbar("Complete all checklist items before moving this task forward.")
             )
             return
-    # Managers: no restrictions — any direction, any column
+    # Managers may otherwise move tasks in any direction, to any column...
 
+    # ...but NOBODY (manager included) may complete a task with unchecked checklist items.
+    if target_column == "completed":
+        pending = _unchecked_count(task)
+        if pending:
+            noun = "item" if pending == 1 else "items"
+            await show_snackbar(
+                f"Tick off all checklist items first ({pending} {noun} remaining) "
+                "before moving this task to Completed."
+            )
+            return
+
+    source_index = state[source_column].index(task)
     state[source_column].remove(task)
     task.pop("status", None)
     state[target_column].append(task)
 
     sprint = _active_sprint or {"name": "Sprint"}
-    await _persist_kanban_state(state)
+    if not await _persist_kanban_state(state):
+        # Server refused the move: put the card back so the board matches the server.
+        state[target_column].remove(task)
+        state[source_column].insert(source_index, task)
+        _render_board(state)
+        return
     await _record_change("moved", sprint, task, source_column.replace("_", " "), target_column.replace("_", " "))
 
     _render_board(state)
@@ -501,6 +519,20 @@ def _checklist_progress(task):
     done = sum(1 for item in checklist if item.get("done", False))
     percent = round(done / total * 100)
     return done, total, percent
+
+
+def _unchecked_count(task):
+    return sum(1 for item in task.get("checklist", []) if not item.get("done", False))
+
+
+def _find_task_and_column(task_id):
+    """Return (task, column_key) for a card id, or (None, None)."""
+    wanted = _normalized_task_id(task_id)
+    for column_key, column_tasks in _kanban_state.items():
+        for t in column_tasks:
+            if _normalized_task_id(t.get("id")) == wanted:
+                return t, column_key
+    return None, None
 
 
 def _render_task_detail_modal():
@@ -573,7 +605,9 @@ def _render_task_detail_modal():
             checkbox.id = f"chk-item-{item.get('id', idx)}"
             checkbox.dataset.itemId = str(item.get("id", ""))
             checkbox.checked = item.get("done", False)
-            if _sprint_ended:
+            # Ended sprint = read only. A completed task keeps its ticks (un-ticking would
+            # leave a "completed" task with unfinished work).
+            if _sprint_ended or (task_column == "completed" and item.get("done", False)):
                 checkbox.disabled = True
 
             label = document.createElement("label")
@@ -605,12 +639,18 @@ def _render_task_detail_modal():
     # Ended sprint view-only controls
     input_el = web.page["checklist-input"]
     add_btn = web.page["checklist-add-btn"]
-    if _sprint_ended:
+    if _sprint_ended or task_column == "completed":
         input_el.disabled = True
         add_btn.disabled = True
+        input_el.placeholder = (
+            "Move the task out of Completed to add items"
+            if task_column == "completed" and not _sprint_ended
+            else "Add a sub-item..."
+        )
     else:
         input_el.disabled = False
         add_btn.disabled = False
+        input_el.placeholder = "Add a sub-item..."
 
     # --- Manager Feedback (Review tab only) ---
     feedback_section = web.page["review-feedback-section"]
@@ -818,32 +858,31 @@ async def handle_add_checklist_item(event):
     if not text:
         return
 
-    kanban_state = _kanban_state
-    target_task = None
-    for col_tasks in kanban_state.values():
-        for t in col_tasks:
-            if _normalized_task_id(t.get("id")) == _normalized_task_id(_open_task_id):
-                target_task = t
-                break
-        if target_task:
-            break
+    target_task, task_column = _find_task_and_column(_open_task_id)
+    if not target_task:
+        return
 
-    if target_task:
-        if "checklist" not in target_task:
-            target_task["checklist"] = []
+    if task_column == "completed":
+        # A new (unticked) item would leave a "completed" task with unfinished work.
+        await show_snackbar("Move this task out of Completed before adding checklist items.")
+        return
 
-        new_item = {
-            "id": str(int(time.time() * 1000)),
-            "text": text,
-            "done": False,
-            "created_by": _current_user_id,
-        }
-        target_task["checklist"].append(new_item)
-        await _persist_kanban_state(kanban_state)
+    new_item = {
+        "id": str(int(time.time() * 1000)),
+        "text": text,
+        "done": False,
+        "created_by": _current_user_id,
+    }
+    target_task.setdefault("checklist", []).append(new_item)
 
-        input_el.value = ""
+    if not await _persist_kanban_state(_kanban_state):
+        target_task["checklist"].remove(new_item)  # keep the UI in sync with the server
         _render_task_detail_modal()
-        _render_board(kanban_state)
+        return
+
+    input_el.value = ""
+    _render_task_detail_modal()
+    _render_board(_kanban_state)
 
 
 @when("change", "#checklist-items")
@@ -858,24 +897,30 @@ async def handle_checklist_toggle(event):
     item_id = target.dataset.itemId
     is_checked = target.checked
 
-    kanban_state = _kanban_state
-    target_task = None
-    for col_tasks in kanban_state.values():
-        for t in col_tasks:
-            if _normalized_task_id(t.get("id")) == _normalized_task_id(_open_task_id):
-                target_task = t
-                break
-        if target_task:
-            break
+    target_task, task_column = _find_task_and_column(_open_task_id)
+    if not target_task:
+        return
 
-    if target_task:
-        for item in target_task.get("checklist", []):
-            if str(item.get("id")) == item_id:
-                item["done"] = is_checked
-                break
-        await _persist_kanban_state(kanban_state)
+    item = next((i for i in target_task.get("checklist", []) if str(i.get("id")) == item_id), None)
+    if item is None:
+        return
+
+    if task_column == "completed" and not is_checked:
+        # Completed tasks must keep every item ticked.
+        await show_snackbar("Move this task out of Completed before un-ticking checklist items.")
         _render_task_detail_modal()
-        _render_board(kanban_state)
+        return
+
+    previous = item.get("done", False)
+    item["done"] = is_checked
+
+    if not await _persist_kanban_state(_kanban_state):
+        item["done"] = previous  # the save failed, so un-tick/re-tick the box to match the server
+        _render_task_detail_modal()
+        return
+
+    _render_task_detail_modal()
+    _render_board(_kanban_state)
 
 @when("click", "#checklist-items")
 async def handle_checklist_delete(event):

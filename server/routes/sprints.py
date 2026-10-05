@@ -129,6 +129,7 @@ def save_kanban_state(project_id: int, sprint_id: str, payload: SaveKanbanStateP
 
     try:
         sprint_logic.validate_task_dates(payload.state, sprint)
+        sprint_logic.validate_completion_checklists(sprint.get("kanban_state", {}), payload.state)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 

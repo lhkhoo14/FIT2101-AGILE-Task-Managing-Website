@@ -216,17 +216,25 @@
                     "created_by": 3,
                     "created_at": 1791005753761,
                     "kanban_state": {
-                        "backlog": [
+                        "backlog": [],
+                        "active": [],
+                        "review": [
                             {
                                 "id": "task-9",
                                 "title": "Task 4",
                                 "tag": "frontend",
                                 "priority": "high",
-                                "assignee": null
+                                "assignee": null,
+                                "checklist": [
+                                    {
+                                        "id": "1791162246981",
+                                        "text": "Check 2",
+                                        "done": false,
+                                        "created_by": 3
+                                    }
+                                ]
                             }
                         ],
-                        "active": [],
-                        "review": [],
                         "completed": []
                     }
                 },
@@ -263,7 +271,33 @@
                                 "time_log": {
                                     "started_at": "2026-10-04T15:20:02.616000",
                                     "ended_at": "2026-10-04T15:20:03.232000"
-                                }
+                                },
+                                "checklist": [
+                                    {
+                                        "id": "1791162551305",
+                                        "text": "Check 2",
+                                        "done": false,
+                                        "created_by": 3
+                                    },
+                                    {
+                                        "id": "1791162553456",
+                                        "text": "Check 1",
+                                        "done": false,
+                                        "created_by": 3
+                                    },
+                                    {
+                                        "id": "1791162555041",
+                                        "text": "test",
+                                        "done": false,
+                                        "created_by": 3
+                                    },
+                                    {
+                                        "id": "1791162560761",
+                                        "text": "idek bruh",
+                                        "done": false,
+                                        "created_by": 3
+                                    }
+                                ]
                             }
                         ],
                         "completed": [
@@ -281,10 +315,22 @@
                                         "text": "test",
                                         "done": true,
                                         "created_by": 3
+                                    },
+                                    {
+                                        "id": "1791162065521",
+                                        "text": "Check 2",
+                                        "done": true,
+                                        "created_by": 3
+                                    },
+                                    {
+                                        "id": "1791162084459",
+                                        "text": "Check 2",
+                                        "done": true,
+                                        "created_by": 3
                                     }
                                 ],
                                 "assignee_id": 3,
-                                "completed_at": "2026-10-04"
+                                "completed_at": "2026-10-05"
                             }
                         ]
                     }

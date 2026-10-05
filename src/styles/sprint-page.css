@@ -618,3 +618,10 @@
   max-height: 90vh;
   overflow-y: auto;
 }
+
+/* The modal box is a flex column. Without this, scrollable sections (the checklist list,
+   feedback messages) are allowed to shrink to 0px when the modal is height-limited, which
+   made the checklist disappear. Sections keep their size and the whole modal scrolls instead. */
+#task-detail-modal .modal-box > * {
+  flex-shrink: 0;
+}
