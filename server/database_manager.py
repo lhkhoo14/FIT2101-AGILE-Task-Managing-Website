@@ -19,11 +19,13 @@ class DatabaseManager:
     def __init__(self, db_path: str = DB_PATH, database_url: str | None = DATABASE_URL):
         self.db_path = db_path
         self.database_url = database_url
-        # One connection reused per worker thread. FastAPI runs these sync
-        # endpoints in a thread pool that is reused between requests, and psycopg
-        # connections are not thread-safe, so a thread-local connection removes
-        # the TCP + TLS handshake from every query without ever sharing a
-        # connection across threads.
+        # A small shared connection pool. Sized for a single Render web instance:
+        # enough to serve the frontend's parallel fetches without opening a
+        # connection per request, small enough to stay well inside Supabase's
+        # connection limits.
+        self.pool_min_size = int(os.getenv("DB_POOL_MIN", "2"))
+        self.pool_max_size = int(os.getenv("DB_POOL_MAX", "8"))
+        self._pool = None
         self._local = threading.local()
         self._ensure_db_directory()
         if self.database_url:
@@ -45,24 +47,51 @@ class DatabaseManager:
         }
 
     def _connection(self):
-        """This thread's reusable connection, opening one if needed."""
-        connection = getattr(self._local, "connection", None)
-        if connection is None or connection.closed:
-            # Supabase's transaction pooler can reuse a connection for different
-            # transactions, so avoid psycopg prepared statements on pooled URLs.
-            connection = psycopg.connect(self.database_url, prepare_threshold=None)
-            self._local.connection = connection
-        return connection
+        """Borrow a connection from the pool, opening one if the pool is empty.
 
-    def _drop_connection(self) -> None:
-        """Discard this thread's connection so the next call reconnects cleanly."""
-        connection = getattr(self._local, "connection", None)
-        self._local.connection = None
-        if connection is not None:
+        CHANGE: this used to cache one connection per thread (threading.local),
+        which meant N simultaneous requests each paid a full TCP + TLS handshake
+        to Supabase. The frontend fires several fetches at once, so the first
+        page load opened one connection per in-flight request. That showed up as
+        a slow /users request (~1s) alongside fast ones. A shared bounded pool
+        opens a small number of connections once and reuses them.
+        """
+        if self._pool is None:
+            # Imported lazily so the JSON fallback never needs the pool package.
+            from psycopg_pool import ConnectionPool
+
+            # Supabase's transaction pooler can hand a connection to a different
+            # transaction, so prepared statements are disabled for pooled URLs.
+            self._pool = ConnectionPool(
+                self.database_url,
+                min_size=self.pool_min_size,
+                max_size=self.pool_max_size,
+                kwargs={"prepare_threshold": None},
+                open=False,
+            )
+            self._pool.open()
+            self._pool.wait(timeout=10)
+        return self._pool.getconn()
+
+    def _return_connection(self, connection) -> None:
+        """Hand a connection back to the pool, dropping it if it looks broken."""
+        if self._pool is not None:
             try:
-                connection.close()
+                self._pool.putconn(connection)
+                return
             except Exception:
                 pass
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+    def _discard_connection(self, connection) -> None:
+        """Throw away a connection that raised, so it is not reused."""
+        try:
+            connection.close()
+        except Exception:
+            pass
 
     def _end_transaction(self, connection) -> None:
         """Close any open transaction so no snapshot is held open and the pooled
@@ -70,22 +99,29 @@ class DatabaseManager:
         try:
             connection.rollback()
         except Exception:
-            self._drop_connection()
+            pass
 
     def read(self) -> Dict[str, Any]:
         if not self.database_url:
             return self._read_json()
 
         connection = self._connection()
+        broken = False
         try:
             row = connection.execute(
                 "SELECT data FROM application_state WHERE state_id = TRUE"
             ).fetchone()
         except Exception:
-            self._drop_connection()
+            broken = True
             raise
         finally:
+            # CHANGE: end the transaction, then hand the connection back so the
+            # next request reuses it. A connection that raised is discarded.
             self._end_transaction(connection)
+            if broken:
+                self._discard_connection(connection)
+            else:
+                self._return_connection(connection)
 
         return row[0] if row else self._default_structure()
 
@@ -111,6 +147,7 @@ class DatabaseManager:
             return
 
         connection = self._connection()
+        broken = False
         try:
             connection.execute(
                 """
@@ -122,10 +159,13 @@ class DatabaseManager:
             )
             connection.commit()
         except Exception:
-            self._drop_connection()
+            broken = True
             raise
         finally:
-            self._end_transaction(connection)
+            if broken:
+                self._discard_connection(connection)
+            else:
+                self._return_connection(connection)
 
     def update(self, mutator: Callable[[Dict[str, Any]], T]) -> T:
         """Read, mutate, and save the state atomically when PostgreSQL is active."""
@@ -136,6 +176,7 @@ class DatabaseManager:
             return result
 
         connection = self._connection()
+        broken = False
         try:
             row = connection.execute(
                 "SELECT data FROM application_state WHERE state_id = TRUE FOR UPDATE"
@@ -153,10 +194,13 @@ class DatabaseManager:
             connection.commit()
             return result
         except Exception:
-            self._drop_connection()
+            broken = True
             raise
         finally:
-            self._end_transaction(connection)
+            if broken:
+                self._discard_connection(connection)
+            else:
+                self._return_connection(connection)
 
     def _initialize_postgres(self) -> None:
         # Runs once at start-up, so it uses a throwaway connection rather than

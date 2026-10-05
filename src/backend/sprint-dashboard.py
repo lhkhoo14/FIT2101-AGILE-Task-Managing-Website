@@ -338,21 +338,21 @@ async def render_sprints_grid():
 
 
 # CHANGE: the search box re-rendered the whole sprint grid on every keystroke,
-# which meant two API round trips (sprints + users) per character typed. A short
-# debounce means a burst of typing costs one render instead of one per letter.
-_search_pending = None
+# which meant two API round trips (sprints + users) per character typed. Each
+# keystroke stamps a token and waits; only the final token still standing after
+# the pause goes on to render, so a burst of typing costs one render.
+# A token is used rather than cancelling a pending task, which is fragile
+# under Pyodide's web event loop.
+_search_token = 0
 
 @when("input", "#global-search")
 async def handle_search_input(event):
-    global _search_pending
-    if _search_pending is not None:
-        _search_pending.cancel()
-    _search_pending = asyncio.ensure_future(_debounced_render())
-
-
-async def _debounced_render():
+    global _search_token
+    _search_token += 1
+    token = _search_token
     await asyncio.sleep(0.3)
-    await render_sprints_grid()
+    if token == _search_token:
+        await render_sprints_grid()
 
 
 @when("change", "#sort-select")

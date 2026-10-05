@@ -1141,7 +1141,8 @@ _page_params = js.URLSearchParams.new(window.location.search)
 if _page_params.get("prewarm") == "1":
     ready_message = {
         "type": "sprint-page-ready",
-        "sprintId": _get_url_params()[0    }
+        "sprintId": _get_url_params()[0],
+    }
     window.parent.postMessage(
         js.JSON.parse(json.dumps(ready_message)),
         str(window.location.origin),
