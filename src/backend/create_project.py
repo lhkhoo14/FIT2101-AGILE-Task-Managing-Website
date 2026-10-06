@@ -1,7 +1,7 @@
 import asyncio
 import html
 
-from pyscript import when, web, window  # type: ignore
+from pyscript import when, web, window, document  # type: ignore
 from server_data import ServerData
 from auth import show_snackbar
 
@@ -55,18 +55,17 @@ def render_member_options(users, current_user_id):
     )
 
 def collect_selected_members():
-    """Returns the usernames ticked in the Add Members list."""
+    """Returns the usernames ticked in the Add Members list.
 
-    boxes = web.page["#project-members .member-checkbox-input"]
+    CHANGE: bug fix. This used web.page["#project-members .member-checkbox-input"],
+    which is document.querySelector and so returns only the FIRST checkbox in the
+    list. The handler therefore read a single box no matter what was ticked, so
+    every member you selected after the first was silently dropped and nobody
+    showed up on the project's Members tab. querySelectorAll reads all of them,
+    which is how the sprint dashboard already collects its member checkboxes.
+    """
 
-    if boxes is None:
-        return []
-
-    # One match comes back as a single element, several as a list of them.
-    try:
-        boxes = list(boxes)
-    except TypeError:
-        boxes = [boxes]
+    boxes = document.querySelectorAll("#project-members .member-checkbox-input")
 
     return [box.value for box in boxes if box.checked]
 
@@ -107,10 +106,32 @@ async def create_project(event):
         # CHANGE: new. The create-project API only takes a name and description,
         # so members cannot be attached up front. The project exists at this
         # point, so each ticked username from the Add Members list is added now.
-        for username in collect_selected_members():
-            await db.add_project_member(project_id, username)
+        # The add endpoint appends to members, contribute and roles, which is
+        # what project-members.html reads, so these show on the Members tab.
+        added = 0
+        rejected = []
 
-        await show_snackbar("Project created successfully!")
+        for username in collect_selected_members():
+            ok, message = await db.add_project_member(project_id, username)
+            if ok:
+                added += 1
+            else:
+                # CHANGE: the (ok, message) return used to be thrown away, so a
+                # failed add looked like a success. It is logged and reported now.
+                rejected.append(username)
+                print(f"[Members] Could not add '{username}': {message}")
+
+        if rejected:
+            await show_snackbar(
+                "Project created, but "
+                f"{len(rejected)} member(s) could not be added."
+            )
+        else:
+            await show_snackbar(
+                "Project created successfully!"
+                + (f" {added} member(s) added." if added else "")
+            )
+
         window.location.replace(f"project-page.html?project_id={project_id}")
     else:
         show_error("project-name", error_message)
