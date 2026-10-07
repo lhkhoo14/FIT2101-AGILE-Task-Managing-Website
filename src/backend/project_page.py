@@ -1,7 +1,7 @@
 import sys
 import asyncio
 import js  # type: ignore
-from pyscript import window, web, document  # type: ignore
+from pyscript import window, web  # type: ignore
 
 if "." not in sys.path:
     sys.path.append(".")
@@ -41,9 +41,12 @@ async def init_project_page():
         return
 
     db = ServerData()
-    # Fixed: Added 'await' to resolve the coroutine
     project = await db.get_project_by_id(project_id)
 
+    # CHANGE: removed the simple member roster that used to render here
+    # (load_members_view, _initials and the ?view=members branch). Members now have
+    # their own page, project-members.html, which the sidebar Members button opens.
+    # This page only ever renders the description.
     if project:
         load_default_view(project)
     else:

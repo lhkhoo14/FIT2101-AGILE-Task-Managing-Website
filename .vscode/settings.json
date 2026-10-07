@@ -9,5 +9,9 @@
         "node_modules/**",
         "venv/**",
         ".venv/**"
-    ]
+    ],
+    "python.analysis.extraPaths": [
+        "./src/backend"
+    ],
+    "python.analysis.autoSearchPaths": true
 }

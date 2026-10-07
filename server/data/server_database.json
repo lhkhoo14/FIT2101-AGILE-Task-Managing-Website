@@ -1,8 +1,8 @@
 {
     "next_user_id": 4,
     "next_project_id": 4,
-    "next_backlog_id": 13,
-    "next_sprint_id": 6,
+    "next_backlog_id": 14,
+    "next_sprint_id": 7,
     "users": [
         {
             "user_id": 1,
@@ -166,6 +166,42 @@
                             }
                         ]
                     }
+                },
+                {
+                    "id": "6",
+                    "name": "big test",
+                    "details": "ze test",
+                    "status": "ended",
+                    "start_date": "2026-10-05",
+                    "end_date": "2026-10-09",
+                    "priority": "low",
+                    "tags": [
+                        "test"
+                    ],
+                    "members": [
+                        1,
+                        2,
+                        3
+                    ],
+                    "created_by": 1,
+                    "created_at": 1791182898221,
+                    "kanban_state": {
+                        "backlog": [],
+                        "active": [],
+                        "review": [
+                            {
+                                "id": "task-13",
+                                "title": "test",
+                                "tag": "frontend",
+                                "priority": "low",
+                                "assignee": null,
+                                "start_date": null,
+                                "end_date": null
+                            }
+                        ],
+                        "completed": []
+                    },
+                    "ended_at": "2026-10-05"
                 }
             ]
         },

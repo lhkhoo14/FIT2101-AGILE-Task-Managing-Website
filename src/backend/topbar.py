@@ -76,8 +76,6 @@ async def init_topbar():
     current_user = await guard_session(server_data)
 
     if current_user:
-        print(f"Authenticated as: {current_user.get('username')}")
-
         # Update UI elements with logged-in user details if present
         render_user_profile(current_user)
 

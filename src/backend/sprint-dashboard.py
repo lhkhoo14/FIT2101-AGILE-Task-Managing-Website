@@ -26,8 +26,9 @@ from sprint_access import (
 
 COLUMN_ORDER = ["backlog", "active", "review", "completed"]
 
-# The project ID scopes every dashboard API request. Refuse to guess a project
-# when the page was opened without an explicit project_id in the URL.
+# The project ID scopes every dashboard API request. The <head> guard has
+# already ensured the URL carries a valid project_id (restoring the last project
+# opened in this tab when the query is missing), so this only sanity-checks it.
 url_params = window.URLSearchParams.new(window.location.search)
 project_id_param = url_params.get("project_id")
 if not project_id_param or not project_id_param.isdigit():
@@ -39,7 +40,6 @@ else:
 _dragged_backlog_id = None
 
 # --- CURRENT USER (sprint membership checks) ---
-server_data = ServerData()
 _session = server_data.get_active_session()
 current_user_id = int(_session) if _session else None
 
@@ -61,12 +61,12 @@ async def _users_by_id(sprints):
         for user_id in (sprint.get("members") or [])
         if str(user_id).isdigit()
     }
-    users = {}
-    for user_id in user_ids:
-        user = await server_data.get_user_by_id(user_id)
-        if user:
-            users[user_id] = user
-    return users
+    users = await server_data.get_users()
+    return {
+        int(user["user_id"]): user
+        for user in users
+        if int(user["user_id"]) in user_ids
+    }
 
 
 def _notify(message):
@@ -93,13 +93,16 @@ def _make_backlog_card(item):
     card.id = f"backlog-item-{item['id']}"
     card.setAttribute("draggable", "true")
     card.setAttribute("data-backlog-id", str(item["id"]))
+    tag = str(item.get("tag", "frontend")).lower()
+    priority = str(item.get("priority", "medium")).lower()
+    title = escape(str(item.get("title", "")))
     card.innerHTML = f"""
         <div class="task-card-header">
-            <span class="tag-badge tag-{item['tag']}">{item['tag'].capitalize()}</span>
+            <span class="tag-badge tag-{tag}">{tag.capitalize()}</span>
         </div>
-        <p class="task-card-title">{item['title']}</p>
+        <p class="task-card-title">{title}</p>
         <div class="task-card-footer">
-            <span class="priority-badge priority-{item['priority']}">{item['priority'].capitalize()}</span>
+            <span class="priority-badge priority-{priority}">{priority.capitalize()}</span>
         </div>
     """
     return card
@@ -108,28 +111,47 @@ def _make_backlog_card(item):
 # Render all product-backlog cards and update their displayed count.
 async def render_backlog_list():
     """Fetch the product backlog from FastAPI and rebuild its sidebar list."""
+    if not PROJECT_ID:
+        return
     items = await server_data.get_backlog_items(PROJECT_ID)
-    list_el = web.page["backlog-list"]
-    list_el.innerHTML = ""
-    for item in items:
-        list_el.appendChild(_make_backlog_card(item))
-    web.page["count-product-backlog"].textContent = str(len(items))
+    list_el = document.getElementById("backlog-list")
+    if list_el is not None:
+        list_el.innerHTML = ""
+        for item in items:
+            list_el.appendChild(_make_backlog_card(item))
+    count_el = document.getElementById("count-product-backlog")
+    if count_el is not None:
+        count_el.textContent = str(len(items))
 
 
 # Refresh one sprint card's count of items waiting to enter its Kanban board.
 async def _refresh_card_badge(sprint_id):
-    badge = web.page[f"backlog-count-{sprint_id}"]
-    if badge is not None:
+    badge = document.getElementById(f"backlog-count-{sprint_id}")
+    if badge is not None and PROJECT_ID:
         items = await server_data.get_sprint_backlog(PROJECT_ID, sprint_id)
         count = len(items)
         badge.textContent = f"{count} backlog item{'s' if count != 1 else ''}"
 
 
 async def _refresh_all_card_badges():
+    # CHANGE: refresh every badge from ONE batched board request. This used to
+    # call get_sprint_backlog once per sprint card, so the dashboard's main load
+    # path still made a round trip (and a server authorization read) per sprint
+    # even after the contributions/effort panels were batched.
+    if not PROJECT_ID:
+        return
+    all_states = await server_data.get_project_kanban_states(PROJECT_ID)
     for card in document.querySelectorAll(".sprint-card"):
         sprint_id = card.getAttribute("data-sprint-id")
-        if sprint_id:
-            await _refresh_card_badge(sprint_id)
+        if not sprint_id:
+            continue
+        badge = document.getElementById(f"backlog-count-{sprint_id}")
+        if badge is None:
+            continue
+        # Counted the same way get_sprint_backlog does: tasks in every column.
+        state = all_states.get(sprint_id) or {}
+        count = sum(len(tasks) for tasks in state.values())
+        badge.textContent = f"{count} backlog item{'s' if count != 1 else ''}"
 
 
 # --- Drag and Drop Logic ---
@@ -241,12 +263,12 @@ def _members_html(item, users):
         return '<span class="members-open">Open to all users</span>'
     names = [_display_name(users[m]) if m in users else "Unknown user" for m in members]
     html = "".join(
-        f'<span class="member-avatar" title="{escape(n)}">{escape(_initials(n))}</span>'
+        f'<span class="sprint-member-avatar" title="{escape(n)}">{escape(_initials(n))}</span>'
         for n in names[:4]
     )
     extra = len(names) - 4
     if extra > 0:
-        html += f'<span class="member-avatar member-avatar-more" title="{extra} more">+{extra}</span>'
+        html += f'<span class="sprint-member-avatar sprint-member-avatar-more" title="{extra} more">+{extra}</span>'
     return html
 
 
@@ -315,9 +337,22 @@ async def render_sprints_grid():
         grid.appendChild(empty)
 
 
+# CHANGE: the search box re-rendered the whole sprint grid on every keystroke,
+# which meant two API round trips (sprints + users) per character typed. Each
+# keystroke stamps a token and waits; only the final token still standing after
+# the pause goes on to render, so a burst of typing costs one render.
+# A token is used rather than cancelling a pending task, which is fragile
+# under Pyodide's web event loop.
+_search_token = 0
+
 @when("input", "#global-search")
 async def handle_search_input(event):
-    await render_sprints_grid()
+    global _search_token
+    _search_token += 1
+    token = _search_token
+    await asyncio.sleep(0.3)
+    if token == _search_token:
+        await render_sprints_grid()
 
 
 @when("change", "#sort-select")
@@ -396,21 +431,59 @@ def _member_name_for_assignee(assignee, members):
     return assignee
 
 
+# Render the project member roster from the real project members.
+async def render_members_view():
+    team = await server_data.get_project_team(PROJECT_ID)
+    list_el = document.getElementById("sprint-member-list")
+    if list_el is None:
+        return
+    list_el.innerHTML = ""
+
+    count_el = document.getElementById("member-count")
+    if count_el is not None:
+        count_el.textContent = f"{len(team)} member{'s' if len(team) != 1 else ''}"
+
+    if not team:
+        empty = document.createElement("li")
+        empty.className = "feature-empty-state"
+        empty.textContent = "No project members found."
+        list_el.appendChild(empty)
+        return
+
+    for member in team:
+        name = member.get("username") or member.get("email") or "Unknown user"
+        email = member.get("email", "")
+        row = document.createElement("li")
+        row.className = "member-row"
+        row.innerHTML = (
+            f'<button type="button" class="member-trigger" '
+            f'data-member-name="{escape(name)}" data-member-phone="" '
+            f'data-member-email="{escape(email)}">'
+            f'<span class="member-avatar" aria-hidden="true">{escape(_initials(name))}</span>'
+            f'<span class="member-details"><strong>{escape(name)}</strong>'
+            f'<span>{escape(email)}</span></span></button>'
+        )
+        list_el.appendChild(row)
+
+
 # Aggregate assigned tasks and completed counts for every member across sprints.
 async def render_member_contributions():
+    team = await server_data.get_project_team(PROJECT_ID)
     members = [
-        button.getAttribute("data-member-name")
-        for button in document.querySelectorAll(".member-trigger")
-        if button.getAttribute("data-member-name")
+        member.get("username") or member.get("email")
+        for member in team
+        if member.get("username") or member.get("email")
     ]
     contributions = {
         name: {"assigned": 0, "completed": 0, "tasks": []}
         for name in members
     }
 
-    sprints = await server_data.get_sprints(PROJECT_ID)
-    for sprint in sprints:
-        state = await server_data.get_kanban_state(PROJECT_ID, sprint["id"])
+    # CHANGE: fetch every board in one batched request instead of one request
+    # per sprint. This was the N+1 that dominated the dashboard's load time.
+    all_states = await server_data.get_project_kanban_states(PROJECT_ID)
+    for sprint in await server_data.get_sprints(PROJECT_ID):
+        state = all_states.get(str(sprint["id"]))
         if state is None:
             continue
         for column in COLUMN_ORDER:
@@ -501,8 +574,9 @@ def handle_show_sprints(event):
 
 
 @when("click", "#nav-members")
-def handle_show_members(event):
-    # Open the sprint member roster.
+async def handle_show_members(event):
+    # Render the live roster, then open the members panel.
+    await render_members_view()
     _show_dashboard_view("members-view")
 
 
@@ -540,11 +614,14 @@ async def render_effort_breakdown(selected_sprint_id=None):
     select.value = selected_sprint_id
 
     chosen = [s for s in sprints if selected_sprint_id == "all" or str(s["id"]) == selected_sprint_id]
-    states = []
-    for sprint in chosen:
-        state = await server_data.get_kanban_state(PROJECT_ID, sprint["id"])
-        if state is not None:
-            states.append(state)
+    # CHANGE: fetch every board in one batched request instead of one request
+    # per sprint. This was the N+1 that dominated the dashboard's load time.
+    all_states = await server_data.get_project_kanban_states(PROJECT_ID)
+    states = [
+        all_states[str(sprint["id"])]
+        for sprint in chosen
+        if str(sprint["id"]) in all_states
+    ]
 
     counts = charts.effort_counts(states)
     container = web.page["effort-chart"]
@@ -625,6 +702,8 @@ async def handle_sprint_page_navigation(event):
         return
     if detail.view == "history":
         await render_change_history()
+    elif detail.view == "members":
+        await render_members_view()
     elif detail.view == "contributions":
         await render_member_contributions()
     elif detail.view == "effort":
@@ -742,7 +821,8 @@ def handle_backdrop_click(event):
 @when("submit", "#create-sprint-form")
 async def handle_create_sprint_submit(event):
     """Validate the form and create the sprint through FastAPI."""
-    event.preventDefault()
+    if event:
+        event.preventDefault()
     name = web.page["sprint-name-input"].value.strip()
     details = web.page["sprint-details-input"].value.strip()
     priority = web.page["sprint-priority-input"].value
@@ -750,6 +830,9 @@ async def handle_create_sprint_submit(event):
         priority = DEFAULT_PRIORITY
 
     if not name:
+        return
+    if not PROJECT_ID:
+        _notify("Open this sprint dashboard from a project first.")
         return
 
     start_text = web.page["sprint-start-input"].value
@@ -786,36 +869,52 @@ async def handle_create_sprint_submit(event):
 
     await record_change(f"created sprint {name}", sprint["id"], name)
     await render_sprints_grid()
-    web.page["create-sprint-form"].reset()
+    form = document.getElementById("create-sprint-form")
+    if form:
+        form.reset()
     _close_modal("create-sprint-modal")
 
 
 # Validate and persist new product-backlog tasks from the create-task dialog.
 @when("submit", "#create-task-form")
 async def handle_create_task_submit(event):
-    """Create a product-backlog item through FastAPI without blocking the UI."""
-    event.preventDefault()
+    """Create a product-backlog item and refresh the list after the API responds."""
+    if event:
+        event.preventDefault()
     title = web.page["task-title-input"].value.strip()
     tag = web.page["task-tag-input"].value
     priority = web.page["task-priority-input"].value
     if not title:
         return
+    if not PROJECT_ID:
+        _notify("Open this sprint dashboard from a project first.")
+        return
 
-    async def process_create_task():
-        success, err, item = await server_data.create_backlog_item(PROJECT_ID, title, tag, priority)
-        if success:
-            await record_change(
-                f"created backlog task {title}",
-                task_id=item.get("id") if item else None,
-                task_title=title,
-            )
-            await render_backlog_list()
-        else:
+    form = document.getElementById("create-task-form")
+    submit_button = form.querySelector("button[type='submit']") if form else None
+    if submit_button is not None:
+        submit_button.disabled = True
+
+    try:
+        success, err, item = await server_data.create_backlog_item(
+            PROJECT_ID, title, tag, priority
+        )
+        if not success:
             _notify(err)
+            return
 
-    asyncio.ensure_future(process_create_task())
-    event.currentTarget.reset()
-    _close_modal("create-task-modal")
+        await render_backlog_list()
+        if form:
+            form.reset()
+        _close_modal("create-task-modal")
+        asyncio.ensure_future(record_change(
+            f"created backlog task {title}",
+            task_id=item.get("id") if item else None,
+            task_title=title,
+        ))
+    finally:
+        if submit_button is not None:
+            submit_button.disabled = False
 
 
 @when("click", ".sprints-grid")
@@ -844,6 +943,8 @@ async def handle_sprint_card_click(event):
 # Initial load: fetch the sprint cards first, warm the board iframe, then fetch
 # the backlog and its per-sprint counts. All persistent data comes from FastAPI.
 async def initialize_dashboard():
+    if not PROJECT_ID:
+        return
     await render_sprints_grid()
     first_available_card = document.querySelector('.sprint-card[data-member="true"]')
     if first_available_card:
@@ -864,6 +965,8 @@ view_ids = {
 if requested_view in view_ids:
     if requested_view == "history":
         asyncio.ensure_future(render_change_history())
+    elif requested_view == "members":
+        asyncio.ensure_future(render_members_view())
     elif requested_view == "contributions":
         asyncio.ensure_future(render_member_contributions())
     elif requested_view == "effort":

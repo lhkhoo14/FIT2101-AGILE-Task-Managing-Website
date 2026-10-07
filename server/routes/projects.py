@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from database_manager import db_manager
-from dependencies import get_verified_project
+from dependencies import get_verified_project, verify_project_access
 
 router = APIRouter()
 
@@ -38,8 +38,10 @@ def ensure_member_fields(project: dict) -> None:
 
 @router.post("/projects", status_code=status.HTTP_201_CREATED)
 def create_project(payload: CreateProjectPayload):
+    # CHANGE: read the DB once and find the user in it. find_user_by_id() would
+    # issue a second read (and a second connection) for data we already have.
     db = db_manager.read()
-    user = db_manager.find_user_by_id(payload.user_id)
+    user = next((u for u in db["users"] if u["user_id"] == payload.user_id), None)
 
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -71,9 +73,10 @@ def create_project(payload: CreateProjectPayload):
 
 @router.get("/users/{user_id}/projects")
 def get_user_projects(user_id: int):
+    # CHANGE: single read. find_user_by_id() reads the database again for a
+    # lookup the snapshot we just loaded can already answer.
     db = db_manager.read()
-    user = db_manager.find_user_by_id(user_id)
-    if user is None:
+    if not any(u["user_id"] == user_id for u in db.get("users", [])):
         raise HTTPException(status_code=404, detail="User not found")
 
     all_projects = db.get("projects", {})
@@ -101,10 +104,12 @@ def get_project_backlog(project_id: int, user_id: int):
 
 @router.post("/projects/{project_id}/backlog", status_code=status.HTTP_201_CREATED)
 def create_backlog_item(project_id: int, payload: CreateBacklogPayload):
-    get_verified_project(project_id, payload.user_id)
-    
+    # CHANGE: single read. get_verified_project() read the database, and the read
+    # below opened a second one for the same project.
     db = db_manager.read()
-    project = db["projects"][str(project_id)]
+    project = verify_project_access(
+        db.get("projects", {}).get(str(project_id)), payload.user_id
+    )
 
     backlog_id = db.get("next_backlog_id", 1)
     db["next_backlog_id"] = backlog_id + 1

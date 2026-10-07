@@ -42,6 +42,11 @@ def _is_manager():
 # ==========================================
 COLUMN_ORDER = ["backlog", "active", "review", "completed"]
 
+# CHANGE: tasks may move backlog -> active with checklist items still open, but
+# every column after this one requires a fully completed checklist. Editing this
+# value moves the gate (e.g. "backlog" gates every forward move).
+CHECKLIST_GATE_COLUMN = "active"
+
 _sprint_id = None
 _project_id = None
 _sprint_ended = False
@@ -349,11 +354,6 @@ def handle_show_sprints(event):
     _navigate_to_dashboard(view="sprints")
 
 
-@when("click", "#nav-members")
-def handle_show_members(event):
-    _navigate_to_dashboard(view="members")
-
-
 @when("click", "#nav-effort")
 def handle_show_effort(event):
     _navigate_to_dashboard(view="effort")
@@ -435,13 +435,15 @@ async def handle_card_drop(event):
             await show_snackbar("Only a manager can move a task to Completed.")
             return
 
-        # Gate forward moves if the task has unchecked checklist items
-        checklist = task.get("checklist", [])
-        if any(not item.get("done", False) for item in checklist):
-            asyncio.ensure_future(
-                show_snackbar("Complete all checklist items before moving this task forward.")
-            )
-            return
+        # CHANGE: only moves PAST the gate column need a finished checklist, so a
+        # task can be picked up and started while work is still outstanding.
+        if _column_index(target_column) > _column_index(CHECKLIST_GATE_COLUMN):
+            checklist = task.get("checklist", [])
+            if any(not item.get("done", False) for item in checklist):
+                await show_snackbar(
+                    f"Complete all checklist items before moving this task to {target_column}."
+                )
+                return
     # Managers may otherwise move tasks in any direction, to any column...
 
     # ...but NOBODY (manager included) may complete a task with unchecked checklist items.
@@ -1146,4 +1148,4 @@ if _page_params.get("prewarm") == "1":
         str(window.location.origin),
     )
 else:
-    asyncio.ensure_future(_init_page())
+    asyncio.ensure_future(_init_page())

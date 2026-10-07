@@ -4,11 +4,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sprint - Brand Name</title>
+  <title>Sprint - John Monash</title>
 
   <!-- PyScript Core CDN -->
   <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
   <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
+  <!-- CHANGE: open the DNS/TLS connections to the PyScript CDN and the Render API while
+       the page is still parsing, so booting Pyodide and the first API fetch do not
+       each pay for a separate handshake. -->
+  <link rel="preconnect" href="https://pyscript.net" crossorigin>
+  <link rel="dns-prefetch" href="https://fit2101-api.onrender.com">
 
   <script>
     const CONFIG = {
@@ -67,7 +72,7 @@
           <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
         </svg>
       </button>
-      <span class="brand-title">Brand Name</span>
+      <span class="brand-title">John Monash</span>
     </div>
 
     <!-- Rounded Search Bar (Middle) -->
@@ -141,10 +146,6 @@
         <button type="button" id="nav-history" class="nav-item section-item">
           <span class="additional-label"></span>
           <span>History</span>
-        </button>
-        <button type="button" id="nav-members" class="nav-item section-item">
-          <span class="additional-label"></span>
-          <span>Members</span>
         </button>
       </nav>
 

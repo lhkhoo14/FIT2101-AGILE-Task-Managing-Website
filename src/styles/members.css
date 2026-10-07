@@ -1,0 +1,145 @@
+/* Shared member roster: used by the project page and the sprint dashboard. */
+
+.members-view .content-header {
+  margin-bottom: 8px;
+}
+
+.member-count {
+  color: #666666;
+  font-size: 13px;
+}
+
+.member-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid #e2e8f0;
+}
+
+.member-row {
+  min-height: 72px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+/* Interactive rows (sprint dashboard) and static rows (project page) share the
+   same layout; only the trigger adds the button resets. */
+.member-trigger,
+.member-row-content {
+  display: flex;
+  width: 100%;
+  min-height: 72px;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 4px;
+}
+
+.member-trigger {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.member-trigger:hover .member-details strong,
+.member-trigger:focus-visible .member-details strong {
+  color: #3939b0;
+}
+
+.member-trigger:focus-visible {
+  outline: 2px solid #4747d4;
+  outline-offset: -2px;
+}
+
+.member-avatar {
+  display: grid;
+  flex: 0 0 40px;
+  width: 40px;
+  aspect-ratio: 1;
+  place-items: center;
+  border-radius: 50%;
+  background-color: #e8e8fb;
+  color: #3939b0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.member-details {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.member-details strong {
+  color: #222222;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.member-details span {
+  color: #666666;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* Contact dialog, opened from a roster row on the sprint dashboard. */
+.member-details-modal {
+  max-width: min(420px, 90vw);
+}
+
+.member-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.member-modal-header .modal-title {
+  overflow-wrap: anywhere;
+}
+
+.member-modal-close {
+  display: grid;
+  flex: 0 0 32px;
+  width: 32px;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #666666;
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.member-modal-close:hover,
+.member-modal-close:focus-visible {
+  background: #f4f5f9;
+  color: #222222;
+}
+
+.member-contact-list {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+}
+
+.member-contact-list div {
+  min-width: 0;
+}
+
+.member-contact-list dt {
+  margin-bottom: 4px;
+  color: #666666;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.member-contact-list dd {
+  margin: 0;
+  color: #222222;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}

@@ -1,8 +1,20 @@
 from pyodide.http import pyfetch # type: ignore
 from pyscript import window       # type: ignore
+import asyncio
 import json
 
 from constants import ACTIVE_SESSION_KEY, API_URL
+
+
+class Project:
+    """A project record returned by the FastAPI projects endpoints."""
+
+    def __init__(self, id: int, name: str, description: str, status: str) -> None:
+        self.id = id
+        self.name = name
+        self.description = description
+        self.status = status
+
 
 class ServerData:
     def __init__(self, session_key : str = ACTIVE_SESSION_KEY, api_url : str = API_URL):
@@ -194,6 +206,36 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to fetch project: {e}")
             return None
+
+    async def get_project_team(self, project_id: int) -> list[dict]:
+        """Project members plus everyone assigned to any of its sprints.
+
+        The members endpoint returns {members, contribute, roles}, so the roster
+        is built from those member ids (plus each sprint's members) and resolved
+        against the registered users.
+
+        CHANGE: members, sprints and users do not depend on each other, so they
+        are fetched concurrently with asyncio.gather rather than one after
+        another. This removes two round trips of latency from every view that
+        loads the team.
+        """
+        payload, sprints, users = await asyncio.gather(
+            self.get_project_members(project_id),
+            self.get_sprints(project_id),
+            self.get_users(),
+        )
+
+        member_ids = set()
+        for member_id in (payload or {}).get("members") or []:
+            if str(member_id).isdigit():
+                member_ids.add(int(member_id))
+
+        for sprint in sprints or []:
+            for member_id in (sprint.get("members") or []):
+                if str(member_id).isdigit():
+                    member_ids.add(int(member_id))
+
+        return [user for user in users or [] if int(user["user_id"]) in member_ids]
     
     async def get_project_members(self, project_id: int) -> dict | None:
         """Fetches project members, contributors and roles from FastAPI."""
@@ -386,6 +428,30 @@ class ServerData:
             print(f"[API Error] Failed to fetch kanban state: {e}")
             return None
 
+    async def get_project_kanban_states(self, project_id: int) -> dict:
+        """Fetches every sprint's kanban board for a project in one request.
+
+        CHANGE: replaces one kanban request per sprint. A project with N sprints
+        went from N sequential round trips down to 1. Results are keyed by the
+        sprint id as a string, matching how the backend serialises them.
+        """
+        user_id = self.get_active_session()
+        if user_id is None:
+            return {}
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/kanban-states?user_id={user_id}",
+                method="GET",
+                headers={"Content-Type": "application/json"}
+            )
+            if response.status == 200:
+                return await response.json()
+            return {}
+        except Exception as e:
+            print(f"[API Error] Failed to fetch kanban states: {e}")
+            return {}
+
     async def move_backlog_item_to_sprint(
         self, project_id: int, backlog_id: str | int, sprint_id: str | int
     ) -> tuple[bool, str]:
@@ -458,11 +524,3 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to update sprint status: {e}")
             return False, "Unable to connect to the server.", None
-
-
-class Project:
-    def __init__(self, id: int, name: str, description: str, status: str) -> None:
-        self.id = id
-        self.name = name
-        self.description = description
-        self.status = status
