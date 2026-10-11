@@ -56,20 +56,19 @@
 
   <link rel="stylesheet" href="../styles/base.css">
   <!-- Top Bar Stylesheet -->
-  <link rel="stylesheet" href="../styles/topbar.css">
+  <link rel="stylesheet" href="../styles/topbar.css?v=20261011">
   <!-- Layout Stylesheet -->
   <link rel="stylesheet" href="../styles/project-layout.css">
-  <!-- Shared member roster styles -->
-  <link rel="stylesheet" href="../styles/members.css">
   <!-- Page Stylesheet -->
   <!-- CHANGE: added the ?v=20261005 cache-buster. Without it the browser kept
        serving a stale cached sprint-dashboard.css, so the layout fixes below had
        no visible effect. Matches the existing pattern on sprint-page.css. -->
-  <link rel="stylesheet" href="../styles/sprint-dashboard.css?v=20261005">
+  <link rel="stylesheet" href="../styles/sprint-dashboard.css?v=20261011">
   <link rel="stylesheet" href="../styles/sprint-page.css">
   <!-- Snackbar Stylesheet -->
   <link rel="stylesheet" href="../styles/snackbar.css">
-  <!-- Shared IndexedDB API for reading and recording sprint change history. -->
+  <!-- US-20: no longer the store of record. Loaded only so the one-time import of
+       events recorded in this browser before the switchover can run. -->
   <script src="../backend/history-db.js"></script>
   <!--
     The dashboard owns the sprint list. It warms one sprint-page runtime in a
@@ -156,7 +155,13 @@
           <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
         </svg>
       </button>
-      <span class="brand-title">John Monash</span>
+      <!-- US-33: organisational branding replaces the placeholder wordmark. The logo
+           is src/assets/logo.png; if the asset is missing the <img> removes itself
+           and the wordmark takes over, so the header never shows a broken image. -->
+      <span class="brand-title brand" title="Go to dashboard">
+        <img class="brand-logo" src="../assets/logo.png" alt="John Monash" onerror="this.parentNode.classList.add('brand-text-only'); this.remove();">
+        <span class="brand-wordmark">John Monash</span>
+      </span>
     </div>
 
     <!-- Rounded Search Bar (Middle) -->
@@ -211,12 +216,12 @@
           <span>Description</span>
         </button>
 
-        <button type="button" id="nav-members" class="nav-item">
+        <button type="button" id="nav-members" class="nav-item" title="Team Members">
           <svg viewBox="0 0 24 24" class="icon">
             <path
               d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
           </svg>
-          <span>Members</span>
+          <span>Team Members</span>
         </button>
 
         <button type="button" id="nav-sprints" class="nav-item active">
@@ -336,16 +341,11 @@
         </div>
       </section>
 
-      <!-- Roster is rendered from the project's real members (render_members_view). -->
-      <section id="members-view" class="members-view hidden" aria-labelledby="members-title">
-        <div class="content-header">
-          <h1 id="members-title" class="page-title">Project Members</h1>
-          <span id="member-count" class="member-count"></span>
-        </div>
-        <ul id="sprint-member-list" class="member-list"></ul>
-      </section>
+      <!-- CHANGE (US-18): the in-page member roster and its contact dialog were
+           removed. #nav-members is owned by project_layout.py and opens
+           project-members.html, so "Team Members" is a page, not a dashboard panel. -->
 
-      <!-- Change events are populated from the shared IndexedDB history store. -->
+      <!-- Change events are populated from the project's server-side audit trail. -->
       <section id="history-view" class="feature-view hidden" aria-labelledby="history-title">
         <div class="content-header">
           <h1 id="history-title" class="page-title">Change History</h1>
@@ -380,32 +380,6 @@
 
   <iframe id="sprint-page-frame" title="Sprint board" hidden></iframe>
   <div id="snackbar">Some text some message..</div>
-
-  <!-- Contact dialog filled from the selected member's data attributes. -->
-  <div id="member-details-modal" class="modal-overlay hidden">
-    <section class="modal-box member-details-modal" role="dialog" aria-modal="true"
-      aria-labelledby="member-modal-title">
-      <div class="member-modal-header">
-        <h2 id="member-modal-title" class="modal-title">Member Details</h2>
-        <button type="button" id="close-member-details" class="member-modal-close"
-          aria-label="Close member details">&times;</button>
-      </div>
-      <dl class="member-contact-list">
-        <div>
-          <dt>Full name</dt>
-          <dd id="member-modal-name"></dd>
-        </div>
-        <div>
-          <dt>Phone number</dt>
-          <dd id="member-modal-phone"></dd>
-        </div>
-        <div>
-          <dt>Email</dt>
-          <dd id="member-modal-email"></dd>
-        </div>
-      </dl>
-    </section>
-  </div>
 
   <!-- Create Sprint Modal -->
   <div id="create-sprint-modal" class="modal-overlay hidden">
@@ -503,8 +477,8 @@
   </div>
 
   <!-- Link settings.json for PyScript backend -->
-  <script type="py" config="../../settings.json" src="../backend/project_layout.py"></script>
-<script type="py" config="../../settings.json" src="../backend/sprint-dashboard.py?v=20261005"></script>
+  <script type="py" config="../../settings.json" src="../backend/project_layout.py?v=20261011"></script>
+<script type="py" config="../../settings.json" src="../backend/sprint-dashboard.py?v=20261011"></script>
 </body>
 
 </html>

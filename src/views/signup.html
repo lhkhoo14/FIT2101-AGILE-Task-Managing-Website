@@ -15,19 +15,19 @@
   <link rel="dns-prefetch" href="https://fit2101-api.onrender.com">
 
   <!-- Page Stylesheet -->
-  <link rel="stylesheet" href="../styles/auth.css?v=20261005">
+  <link rel="stylesheet" href="../styles/auth.css?v=20261012">
   <!-- Snackbar Stylesheet -->
   <link rel="stylesheet" href="../styles/snackbar.css">
 </head>
 <body>
 
   <div class="auth-container">
-    <!-- Website Name -->
-    <div class="brand-name">John Monash</div>
-
-    <!-- Default Profile Picture -->
-    <div class="profile-pic">
-      <img src="../assets/default-profile.svg" alt="Default profile picture">
+    <!-- US-33: the organisation's branding, in the same position as the navigation
+         header. The wordmark is the accessible name and the fallback if the asset
+         is missing. -->
+    <div class="brand-name brand">
+      <img class="brand-logo" src="../assets/logo.png" alt="John Monash" onerror="this.parentNode.classList.add('brand-text-only'); this.remove();">
+      <span class="brand-wordmark">John Monash</span>
     </div>
 
     <!-- Sign Up Form -->

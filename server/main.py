@@ -2,7 +2,7 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import auth, projects, sprints
+from routes import auth, projects, sprints, activity
 
 app = FastAPI() # To run the server, place `uvicorn main:app --reload` in the terminal.
 
@@ -25,6 +25,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api", tags=["Auth"])
 app.include_router(projects.router, prefix="/api", tags=["Projects"])
 app.include_router(sprints.router, prefix="/api", tags=["Sprints"])
+app.include_router(activity.router, prefix="/api", tags=["Activity"])
 
 
 @app.get("/health")

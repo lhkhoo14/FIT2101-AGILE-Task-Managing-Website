@@ -207,36 +207,6 @@ class ServerData:
             print(f"[API Error] Failed to fetch project: {e}")
             return None
 
-    async def get_project_team(self, project_id: int) -> list[dict]:
-        """Project members plus everyone assigned to any of its sprints.
-
-        The members endpoint returns {members, contribute, roles}, so the roster
-        is built from those member ids (plus each sprint's members) and resolved
-        against the registered users.
-
-        CHANGE: members, sprints and users do not depend on each other, so they
-        are fetched concurrently with asyncio.gather rather than one after
-        another. This removes two round trips of latency from every view that
-        loads the team.
-        """
-        payload, sprints, users = await asyncio.gather(
-            self.get_project_members(project_id),
-            self.get_sprints(project_id),
-            self.get_users(),
-        )
-
-        member_ids = set()
-        for member_id in (payload or {}).get("members") or []:
-            if str(member_id).isdigit():
-                member_ids.add(int(member_id))
-
-        for sprint in sprints or []:
-            for member_id in (sprint.get("members") or []):
-                if str(member_id).isdigit():
-                    member_ids.add(int(member_id))
-
-        return [user for user in users or [] if int(user["user_id"]) in member_ids]
-    
     async def get_project_members(self, project_id: int) -> dict | None:
         """Fetches project members, contributors and roles from FastAPI."""
         user_id = self.get_active_session()
@@ -523,4 +493,128 @@ class ServerData:
             return False, err_data.get("detail", "Failed to update sprint status."), None
         except Exception as e:
             print(f"[API Error] Failed to update sprint status: {e}")
+            return False, "Unable to connect to the server.", None
+
+    # --- Server-backed activity (US-19 / US-20 / US-21) ---
+    async def get_project_member_users(self, project_id: int) -> list[dict]:
+        """Registered users who belong to this project, and only those.
+
+        US-19: the sprint create/edit dialog must not offer accounts that are not
+        part of the parent project. Members and users are independent requests, so
+        they are fetched concurrently and then intersected here.
+        """
+        payload, users = await asyncio.gather(
+            self.get_project_members(project_id),
+            self.get_users(),
+        )
+        member_ids = {
+            int(member_id)
+            for member_id in (payload or {}).get("members", []) or []
+            if str(member_id).isdigit()
+        }
+        return [user for user in users or [] if int(user["user_id"]) in member_ids]
+
+    async def get_change_history(self, project_id: int) -> list[dict]:
+        """US-20: the project's change history, newest first, from the server."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return []
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/history?user_id={user_id}",
+                method="GET",
+                headers={"Content-Type": "application/json"}
+            )
+            if response.status == 200:
+                return await response.json()
+            return []
+        except Exception as e:
+            print(f"[API Error] Failed to fetch change history: {e}")
+            return []
+
+    async def record_change(self, project_id: int, message: str, action: str = "project_change",
+                            sprint_id=None, sprint_name=None, task_id=None, task_title=None,
+                            from_status=None, to_status=None, timestamp=None) -> tuple[bool, str]:
+        """US-20: append one event to the project's audit trail on the server.
+
+        The server stamps the time and actor, so the feed reads the same on every
+        device. `timestamp` is only used by the one-time browser-data migration.
+        """
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired"
+
+        body = {
+            "user_id": user_id,
+            "action": action,
+            "message": message,
+            "sprint_id": str(sprint_id) if sprint_id is not None else None,
+            "sprint_name": sprint_name,
+            "task_id": str(task_id) if task_id is not None else None,
+            "task_title": task_title,
+            "from_status": from_status,
+            "to_status": to_status,
+        }
+        if timestamp:
+            body["timestamp"] = timestamp
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/history",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps(body)
+            )
+            if response.status in (200, 201):
+                return True, ""
+            err_data = await response.json()
+            return False, err_data.get("detail", "Failed to save change history.")
+        except Exception as e:
+            print(f"[API Error] Failed to save change history: {e}")
+            return False, "Unable to connect to the server."
+
+    async def get_contributions(self, project_id: int) -> dict:
+        """US-20: member contribution statistics calculated and stored server-side."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return {}
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/contributions?user_id={user_id}",
+                method="GET",
+                headers={"Content-Type": "application/json"}
+            )
+            if response.status == 200:
+                return await response.json()
+            return {}
+        except Exception as e:
+            print(f"[API Error] Failed to fetch contributions: {e}")
+            return {}
+
+    async def log_task_time(self, project_id: int, sprint_id, task_id, action: str
+                            ) -> tuple[bool, str, dict | None]:
+        """US-21: start/stop a work session on a task.
+
+        The server owns the timestamps and stamps the record with the acting User
+        ID and the Task ID, then returns the updated time log for the task.
+        """
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired", None
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/sprints/{sprint_id}/tasks/{task_id}/time-log",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id, "action": action})
+            )
+            if response.status == 200:
+                return True, "", await response.json()
+            err_data = await response.json()
+            return False, err_data.get("detail", "Failed to update the task time log."), None
+        except Exception as e:
+            print(f"[API Error] Failed to log task time: {e}")
             return False, "Unable to connect to the server.", None
