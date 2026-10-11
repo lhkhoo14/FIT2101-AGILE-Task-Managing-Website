@@ -7,6 +7,7 @@ if "." not in sys.path:
 
 # Import decoupled topbar module
 import topbar
+import sidebar_state
 
 def get_project_id_from_url():
     params = js.URLSearchParams.new(window.location.search)
@@ -59,17 +60,23 @@ def init_project_layout():
     project_name_el = web.page["#project-name-display"]
     if project_name_el and project_id:
         project_name_el.textContent = f"Project {project_id}"
+    # US-17: re-apply the collapse choice the user made earlier in this session
+    # before the first paint of the rail, so switching between the project views
+    # never looks like the navigation reset itself.
+    try:
+        sidebar_state.restore()
+    except Exception as exc:
+        print(f"[Sidebar] Preference not applied: {exc}")
     _highlight_active_nav()
 
 @when("click", "#toggle-sidebar-btn")
 def toggle_sidebar(event):
-    # Retrieve either project-sidebar or standard dashboard sidebar
-    sidebar = web.page["#project-sidebar"] or web.page["#sidebar"]
-    if sidebar:
-        if "collapsed" in sidebar.classes:
-            sidebar.classes.remove("collapsed")
-        else:
-            sidebar.classes.add("collapsed")
+    # US-17: the toolbar button is the only thing that collapses the rail, and
+    # the choice is stored for the rest of the browser session.
+    try:
+        sidebar_state.toggle()
+    except Exception as exc:
+        print(f"[Sidebar] Could not toggle the rail: {exc}")
 
 # --- PROJECT NAVIGATION HANDLERS ---
 @when("click", "#nav-projects")

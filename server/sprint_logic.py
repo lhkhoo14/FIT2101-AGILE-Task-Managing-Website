@@ -128,3 +128,78 @@ def stamp_completions(old_state: Dict[str, Any], new_state: Dict[str, Any],
                     task["completed_at"] = today_date.isoformat()
             else:
                 task.pop("completed_at", None)
+
+
+def _member_id_set(project: Dict[str, Any]) -> set:
+    ids = set()
+    for raw in project.get("members", []) or []:
+        text = str(raw).strip()
+        if text.lstrip("-").isdigit():
+            ids.add(int(text))
+    return ids
+
+
+def validate_sprint_members(members: Optional[list], project: Dict[str, Any]) -> list:
+    """US-19: a sprint may only be staffed with members of its parent project.
+
+    Returns the de-duplicated member list (order preserved) or raises ValueError
+    naming the users that do not belong to the project. `None` is left alone
+    because legacy sprints use it to mean "the whole project".
+    """
+    if members is None:
+        return None
+
+    project_members = _member_id_set(project)
+    cleaned = []
+    rejected = []
+    for raw in members:
+        text = str(raw).strip()
+        if not text.lstrip("-").isdigit():
+            rejected.append(str(raw))
+            continue
+        value = int(text)
+        if value not in project_members:
+            rejected.append(str(value))
+            continue
+        if value not in cleaned:
+            cleaned.append(value)
+
+    if rejected:
+        raise ValueError(
+            "Only members of this project can be assigned to a sprint. "
+            f"Not a project member: {', '.join(rejected)}."
+        )
+    return cleaned
+
+
+def validate_assignees(old_state: Dict[str, Any], new_state: Dict[str, Any],
+                      project: Dict[str, Any]) -> None:
+    """US-19: reject a board save that assigns a task to a non-project member.
+
+    Only tasks whose assignee actually changed are checked, so a board holding a
+    task assigned to someone who has since left the project can still be saved
+    (the untouched task keeps its legacy assignee).
+    """
+    project_members = _member_id_set(project)
+    previous = {}
+    for column in COLUMNS:
+        for task in (old_state or {}).get(column, []) or []:
+            previous[str(task.get("id"))] = task.get("assignee_id")
+
+    for column in COLUMNS:
+        for task in (new_state or {}).get(column, []) or []:
+            assignee_id = task.get("assignee_id")
+            if assignee_id is None:
+                continue
+            if previous.get(str(task.get("id"))) == assignee_id:
+                continue
+            title = task.get("title", "Task")
+            text = str(assignee_id).strip()
+            if not text.lstrip("-").isdigit():
+                raise ValueError(f"'{title}' has an invalid assignee.")
+            if int(text) not in project_members:
+                raise ValueError(
+                    f"'{title}' cannot be assigned to user {text}: they are not a "
+                    "member of this project."
+                )
+

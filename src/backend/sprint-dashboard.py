@@ -7,7 +7,7 @@ from html import escape
 if "." not in sys.path:
     sys.path.append(".")
 
-from datetime import date, datetime
+from datetime import date
 
 from pyscript import when, web, window, document  # type: ignore[reportMissingImports]
 from auth import show_snackbar
@@ -24,7 +24,9 @@ from sprint_access import (
     PRIORITY_ORDER, DEFAULT_PRIORITY,
 )
 
-COLUMN_ORDER = ["backlog", "active", "review", "completed"]
+# CHANGE: the per-column walk over every sprint board used to live here as the
+# COLUMN_ORDER list. US-20 moved that arithmetic to the server, so the browser no
+# longer needs the column order — see server/contribution_logic.py.
 
 # The project ID scopes every dashboard API request. The <head> guard has
 # already ensured the URL carries a valid project_id (restoring the last project
@@ -360,11 +362,12 @@ async def handle_sort_change(event):
     await render_sprints_grid()
 
 
-# History is still a browser-only activity feed. Sprint/project data itself is
-# not stored here; it comes from FastAPI through ServerData.
+# US-20: the activity feed now lives in the central database, so it reads the
+# same on every device and browser. `history-db.js` is kept only as a one-time
+# reader for events recorded in the browser before this change.
 async def _load_change_history():
-    entries = await window.sprintHistoryDb.getAll()
-    return json.loads(str(js.JSON.stringify(entries)))
+    entries = await server_data.get_change_history(PROJECT_ID)
+    return entries if isinstance(entries, list) else []
 
 
 # Resolve the active account to a readable actor name for new events.
@@ -374,20 +377,62 @@ async def _current_actor():
     return (user.get("username") or user.get("email")) if user else "Unknown user"
 
 
-# Store a timestamped dashboard event in the shared IndexedDB database.
+# Store a timestamped dashboard event in the project's server-side audit trail.
 async def record_change(message, sprint_id=None, sprint_name=None, task_id=None, task_title=None):
     actor = await _current_actor()
-    entry = {
-        "action": "project_change",
-        "message": f"{actor} {message}",
-        "sprint_id": sprint_id,
-        "sprint_name": sprint_name,
-        "task_id": task_id,
-        "task_title": task_title,
-        "actor": actor,
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
-    }
-    await window.sprintHistoryDb.add(js.JSON.parse(json.dumps(entry)))
+    success, err = await server_data.record_change(
+        PROJECT_ID,
+        f"{actor} {message}",
+        sprint_id=sprint_id,
+        sprint_name=sprint_name,
+        task_id=task_id,
+        task_title=task_title,
+    )
+    if not success:
+        print(f"[Change History] {err}")
+
+
+# US-20 transition: upload anything the old IndexedDB store still holds, once.
+# Entries keep their original timestamp so the feed stays in order.
+async def _migrate_legacy_history():
+    try:
+        legacy_store = window.sprintHistoryDb
+        # claimMigration() is true for the first caller only, so two open tabs
+        # cannot import the same events twice.
+        if legacy_store is None or not legacy_store.claimMigration():
+            return
+        entries = legacy_store.getLegacyEntries()
+        entries = json.loads(str(js.JSON.stringify(await entries))) if entries is not None else []
+    except Exception as exc:
+        print(f"[Change History] Legacy read skipped: {exc}")
+        return
+
+    migrated = 0
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        success, _err = await server_data.record_change(
+            PROJECT_ID,
+            entry.get("message") or "Recorded change",
+            action=entry.get("action") or "project_change",
+            sprint_id=entry.get("sprint_id"),
+            sprint_name=entry.get("sprint_name"),
+            task_id=entry.get("task_id"),
+            task_title=entry.get("task_title"),
+            from_status=entry.get("from_status"),
+            to_status=entry.get("to_status"),
+            timestamp=entry.get("timestamp"),
+        )
+        if success:
+            migrated += 1
+
+    # Only flag the migration once everything is safely on the server.
+    if migrated == len(entries or []):
+        try:
+            legacy_store.markMigrated()
+        except Exception as exc:
+            print(f"[Change History] Could not flag migration: {exc}")
+
 
 
 # Render activity newest-first and show a message when the database is empty.
@@ -402,7 +447,8 @@ async def render_change_history():
         history_list.appendChild(empty)
         return
 
-    for entry in reversed(history):
+    # The server already returns the feed newest-first.
+    for entry in history:
         row = document.createElement("li")
         row.className = "activity-row"
         summary = document.createElement("p")
@@ -421,104 +467,44 @@ async def render_change_history():
         history_list.appendChild(row)
 
 
-# Match abbreviated seeded assignee names to full names in the member roster.
-def _member_name_for_assignee(assignee, members):
-    normalized = assignee.strip().casefold()
-    for name in members:
-        candidate = name.casefold()
-        if candidate == normalized or candidate.endswith(f" {normalized}"):
-            return name
-    return assignee
+# CHANGE: removed the in-dashboard member roster (render_members_view) and the
+# contact dialog it fed. #nav-members is owned by project_layout.py, which opens
+# project-members.html, so the roster was unreachable: nothing ever linked to
+# ?view=members either.
 
 
-# Render the project member roster from the real project members.
-async def render_members_view():
-    team = await server_data.get_project_team(PROJECT_ID)
-    list_el = document.getElementById("sprint-member-list")
-    if list_el is None:
-        return
-    list_el.innerHTML = ""
-
-    count_el = document.getElementById("member-count")
-    if count_el is not None:
-        count_el.textContent = f"{len(team)} member{'s' if len(team) != 1 else ''}"
-
-    if not team:
-        empty = document.createElement("li")
-        empty.className = "feature-empty-state"
-        empty.textContent = "No project members found."
-        list_el.appendChild(empty)
-        return
-
-    for member in team:
-        name = member.get("username") or member.get("email") or "Unknown user"
-        email = member.get("email", "")
-        row = document.createElement("li")
-        row.className = "member-row"
-        row.innerHTML = (
-            f'<button type="button" class="member-trigger" '
-            f'data-member-name="{escape(name)}" data-member-phone="" '
-            f'data-member-email="{escape(email)}">'
-            f'<span class="member-avatar" aria-hidden="true">{escape(_initials(name))}</span>'
-            f'<span class="member-details"><strong>{escape(name)}</strong>'
-            f'<span>{escape(email)}</span></span></button>'
-        )
-        list_el.appendChild(row)
-
-
-# Aggregate assigned tasks and completed counts for every member across sprints.
+# Render the server-computed contribution table (US-20 / US-21).
 async def render_member_contributions():
-    team = await server_data.get_project_team(PROJECT_ID)
-    members = [
-        member.get("username") or member.get("email")
-        for member in team
-        if member.get("username") or member.get("email")
-    ]
-    contributions = {
-        name: {"assigned": 0, "completed": 0, "tasks": []}
-        for name in members
-    }
+    """Show each member's assigned/completed tasks and tracked hours.
 
-    # CHANGE: fetch every board in one batched request instead of one request
-    # per sprint. This was the N+1 that dominated the dashboard's load time.
-    all_states = await server_data.get_project_kanban_states(PROJECT_ID)
-    for sprint in await server_data.get_sprints(PROJECT_ID):
-        state = all_states.get(str(sprint["id"]))
-        if state is None:
-            continue
-        for column in COLUMN_ORDER:
-            for task in state.get(column, []):
-                assignee = task.get("assignee")
-                if not assignee:
-                    continue
-                name = _member_name_for_assignee(assignee, members)
-                contribution = contributions.setdefault(
-                    name, {"assigned": 0, "completed": 0, "tasks": []}
-                )
-                contribution["assigned"] += 1
-                if column == "completed":
-                    contribution["completed"] += 1
-                contribution["tasks"].append({
-                    "title": task.get("title", "Untitled task"),
-                    "status": column,
-                    "sprint": sprint.get("name", "Sprint"),
-                })
+    CHANGE: these totals used to be recalculated in the browser from the kanban
+    boards on every render. The server now computes and stores them, so this panel
+    agrees with the burndown chart and shows the same numbers on every device.
+    """
+    payload = await server_data.get_contributions(PROJECT_ID)
+    members = payload.get("members") or []
 
     contribution_list = web.page["contribution-list"]
     contribution_list.innerHTML = ""
-    ranked = sorted(
-        contributions.items(),
-        key=lambda item: (-item[1]["assigned"], item[0].casefold()),
-    )
-    for name, stats in ranked:
+    if not members:
+        empty = document.createElement("p")
+        empty.className = "feature-empty-state"
+        empty.textContent = "No project members found."
+        contribution_list.appendChild(empty)
+        return
+
+    for stats in members:
         card = document.createElement("section")
         card.className = "contribution-row"
         heading = document.createElement("h2")
         heading.className = "contribution-name"
-        heading.textContent = name
+        heading.textContent = stats.get("name") or "Unknown user"
         metrics = document.createElement("p")
         metrics.className = "contribution-metrics"
-        metrics.textContent = f"{stats['assigned']} assigned · {stats['completed']} completed"
+        metrics.textContent = (
+            f"{stats.get('assigned', 0)} assigned · {stats.get('completed', 0)} completed"
+            f" · {stats.get('logged_hours', 0)}h logged"
+        )
         tasks = document.createElement("ul")
         tasks.className = "contribution-tasks"
         if stats["tasks"]:
@@ -550,15 +536,14 @@ async def render_member_contributions():
 # Switch the visible dashboard panel without navigating away from the page.
 # History and contribution data are fetched only when their panels are opened.
 def _show_dashboard_view(view_id):
-    view_ids = ["sprints-view", "members-view", "history-view", "contributions-view", "effort-view"]
-    nav_ids = ["nav-all-projects", "nav-members", "nav-history", "nav-contributions", "nav-effort"]
+    view_ids = ["sprints-view", "history-view", "contributions-view", "effort-view"]
+    nav_ids = ["nav-all-projects", "nav-history", "nav-contributions", "nav-effort"]
     is_feature_view = view_id != "sprints-view"
     document.querySelector(".sprint-dashboard-layout").classList.toggle("members-open", is_feature_view)
     for current_view in view_ids:
         web.page[current_view].classList.toggle("hidden", current_view != view_id)
     active_nav = {
         "sprints-view": "nav-all-projects",
-        "members-view": "nav-members",
         "history-view": "nav-history",
         "contributions-view": "nav-contributions",
         "effort-view": "nav-effort",
@@ -573,13 +558,9 @@ def handle_show_sprints(event):
     _show_dashboard_view("sprints-view")
 
 
-@when("click", "#nav-members")
-async def handle_show_members(event):
-    # Render the live roster, then open the members panel.
-    await render_members_view()
-    _show_dashboard_view("members-view")
-
-
+# CHANGE: removed handle_show_members. It was bound to #nav-members, which
+# project_layout.py already handles by opening project-members.html, so both
+# listeners ran and the page navigated away before this one was of any use.
 @when("click", "#nav-history")
 async def handle_show_history(event):
     # Refresh saved events before opening the history panel.
@@ -692,7 +673,6 @@ async def handle_sprint_page_navigation(event):
 
     view_ids = {
         "sprints": "sprints-view",
-        "members": "members-view",
         "history": "history-view",
         "contributions": "contributions-view",
         "effort": "effort-view",
@@ -702,8 +682,6 @@ async def handle_sprint_page_navigation(event):
         return
     if detail.view == "history":
         await render_change_history()
-    elif detail.view == "members":
-        await render_members_view()
     elif detail.view == "contributions":
         await render_member_contributions()
     elif detail.view == "effort":
@@ -721,8 +699,14 @@ def _close_modal(modal_id):
 
 
 async def _render_member_options():
-    """Fill the create-sprint modal with one checkbox per registered user."""
-    users = await server_data.get_users()
+    """Fill the create/edit sprint dialog with one checkbox per PROJECT member.
+
+    US-19: only accounts that belong to the active project may be added to a
+    sprint, so unrelated registered users are never offered here. The server
+    enforces the same rule on save, so this is presentation rather than the only
+    line of defence.
+    """
+    users = await server_data.get_project_member_users(PROJECT_ID) if PROJECT_ID else []
     container = web.page["sprint-members-list"]
     container.innerHTML = ""
 
@@ -742,7 +726,7 @@ async def _render_member_options():
     if len(users) <= 1:
         empty = document.createElement("p")
         empty.className = "members-empty"
-        empty.textContent = "No other registered users yet."
+        empty.textContent = "No other project members yet. Add them from the Team Members tab."
         container.appendChild(empty)
 
 
@@ -752,28 +736,11 @@ def _selected_member_ids():
         if box.checked:
             ids.append(int(box.value))
     # The creator is always a member, even if their checkbox state is lost.
+    # They are necessarily part of the project, so the server-side US-19 check
+    # accepts this list unchanged.
     if current_user_id is not None and current_user_id not in ids:
         ids.insert(0, current_user_id)
     return ids
-
-
-@when("click", ".member-list")
-def handle_member_click(event):
-    # Populate the contact dialog from the selected member's data attributes.
-    trigger = event.target.closest(".member-trigger")
-    if trigger is None:
-        return
-    web.page["member-modal-name"].textContent = trigger.getAttribute("data-member-name") or "Not provided"
-    web.page["member-modal-phone"].textContent = trigger.getAttribute("data-member-phone") or "Not provided"
-    web.page["member-modal-email"].textContent = trigger.getAttribute("data-member-email") or "Not provided"
-    _open_modal("member-details-modal")
-    web.page["close-member-details"].focus()
-
-
-@when("click", "#close-member-details")
-def handle_close_member_details(event):
-    # Close the member contact dialog.
-    _close_modal("member-details-modal")
 
 
 def _prepare_sprint_date_inputs():
@@ -946,6 +913,8 @@ async def initialize_dashboard():
     if not PROJECT_ID:
         return
     await render_sprints_grid()
+    # US-20: move any history recorded in this browser before the switchover.
+    asyncio.ensure_future(_migrate_legacy_history())
     first_available_card = document.querySelector('.sprint-card[data-member="true"]')
     if first_available_card:
         window.prepareSprintBoard(first_available_card.getAttribute("data-sprint-id"))
@@ -957,7 +926,6 @@ dashboard_params = js.URLSearchParams.new(window.location.search)
 requested_view = dashboard_params.get("view")
 view_ids = {
     "sprints": "sprints-view",
-    "members": "members-view",
     "history": "history-view",
     "contributions": "contributions-view",
     "effort": "effort-view",
@@ -965,8 +933,6 @@ view_ids = {
 if requested_view in view_ids:
     if requested_view == "history":
         asyncio.ensure_future(render_change_history())
-    elif requested_view == "members":
-        asyncio.ensure_future(render_members_view())
     elif requested_view == "contributions":
         asyncio.ensure_future(render_member_contributions())
     elif requested_view == "effort":

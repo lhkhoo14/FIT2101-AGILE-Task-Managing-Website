@@ -35,15 +35,19 @@
 
   <link rel="stylesheet" href="../styles/base.css">
   <!-- Top Bar Stylesheet -->
-  <link rel="stylesheet" href="../styles/topbar.css">
+  <link rel="stylesheet" href="../styles/topbar.css?v=20261011">
   <!-- Layout Stylesheet -->
   <link rel="stylesheet" href="../styles/project-layout.css">
   <!-- Page Stylesheet -->
   <link rel="stylesheet" href="../styles/sprint-page.css?v=20261005">
   <!-- Snackbar Stylesheet -->
   <link rel="stylesheet" href="../styles/snackbar.css">
-  <!-- Shared IndexedDB API used to record sprint-board events. -->
-  <script src="../backend/history-db.js"></script>
+  <!--
+    CHANGE (US-20): the change history this board used to write to IndexedDB now
+    lives in the project's server-side audit trail, so this page no longer loads
+    the browser history store. history-db.js stays linked on sprint-dashboard.html
+    only, to lift any pre-existing local events across once.
+  -->
   <script>
     // Never let a form perform a native submit; PyScript handlers run too late to cancel it.
     document.addEventListener("submit", (event) => event.preventDefault(), true);
@@ -72,7 +76,13 @@
           <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
         </svg>
       </button>
-      <span class="brand-title">John Monash</span>
+      <!-- US-33: organisational branding replaces the placeholder wordmark. The logo
+           is src/assets/logo.png; if the asset is missing the <img> removes itself
+           and the wordmark takes over, so the header never shows a broken image. -->
+      <span class="brand-title brand" title="Go to dashboard">
+        <img class="brand-logo" src="../assets/logo.png" alt="John Monash" onerror="this.parentNode.classList.add('brand-text-only'); this.remove();">
+        <span class="brand-wordmark">John Monash</span>
+      </span>
     </div>
 
     <!-- Rounded Search Bar (Middle) -->
@@ -337,8 +347,8 @@
   </div>
 
   <!-- Link settings.json for PyScript backend -->
-  <script type="py" config="../../settings.json" src="../backend/layout.py?v=20261002"></script>
-  <script type="py" config="../../settings.json" src="../backend/sprint-page.py?v=20261005"></script>
+  <script type="py" config="../../settings.json" src="../backend/layout.py?v=20261011"></script>
+  <script type="py" config="../../settings.json" src="../backend/sprint-page.py?v=20261011"></script>
 </body>
 
 </html>

@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from database_manager import db_manager
 from dependencies import verify_project_access
+from routes.activity import refresh_contributions
 import sprint_logic
 
 router = APIRouter()
@@ -68,6 +69,13 @@ def create_sprint(project_id: int, payload: CreateSprintPayload):
 
     db, project = _load_project(project_id, payload.user_id)
 
+    # US-19: a sprint may only be staffed with members of its parent project, so
+    # a client cannot slip an unrelated account in through the API payload.
+    try:
+        members = sprint_logic.validate_sprint_members(payload.members, project)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
     sprint_id = db.get("next_sprint_id", 1)
     db["next_sprint_id"] = sprint_id + 1
 
@@ -80,7 +88,7 @@ def create_sprint(project_id: int, payload: CreateSprintPayload):
         "end_date": end.isoformat(),
         "priority": payload.priority,
         "tags": payload.tags,
-        "members": payload.members,
+        "members": members,
         "created_by": payload.user_id,
         "created_at": payload.created_at,
         "kanban_state": {
@@ -91,6 +99,8 @@ def create_sprint(project_id: int, payload: CreateSprintPayload):
         }
     }
     project.setdefault("sprints", []).append(sprint)
+    # US-20: keep the stored contribution table present from the start.
+    refresh_contributions(db, project)
     db_manager.write(db)
     return sprint
 
@@ -146,11 +156,16 @@ def save_kanban_state(project_id: int, sprint_id: str, payload: SaveKanbanStateP
     try:
         sprint_logic.validate_task_dates(payload.state, sprint)
         sprint_logic.validate_completion_checklists(sprint.get("kanban_state", {}), payload.state)
+        # US-19: refuse a board that assigns work to somebody outside the project.
+        sprint_logic.validate_assignees(sprint.get("kanban_state", {}), payload.state, project)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
     sprint_logic.stamp_completions(sprint.get("kanban_state", {}), payload.state, sprint)
     sprint["kanban_state"] = payload.state
+    # US-20 / US-21: assigned, completed and logged-time counts are recalculated
+    # and stored server-side in the same transaction as the board.
+    refresh_contributions(db, project)
     db_manager.write(db)
     return {"status": "success"}
 
@@ -186,6 +201,7 @@ def move_backlog_to_sprint(project_id: int, sprint_id: str, payload: MoveBacklog
     }
     kanban.setdefault("backlog", []).append(task_card)
     
+    refresh_contributions(db, project)
     db_manager.write(db)
     return {"status": "success"}
 
