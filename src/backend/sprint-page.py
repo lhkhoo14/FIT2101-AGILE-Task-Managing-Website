@@ -1044,54 +1044,85 @@ def handle_role_change(event):
 
 # --- SECTION: Task Time Logging ---
 
+def _parse_stamp(value):
+    """ISO stamp -> datetime, or None when it is missing/unreadable.
+
+    US-21: work sessions are stamped by the server in UTC, while tasks logged
+    before the switchover carry a naive local stamp. Treating a naive stamp as
+    UTC keeps the two comparable instead of raising on the subtraction, and
+    converting to the browser's timezone keeps the display local.
+    """
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone()
+
+
 def _time_log_summary(task):
+    """(started, ended, duration, status) for a task's tracked work.
+
+    US-21: the server stores each work session separately, so the duration is the
+    sum of every finished session rather than only the most recent one. Tasks that
+    predate session tracking carry a single flat started_at/ended_at pair and are
+    read as one session.
+    """
     time_log = task.get("time_log")
     if not time_log:
         return "", "", "", ""
 
-    started_at_str = time_log.get("started_at")
-    ended_at_str = time_log.get("ended_at")
+    entries = [entry for entry in (time_log.get("entries") or []) if isinstance(entry, dict)]
+    if not entries:
+        entries = [
+            {"started_at": time_log.get("started_at"), "ended_at": time_log.get("ended_at")}
+        ]
 
     started_fmt = ""
     ended_fmt = ""
     duration_str = ""
     status_txt = ""
+    total_seconds = 0
+    running = False
 
-    if started_at_str:
-        try:
-            dt_start = datetime.fromisoformat(started_at_str)
-            started_fmt = dt_start.strftime("%b %d, %Y %I:%M %p")
+    for entry in entries:
+        start = _parse_stamp(entry.get("started_at"))
+        end = _parse_stamp(entry.get("ended_at"))
+        if start is not None and not started_fmt:
+            started_fmt = start.strftime("%b %d, %Y %I:%M %p")
+        if end is not None:
+            ended_fmt = end.strftime("%b %d, %Y %I:%M %p")
+        if start is None:
+            continue
+        if end is None:
+            running = True
+            continue
+        total_seconds += max(0, int((end - start).total_seconds()))
+
+    if started_fmt:
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        duration_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
+        if running:
             status_txt = "In progress"
-        except ValueError:
-            pass
-
-    if ended_at_str and started_at_str:
-        try:
-            dt_start = datetime.fromisoformat(started_at_str)
-            dt_end = datetime.fromisoformat(ended_at_str)
-            ended_fmt = dt_end.strftime("%b %d, %Y %I:%M %p")
-
-            total_seconds = int((dt_end - dt_start).total_seconds())
-            if total_seconds < 0:
-                total_seconds = 0
-
-            hours = total_seconds // 3600
-            minutes = (total_seconds % 3600) // 60
-
-            if hours > 0:
-                duration_str = f"{hours}h {minutes}m"
-            else:
-                duration_str = f"{minutes}m"
-
+        elif ended_fmt:
             status_txt = duration_str
-        except ValueError:
-            pass
 
     return started_fmt, ended_fmt, duration_str, status_txt
 
 
-@when("click", "#start-task-btn")
-async def handle_start_task(event):
+async def _submit_time_log(action, verb):
+    """US-21: open or close the work session on the currently open task.
+
+    The server owns the clock and stamps the session with the acting User ID and
+    the Task ID, then returns the task's updated time_log. That record is copied
+    onto the in-memory board so the card badge and the dialog match what is
+    stored, and the contribution totals are recalculated server-side in the same
+    transaction.
+    """
     if _sprint_ended or not _open_task_id:
         return
 
@@ -1099,33 +1130,26 @@ async def handle_start_task(event):
     if target_task is None:
         return
 
-    time_log = target_task.get("time_log")
-    if not time_log:
-        time_log = {}
-        target_task["time_log"] = time_log
+    success, err, payload = await server_data.log_task_time(
+        _project_id, _sprint_id, target_task.get("id"), action
+    )
+    if not success or not payload:
+        await show_snackbar(f"Could not {verb} the timer: {err}")
+        return
 
-    if not time_log.get("started_at"):
-        time_log["started_at"] = datetime.now().isoformat()
-        await _persist_kanban_state(_kanban_state)
-        _render_task_detail_modal()
-        _render_board(_kanban_state)
+    target_task["time_log"] = payload.get("time_log") or target_task.get("time_log")
+    _render_task_detail_modal()
+    _render_board(_kanban_state)
+
+
+@when("click", "#start-task-btn")
+async def handle_start_task(event):
+    await _submit_time_log("start", "start")
 
 
 @when("click", "#end-task-btn")
 async def handle_end_task(event):
-    if _sprint_ended or not _open_task_id:
-        return
-
-    target_task = _find_open_task()
-    if target_task is None:
-        return
-
-    time_log = target_task.get("time_log")
-    if time_log and time_log.get("started_at") and not time_log.get("ended_at"):
-        time_log["ended_at"] = datetime.now().isoformat()
-        await _persist_kanban_state(_kanban_state)
-        _render_task_detail_modal()
-        _render_board(_kanban_state)
+    await _submit_time_log("stop", "stop")
 
 
 def _close_task_detail_modal():

@@ -622,3 +622,29 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to fetch contributions: {e}")
             return {}
+
+    async def log_task_time(self, project_id: int, sprint_id, task_id, action: str
+                            ) -> tuple[bool, str, dict | None]:
+        """US-21: start/stop a work session on a task.
+
+        The server owns the timestamps and stamps the record with the acting User
+        ID and the Task ID, then returns the updated time log for the task.
+        """
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired", None
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/sprints/{sprint_id}/tasks/{task_id}/time-log",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id, "action": action})
+            )
+            if response.status == 200:
+                return True, "", await response.json()
+            err_data = await response.json()
+            return False, err_data.get("detail", "Failed to update the task time log."), None
+        except Exception as e:
+            print(f"[API Error] Failed to log task time: {e}")
+            return False, "Unable to connect to the server.", None

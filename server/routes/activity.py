@@ -6,6 +6,11 @@ live in the browser (IndexedDB plus arithmetic done at render time), so they
 were different on every device. Both now read and write the project record in
 the central database.
 
+US-21: starting and finishing a task writes a work log straight to the server,
+stamped with the server's clock and carrying the acting User ID and Task ID, and
+the affected contribution figures are recomputed and persisted in the same
+transaction.
+
 Every write goes through `db_manager.update()` so the read-modify-write happens
 inside one transaction; with the shared connection pool a plain read-then-write
 could interleave with another request.
@@ -13,7 +18,7 @@ could interleave with another request.
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import contribution_logic as logic
 import sprint_logic
@@ -77,6 +82,11 @@ class HistoryPayload(BaseModel):
     timestamp: Optional[str] = None
 
 
+class TimeLogPayload(BaseModel):
+    user_id: int
+    action: str = Field(description="'start' to open a work session, 'stop' to close it.")
+
+
 @router.get("/projects/{project_id}/history")
 def list_history(project_id: int, user_id: int, limit: int = 200):
     """The project's audit trail, newest first."""
@@ -129,3 +139,94 @@ def get_contributions(project_id: int, user_id: int):
         return refresh_contributions(db, project)
 
     return db_manager.update(mutate)
+
+
+@router.post("/projects/{project_id}/sprints/{sprint_id}/tasks/{task_id}/time-log")
+def log_task_time(project_id: int, sprint_id: str, task_id: str, payload: TimeLogPayload):
+    """Start or stop a work session on a task (US-21).
+
+    The stored session carries the acting User ID, the Task ID and ISO-8601
+    start/end stamps taken from the server clock. The project's contribution
+    totals are recomputed and saved in the same transaction, and the change is
+    written to the audit trail so it appears on every device.
+    """
+    action = (payload.action or "").strip().lower()
+    if action not in ("start", "stop"):
+        raise HTTPException(status_code=422, detail="Action must be 'start' or 'stop'.")
+
+    def mutate(db: Dict[str, Any]) -> Dict[str, Any]:
+        project = _project_or_404(db, project_id, payload.user_id)
+        actor = _user_or_404(db, payload.user_id)
+        actor_name = logic.display_name({payload.user_id: actor}, payload.user_id)
+
+        # A sprint whose end date has passed is read-only; settle that first so
+        # the status check below sees the current value.
+        if sprint_logic.auto_complete_sprints(project):
+            project["status_synced_at"] = logic.utc_stamp()
+
+        sprint = next(
+            (s for s in project.get("sprints", []) or [] if str(s.get("id")) == str(sprint_id)),
+            None,
+        )
+        if sprint is None:
+            raise HTTPException(status_code=404, detail="Sprint not found")
+
+        if sprint.get("status") == "ended":
+            raise HTTPException(
+                status_code=409,
+                detail="This sprint has ended and its time logs can no longer be changed.",
+            )
+
+        # US-19: the acting user must belong to the project, and to the sprint
+        # when the sprint names its members. Legacy sprints with no member list
+        # are open to the whole project.
+        sprint_members = [logic.as_id(m) for m in (sprint.get("members") or [])]
+        if sprint_members and payload.user_id not in sprint_members:
+            raise HTTPException(status_code=403, detail="You are not assigned to this sprint.")
+
+        try:
+            task = logic.find_task(project, sprint_id, task_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+
+        moment = logic.utc_now()
+        if action == "start":
+            entry = logic.start_work_log(task, payload.user_id, moment)
+            verb = "started working on"
+        else:
+            try:
+                entry = logic.stop_work_log(task, payload.user_id, moment)
+            except ValueError as exc:
+                raise HTTPException(status_code=409, detail=str(exc))
+            verb = "stopped working on"
+
+        append_history(
+            project,
+            {
+                "action": "time_log",
+                "message": f"{actor_name} {verb} {task.get('title', 'a task')}",
+                "actor": actor_name,
+                "actor_id": payload.user_id,
+                "sprint_id": str(sprint.get("id", "")),
+                "sprint_name": sprint.get("name", "Sprint"),
+                "task_id": task.get("id"),
+                "task_title": task.get("title"),
+                "timestamp": logic.utc_stamp(moment),
+                "recorded_at": logic.utc_iso(moment),
+            },
+        )
+
+        stats = refresh_contributions(db, project)
+        return {
+            "status": "success",
+            "action": action,
+            "task_id": task.get("id"),
+            "work_log": entry,
+            "time_log": task.get("time_log") or {},
+            "task_seconds": logic.task_seconds(task),
+            "contributions": stats,
+            "contributions_updated_at": project.get("contributions_updated_at"),
+        }
+
+    return db_manager.update(mutate)
+
