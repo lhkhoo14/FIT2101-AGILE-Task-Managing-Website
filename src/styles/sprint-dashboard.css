@@ -27,47 +27,34 @@
   display: none;
 }
 
-/* CHANGE: the project rail now collapses to icons and expands on hover/focus.
-   Previously it sat at a fixed 240px, which on a ~1000px window left the feature
-   panels starting at the midpoint of the screen and badly squeezed.
+/* CHANGE (US-17): the project rail used to be pinned to 68px and to widen only
+   while it was hovered. That read as "my navigation collapsed itself" on every
+   page load and on every switch between the project views.
+   The rail is now always expanded, and the ONLY thing that minimises it is the
+   toolbar button (#toggle-sidebar-btn). project_layout.py stores that choice in
+   sessionStorage and re-applies it on load, so the preference survives route
+   changes instead of being recomputed per page.
    Deliberately not scoped with :has() so it works on every browser. */
 #project-sidebar {
-  width: 68px;
-  padding: 20px 6px;
+  width: 240px;
   overflow: hidden;
   transition: width 0.25s ease, padding 0.25s ease;
 }
 
-#project-sidebar .nav-item,
-#project-sidebar .nav-section-title {
-  opacity: 0;
-  transition: opacity 0.15s ease;
+/* Manual collapse. Needs its own id-scoped rule: #project-sidebar above
+   out-specifies project-layout.css's .sidebar.collapsed. */
+#project-sidebar.collapsed {
+  width: 80px;
+  padding: 20px 6px;
 }
 
-#project-sidebar .nav-item {
-  justify-content: center;
-  padding-left: 0;
-  padding-right: 0;
+/* The grid column follows whichever rail the user collapsed. */
+.sprint-dashboard-layout:has(#project-sidebar.collapsed) {
+  grid-template-columns: 80px 280px 1fr;
 }
 
-#project-sidebar:hover,
-#project-sidebar:focus-within {
-  width: 240px;
-  padding: 20px 12px;
-}
-
-#project-sidebar:hover .nav-item,
-#project-sidebar:focus-within .nav-item,
-#project-sidebar:hover .nav-section-title,
-#project-sidebar:focus-within .nav-section-title {
-  opacity: 1;
-}
-
-#project-sidebar:hover .nav-item,
-#project-sidebar:focus-within .nav-item {
-  justify-content: flex-start;
-  padding-left: 12px;
-  padding-right: 12px;
+.sprint-dashboard-layout.members-open:has(#project-sidebar.collapsed) {
+  grid-template-columns: 80px minmax(0, 1fr);
 }
 
 /* CHANGE: new responsive tiers. The layout had no media queries at all, so both
@@ -96,6 +83,15 @@
   .sprint-dashboard-layout.members-open:has(#sidebar.collapsed) {
     grid-template-columns: 72px minmax(0, 1fr);
   }
+
+  /* US-17: the project rail's manual collapse follows the same tier. */
+  .sprint-dashboard-layout:has(#project-sidebar.collapsed) {
+    grid-template-columns: 72px 220px 1fr;
+  }
+
+  .sprint-dashboard-layout.members-open:has(#project-sidebar.collapsed) {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
 }
 
 /* Below this a backlog beside a feature panel leaves no usable content width. */
@@ -114,6 +110,11 @@
   }
 
   .sprint-dashboard-layout:has(#sidebar.collapsed) {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  /* US-17: the project rail is the first grid column here too. */
+  .sprint-dashboard-layout:has(#project-sidebar.collapsed) {
     grid-template-columns: 72px minmax(0, 1fr);
   }
 }
@@ -152,6 +153,25 @@
     justify-content: center;
     padding-left: 0;
     padding-right: 0;
+  }
+
+  /* US-17: the project rail gets the same icon-only treatment, because the grid
+     can only spare 72px for it here. This is a viewport tier, not the automatic
+     collapse US-17 removed; the manual toggle governs every wider window. */
+  #project-sidebar {
+    width: 72px;
+    padding: 20px 6px;
+  }
+
+  #project-sidebar .nav-item {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  #project-sidebar .nav-item span,
+  #project-sidebar .nav-section-title {
+    display: none;
   }
 }
 
