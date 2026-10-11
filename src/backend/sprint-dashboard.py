@@ -742,7 +742,7 @@ async def _render_member_options():
     if len(users) <= 1:
         empty = document.createElement("p")
         empty.className = "members-empty"
-        empty.textContent = "No other registered users yet."
+        empty.textContent = "No other project members yet. Add them from the Team Members tab."
         container.appendChild(empty)
 
 
