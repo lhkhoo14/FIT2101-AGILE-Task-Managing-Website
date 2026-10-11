@@ -68,6 +68,13 @@ def create_sprint(project_id: int, payload: CreateSprintPayload):
 
     db, project = _load_project(project_id, payload.user_id)
 
+    # US-19: a sprint may only be staffed with members of its parent project, so
+    # a client cannot slip an unrelated account in through the API payload.
+    try:
+        members = sprint_logic.validate_sprint_members(payload.members, project)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
     sprint_id = db.get("next_sprint_id", 1)
     db["next_sprint_id"] = sprint_id + 1
 
@@ -80,7 +87,7 @@ def create_sprint(project_id: int, payload: CreateSprintPayload):
         "end_date": end.isoformat(),
         "priority": payload.priority,
         "tags": payload.tags,
-        "members": payload.members,
+        "members": members,
         "created_by": payload.user_id,
         "created_at": payload.created_at,
         "kanban_state": {
@@ -146,6 +153,8 @@ def save_kanban_state(project_id: int, sprint_id: str, payload: SaveKanbanStateP
     try:
         sprint_logic.validate_task_dates(payload.state, sprint)
         sprint_logic.validate_completion_checklists(sprint.get("kanban_state", {}), payload.state)
+        # US-19: refuse a board that assigns work to somebody outside the project.
+        sprint_logic.validate_assignees(sprint.get("kanban_state", {}), payload.state, project)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 

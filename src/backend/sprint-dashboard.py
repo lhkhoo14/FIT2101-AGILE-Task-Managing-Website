@@ -721,8 +721,14 @@ def _close_modal(modal_id):
 
 
 async def _render_member_options():
-    """Fill the create-sprint modal with one checkbox per registered user."""
-    users = await server_data.get_users()
+    """Fill the create/edit sprint dialog with one checkbox per PROJECT member.
+
+    US-19: only accounts that belong to the active project may be added to a
+    sprint, so unrelated registered users are never offered here. The server
+    enforces the same rule on save, so this is presentation rather than the only
+    line of defence.
+    """
+    users = await server_data.get_project_member_users(PROJECT_ID) if PROJECT_ID else []
     container = web.page["sprint-members-list"]
     container.innerHTML = ""
 
@@ -752,28 +758,11 @@ def _selected_member_ids():
         if box.checked:
             ids.append(int(box.value))
     # The creator is always a member, even if their checkbox state is lost.
+    # They are necessarily part of the project, so the server-side US-19 check
+    # accepts this list unchanged.
     if current_user_id is not None and current_user_id not in ids:
         ids.insert(0, current_user_id)
     return ids
-
-
-@when("click", ".member-list")
-def handle_member_click(event):
-    # Populate the contact dialog from the selected member's data attributes.
-    trigger = event.target.closest(".member-trigger")
-    if trigger is None:
-        return
-    web.page["member-modal-name"].textContent = trigger.getAttribute("data-member-name") or "Not provided"
-    web.page["member-modal-phone"].textContent = trigger.getAttribute("data-member-phone") or "Not provided"
-    web.page["member-modal-email"].textContent = trigger.getAttribute("data-member-email") or "Not provided"
-    _open_modal("member-details-modal")
-    web.page["close-member-details"].focus()
-
-
-@when("click", "#close-member-details")
-def handle_close_member_details(event):
-    # Close the member contact dialog.
-    _close_modal("member-details-modal")
 
 
 def _prepare_sprint_date_inputs():

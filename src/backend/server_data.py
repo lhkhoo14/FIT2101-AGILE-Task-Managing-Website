@@ -524,3 +524,22 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to update sprint status: {e}")
             return False, "Unable to connect to the server.", None
+
+    # --- Server-backed activity (US-19 / US-20 / US-21) ---
+    async def get_project_member_users(self, project_id: int) -> list[dict]:
+        """Registered users who belong to this project, and only those.
+
+        US-19: the sprint create/edit dialog must not offer accounts that are not
+        part of the parent project. Members and users are independent requests, so
+        they are fetched concurrently and then intersected here.
+        """
+        payload, users = await asyncio.gather(
+            self.get_project_members(project_id),
+            self.get_users(),
+        )
+        member_ids = {
+            int(member_id)
+            for member_id in (payload or {}).get("members", []) or []
+            if str(member_id).isdigit()
+        }
+        return [user for user in users or [] if int(user["user_id"]) in member_ids]
