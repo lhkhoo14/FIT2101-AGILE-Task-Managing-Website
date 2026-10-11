@@ -207,36 +207,6 @@ class ServerData:
             print(f"[API Error] Failed to fetch project: {e}")
             return None
 
-    async def get_project_team(self, project_id: int) -> list[dict]:
-        """Project members plus everyone assigned to any of its sprints.
-
-        The members endpoint returns {members, contribute, roles}, so the roster
-        is built from those member ids (plus each sprint's members) and resolved
-        against the registered users.
-
-        CHANGE: members, sprints and users do not depend on each other, so they
-        are fetched concurrently with asyncio.gather rather than one after
-        another. This removes two round trips of latency from every view that
-        loads the team.
-        """
-        payload, sprints, users = await asyncio.gather(
-            self.get_project_members(project_id),
-            self.get_sprints(project_id),
-            self.get_users(),
-        )
-
-        member_ids = set()
-        for member_id in (payload or {}).get("members") or []:
-            if str(member_id).isdigit():
-                member_ids.add(int(member_id))
-
-        for sprint in sprints or []:
-            for member_id in (sprint.get("members") or []):
-                if str(member_id).isdigit():
-                    member_ids.add(int(member_id))
-
-        return [user for user in users or [] if int(user["user_id"]) in member_ids]
-    
     async def get_project_members(self, project_id: int) -> dict | None:
         """Fetches project members, contributors and roles from FastAPI."""
         user_id = self.get_active_session()

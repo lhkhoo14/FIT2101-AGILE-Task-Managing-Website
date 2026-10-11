@@ -336,16 +336,11 @@
         </div>
       </section>
 
-      <!-- Roster is rendered from the project's real members (render_members_view). -->
-      <section id="members-view" class="members-view hidden" aria-labelledby="members-title">
-        <div class="content-header">
-          <h1 id="members-title" class="page-title">Project Members</h1>
-          <span id="member-count" class="member-count"></span>
-        </div>
-        <ul id="sprint-member-list" class="member-list"></ul>
-      </section>
+      <!-- CHANGE (US-18): the in-page member roster and its contact dialog were
+           removed. #nav-members is owned by project_layout.py and opens
+           project-members.html, so "Team Members" is a page, not a dashboard panel. -->
 
-      <!-- Change events are populated from the shared IndexedDB history store. -->
+      <!-- Change events are populated from the project's server-side audit trail. -->
       <section id="history-view" class="feature-view hidden" aria-labelledby="history-title">
         <div class="content-header">
           <h1 id="history-title" class="page-title">Change History</h1>
@@ -380,32 +375,6 @@
 
   <iframe id="sprint-page-frame" title="Sprint board" hidden></iframe>
   <div id="snackbar">Some text some message..</div>
-
-  <!-- Contact dialog filled from the selected member's data attributes. -->
-  <div id="member-details-modal" class="modal-overlay hidden">
-    <section class="modal-box member-details-modal" role="dialog" aria-modal="true"
-      aria-labelledby="member-modal-title">
-      <div class="member-modal-header">
-        <h2 id="member-modal-title" class="modal-title">Member Details</h2>
-        <button type="button" id="close-member-details" class="member-modal-close"
-          aria-label="Close member details">&times;</button>
-      </div>
-      <dl class="member-contact-list">
-        <div>
-          <dt>Full name</dt>
-          <dd id="member-modal-name"></dd>
-        </div>
-        <div>
-          <dt>Phone number</dt>
-          <dd id="member-modal-phone"></dd>
-        </div>
-        <div>
-          <dt>Email</dt>
-          <dd id="member-modal-email"></dd>
-        </div>
-      </dl>
-    </section>
-  </div>
 
   <!-- Create Sprint Modal -->
   <div id="create-sprint-modal" class="modal-overlay hidden">

@@ -24,7 +24,9 @@ from sprint_access import (
     PRIORITY_ORDER, DEFAULT_PRIORITY,
 )
 
-COLUMN_ORDER = ["backlog", "active", "review", "completed"]
+# CHANGE: the per-column walk over every sprint board used to live here as the
+# COLUMN_ORDER list. US-20 moved that arithmetic to the server, so the browser no
+# longer needs the column order — see server/contribution_logic.py.
 
 # The project ID scopes every dashboard API request. The <head> guard has
 # already ensured the URL carries a valid project_id (restoring the last project
@@ -465,104 +467,44 @@ async def render_change_history():
         history_list.appendChild(row)
 
 
-# Match abbreviated seeded assignee names to full names in the member roster.
-def _member_name_for_assignee(assignee, members):
-    normalized = assignee.strip().casefold()
-    for name in members:
-        candidate = name.casefold()
-        if candidate == normalized or candidate.endswith(f" {normalized}"):
-            return name
-    return assignee
+# CHANGE: removed the in-dashboard member roster (render_members_view) and the
+# contact dialog it fed. #nav-members is owned by project_layout.py, which opens
+# project-members.html, so the roster was unreachable: nothing ever linked to
+# ?view=members either.
 
 
-# Render the project member roster from the real project members.
-async def render_members_view():
-    team = await server_data.get_project_team(PROJECT_ID)
-    list_el = document.getElementById("sprint-member-list")
-    if list_el is None:
-        return
-    list_el.innerHTML = ""
-
-    count_el = document.getElementById("member-count")
-    if count_el is not None:
-        count_el.textContent = f"{len(team)} member{'s' if len(team) != 1 else ''}"
-
-    if not team:
-        empty = document.createElement("li")
-        empty.className = "feature-empty-state"
-        empty.textContent = "No project members found."
-        list_el.appendChild(empty)
-        return
-
-    for member in team:
-        name = member.get("username") or member.get("email") or "Unknown user"
-        email = member.get("email", "")
-        row = document.createElement("li")
-        row.className = "member-row"
-        row.innerHTML = (
-            f'<button type="button" class="member-trigger" '
-            f'data-member-name="{escape(name)}" data-member-phone="" '
-            f'data-member-email="{escape(email)}">'
-            f'<span class="member-avatar" aria-hidden="true">{escape(_initials(name))}</span>'
-            f'<span class="member-details"><strong>{escape(name)}</strong>'
-            f'<span>{escape(email)}</span></span></button>'
-        )
-        list_el.appendChild(row)
-
-
-# Aggregate assigned tasks and completed counts for every member across sprints.
+# Render the server-computed contribution table (US-20 / US-21).
 async def render_member_contributions():
-    team = await server_data.get_project_team(PROJECT_ID)
-    members = [
-        member.get("username") or member.get("email")
-        for member in team
-        if member.get("username") or member.get("email")
-    ]
-    contributions = {
-        name: {"assigned": 0, "completed": 0, "tasks": []}
-        for name in members
-    }
+    """Show each member's assigned/completed tasks and tracked hours.
 
-    # CHANGE: fetch every board in one batched request instead of one request
-    # per sprint. This was the N+1 that dominated the dashboard's load time.
-    all_states = await server_data.get_project_kanban_states(PROJECT_ID)
-    for sprint in await server_data.get_sprints(PROJECT_ID):
-        state = all_states.get(str(sprint["id"]))
-        if state is None:
-            continue
-        for column in COLUMN_ORDER:
-            for task in state.get(column, []):
-                assignee = task.get("assignee")
-                if not assignee:
-                    continue
-                name = _member_name_for_assignee(assignee, members)
-                contribution = contributions.setdefault(
-                    name, {"assigned": 0, "completed": 0, "tasks": []}
-                )
-                contribution["assigned"] += 1
-                if column == "completed":
-                    contribution["completed"] += 1
-                contribution["tasks"].append({
-                    "title": task.get("title", "Untitled task"),
-                    "status": column,
-                    "sprint": sprint.get("name", "Sprint"),
-                })
+    CHANGE: these totals used to be recalculated in the browser from the kanban
+    boards on every render. The server now computes and stores them, so this panel
+    agrees with the burndown chart and shows the same numbers on every device.
+    """
+    payload = await server_data.get_contributions(PROJECT_ID)
+    members = payload.get("members") or []
 
     contribution_list = web.page["contribution-list"]
     contribution_list.innerHTML = ""
-    ranked = sorted(
-        contributions.items(),
-        key=lambda item: (-item[1]["assigned"], item[0].casefold()),
-    )
-    for name, stats in ranked:
+    if not members:
+        empty = document.createElement("p")
+        empty.className = "feature-empty-state"
+        empty.textContent = "No project members found."
+        contribution_list.appendChild(empty)
+        return
+
+    for stats in members:
         card = document.createElement("section")
         card.className = "contribution-row"
         heading = document.createElement("h2")
         heading.className = "contribution-name"
-        heading.textContent = name
+        heading.textContent = stats.get("name") or "Unknown user"
         metrics = document.createElement("p")
         metrics.className = "contribution-metrics"
-        metrics.textContent = f"{stats['assigned']} assigned · {stats['completed']} completed"
+        metrics.textContent = (
+            f"{stats.get('assigned', 0)} assigned · {stats.get('completed', 0)} completed"
+            f" · {stats.get('logged_hours', 0)}h logged"
+        )
         tasks = document.createElement("ul")
         tasks.className = "contribution-tasks"
         if stats["tasks"]:
@@ -594,15 +536,14 @@ async def render_member_contributions():
 # Switch the visible dashboard panel without navigating away from the page.
 # History and contribution data are fetched only when their panels are opened.
 def _show_dashboard_view(view_id):
-    view_ids = ["sprints-view", "members-view", "history-view", "contributions-view", "effort-view"]
-    nav_ids = ["nav-all-projects", "nav-members", "nav-history", "nav-contributions", "nav-effort"]
+    view_ids = ["sprints-view", "history-view", "contributions-view", "effort-view"]
+    nav_ids = ["nav-all-projects", "nav-history", "nav-contributions", "nav-effort"]
     is_feature_view = view_id != "sprints-view"
     document.querySelector(".sprint-dashboard-layout").classList.toggle("members-open", is_feature_view)
     for current_view in view_ids:
         web.page[current_view].classList.toggle("hidden", current_view != view_id)
     active_nav = {
         "sprints-view": "nav-all-projects",
-        "members-view": "nav-members",
         "history-view": "nav-history",
         "contributions-view": "nav-contributions",
         "effort-view": "nav-effort",
@@ -617,13 +558,9 @@ def handle_show_sprints(event):
     _show_dashboard_view("sprints-view")
 
 
-@when("click", "#nav-members")
-async def handle_show_members(event):
-    # Render the live roster, then open the members panel.
-    await render_members_view()
-    _show_dashboard_view("members-view")
-
-
+# CHANGE: removed handle_show_members. It was bound to #nav-members, which
+# project_layout.py already handles by opening project-members.html, so both
+# listeners ran and the page navigated away before this one was of any use.
 @when("click", "#nav-history")
 async def handle_show_history(event):
     # Refresh saved events before opening the history panel.
@@ -736,7 +673,6 @@ async def handle_sprint_page_navigation(event):
 
     view_ids = {
         "sprints": "sprints-view",
-        "members": "members-view",
         "history": "history-view",
         "contributions": "contributions-view",
         "effort": "effort-view",
@@ -746,8 +682,6 @@ async def handle_sprint_page_navigation(event):
         return
     if detail.view == "history":
         await render_change_history()
-    elif detail.view == "members":
-        await render_members_view()
     elif detail.view == "contributions":
         await render_member_contributions()
     elif detail.view == "effort":
@@ -992,7 +926,6 @@ dashboard_params = js.URLSearchParams.new(window.location.search)
 requested_view = dashboard_params.get("view")
 view_ids = {
     "sprints": "sprints-view",
-    "members": "members-view",
     "history": "history-view",
     "contributions": "contributions-view",
     "effort": "effort-view",
@@ -1000,8 +933,6 @@ view_ids = {
 if requested_view in view_ids:
     if requested_view == "history":
         asyncio.ensure_future(render_change_history())
-    elif requested_view == "members":
-        asyncio.ensure_future(render_members_view())
     elif requested_view == "contributions":
         asyncio.ensure_future(render_member_contributions())
     elif requested_view == "effort":

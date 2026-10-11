@@ -230,68 +230,8 @@
   gap: 16px;
 }
 
-/* Member roster styles are defined in members.css (shared with the project page). */
-
-/* Contact dialog layout and readable wrapping for long member details. */
-.member-details-modal {
-  max-width: min(420px, 90vw);
-}
-
-.member-modal-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.member-modal-header .modal-title {
-  overflow-wrap: anywhere;
-}
-
-.member-modal-close {
-  display: grid;
-  flex: 0 0 32px;
-  width: 32px;
-  aspect-ratio: 1;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: #666666;
-  cursor: pointer;
-  font-size: 24px;
-  line-height: 1;
-}
-
-.member-modal-close:hover,
-.member-modal-close:focus-visible {
-  background: #f4f5f9;
-  color: #222222;
-}
-
-.member-contact-list {
-  display: grid;
-  gap: 16px;
-  margin: 0;
-}
-
-.member-contact-list div {
-  min-width: 0;
-}
-
-.member-contact-list dt {
-  margin-bottom: 4px;
-  color: #666666;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.member-contact-list dd {
-  margin: 0;
-  color: #222222;
-  font-size: 14px;
-  overflow-wrap: anywhere;
-}
+/* CHANGE: the member roster (members.css) and its contact dialog were removed.
+   #nav-members is owned by project_layout.py and opens project-members.html. */
 
 .sprint-card {
   background-color: #ffffff;
@@ -484,14 +424,12 @@
 }
 
 /* --- ADDITIONAL FEATURES LAYOUT ---
-   The feature panels (Members, Change History, Effort Chart, Contributions) read
+   The feature panels (Change History, Effort Chart, Contributions) read
    down the left of the content column instead of sitting centred, so the text
    and charts are not squeezed into a narrow centred block. */
 .feature-view,
 .feature-view .content-header,
 .feature-view .feature-empty-state,
-.members-view,
-.members-view *,
 .activity-list,
 .activity-row,
 .activity-summary,
