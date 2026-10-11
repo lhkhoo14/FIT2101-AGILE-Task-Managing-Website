@@ -23,13 +23,89 @@ body {
     text-align: center;
 }
 
+/* US-33: the auth card carries the same organisation branding as the navigation
+   header, so the workspace is branded before anyone signs in. This sits ABOVE the
+   placeholder avatar, which stays a placeholder avatar. */
 .brand-name {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     font-size: 24px;
     font-weight: bold;
     color: #333333;
     margin-bottom: 20px;
 }
 
+/* --- US-33: SHARED ORGANISATION BRANDING ---
+   The brand appears in the navigation header of every application page and on the
+   login/signup cards, with the same markup everywhere:
+
+     <wrapper class="brand-name brand">
+       <img class="brand-logo" src="../assets/logo.png" alt="John Monash"
+            onerror="this.parentNode.classList.add('brand-text-only'); this.remove();">
+       <span class="brand-wordmark">John Monash</span>
+     </wrapper>
+
+   This block is copied verbatim from topbar.css on purpose: it is deliberately
+   container-agnostic so the two copies cannot drift apart. Only the size differs
+   per page, so the sizing sits just below. */
+.brand-logo {
+    display: block;
+    object-fit: contain;
+    background-color: transparent;
+}
+
+.brand-wordmark {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The wordmark doubles as the brand's accessible name and as the fallback. The
+   <img> flags its wrapper .brand-text-only when the asset is missing, so exactly
+   one of the two is ever visible and a missing asset never renders as a broken
+   image. */
+.brand:not(.brand-text-only) .brand-wordmark {
+    display: none;
+}
+
+.brand-text-only .brand-logo {
+    display: none;
+}
+
+/* Card sizing. src/assets/logo.png is trimmed to the artwork (430x300), so this
+   height is the mark's real rendered height and `object-fit: contain` guarantees
+   nothing is cropped. No width/height attributes are set on the <img>, so a
+   replacement logo of a different shape is measured from its own pixels rather
+   than from stale markup. */
+.brand-name .brand-logo {
+    height: 88px;
+    width: auto;
+    max-width: 100%;
+    object-position: center;
+}
+
+/* Short viewports (landscape phones, small laptop windows) get a smaller mark so
+   the card keeps the form above the fold. */
+@media (max-height: 700px) {
+    .brand-name .brand-logo {
+        height: 64px;
+    }
+}
+
+@media (max-width: 380px) {
+    .auth-container {
+        padding: 28px 20px;
+    }
+
+    .brand-name .brand-logo {
+        height: 72px;
+    }
+}
+
+/* US-33 deliberately left this slot alone. It is the placeholder for the signed-in
+   user's OWN picture, so it keeps the generic person icon rather than becoming the
+   organisation logo. Only the branding position above carries the logo. */
 .profile-pic {
     width: 80px;
     height: 80px;
@@ -47,10 +123,10 @@ body {
     fill: #9e9e9e;
 }
 
-/* CHANGE: the login/signup avatar used to be a hard-coded inline <svg> sitting in
-   this div. It now loads src/assets/default-profile.svg, so you can swap in your
-   own image by dropping it in src/assets/ and changing the src on the <img>.
-   This rule handles the sizing and circular crop for any image. */
+/* The avatar used to be a hard-coded inline <svg> sitting in this div. It now
+   loads src/assets/default-profile.svg, so you can swap in your own image by
+   dropping it in src/assets/ and changing the src on the <img>. This rule handles
+   the sizing and circular crop for any image. */
 .profile-pic img {
     width: 100%;
     height: 100%;

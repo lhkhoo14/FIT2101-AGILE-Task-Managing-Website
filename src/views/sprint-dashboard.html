@@ -56,20 +56,19 @@
 
   <link rel="stylesheet" href="../styles/base.css">
   <!-- Top Bar Stylesheet -->
-  <link rel="stylesheet" href="../styles/topbar.css">
+  <link rel="stylesheet" href="../styles/topbar.css?v=20261011">
   <!-- Layout Stylesheet -->
   <link rel="stylesheet" href="../styles/project-layout.css">
-  <!-- Shared member roster styles -->
-  <link rel="stylesheet" href="../styles/members.css">
   <!-- Page Stylesheet -->
   <!-- CHANGE: added the ?v=20261005 cache-buster. Without it the browser kept
        serving a stale cached sprint-dashboard.css, so the layout fixes below had
        no visible effect. Matches the existing pattern on sprint-page.css. -->
-  <link rel="stylesheet" href="../styles/sprint-dashboard.css?v=20261005">
+  <link rel="stylesheet" href="../styles/sprint-dashboard.css?v=20261011">
   <link rel="stylesheet" href="../styles/sprint-page.css">
   <!-- Snackbar Stylesheet -->
   <link rel="stylesheet" href="../styles/snackbar.css">
-  <!-- Shared IndexedDB API for reading and recording sprint change history. -->
+  <!-- US-20: no longer the store of record. Loaded only so the one-time import of
+       events recorded in this browser before the switchover can run. -->
   <script src="../backend/history-db.js"></script>
   <!--
     The dashboard owns the sprint list. It warms one sprint-page runtime in a
@@ -156,7 +155,13 @@
           <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
         </svg>
       </button>
-      <span class="brand-title">John Monash</span>
+      <!-- US-33: organisational branding replaces the placeholder wordmark. The logo
+           is src/assets/logo.png; if the asset is missing the <img> removes itself
+           and the wordmark takes over, so the header never shows a broken image. -->
+      <span class="brand-title brand" title="Go to dashboard">
+        <img class="brand-logo" src="../assets/logo.png" alt="John Monash" onerror="this.parentNode.classList.add('brand-text-only'); this.remove();">
+        <span class="brand-wordmark">John Monash</span>
+      </span>
     </div>
 
     <!-- Rounded Search Bar (Middle) -->

@@ -16,7 +16,7 @@
 
     <link rel="stylesheet" href="../styles/base.css">
     <!-- Top Bar Stylesheet -->
-    <link rel="stylesheet" href="../styles/topbar.css">
+    <link rel="stylesheet" href="../styles/topbar.css?v=20261011">
     <!-- Layout Stylesheet -->
     <link rel="stylesheet" href="../styles/project-layout.css">
     <!-- Members Page Stylesheet -->
@@ -30,7 +30,14 @@
             <button type="button" id="toggle-sidebar-btn" class="icon-btn" aria-label="Toggle Sidebar">
                 <svg viewBox="0 0 24 24" class="icon"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
             </button>
-            <span class="brand-title">John Monash</span>
+            <!-- US-33: organisational branding replaces the placeholder wordmark. The
+                 logo is src/assets/logo.png; if the asset is missing the <img> removes
+                 itself and the wordmark takes over, so the header never shows a broken
+                 image. -->
+            <span class="brand-title brand" title="Go to dashboard">
+                <img class="brand-logo" src="../assets/logo.png" alt="John Monash" onerror="this.parentNode.classList.add('brand-text-only'); this.remove();">
+                <span class="brand-wordmark">John Monash</span>
+            </span>
         </div>
 
         <!-- Rounded Search Bar (Middle) -->
