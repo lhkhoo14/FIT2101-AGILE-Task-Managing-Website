@@ -103,36 +103,10 @@ body {
     }
 }
 
-/* US-33 deliberately left this slot alone. It is the placeholder for the signed-in
-   user's OWN picture, so it keeps the generic person icon rather than becoming the
-   organisation logo. Only the branding position above carries the logo. */
-.profile-pic {
-    width: 80px;
-    height: 80px;
-    border-radius: 50%;
-    background-color: #e0e0e0;
-    margin: 0 auto 24px auto;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-.profile-pic svg {
-    width: 48px;
-    height: 48px;
-    fill: #9e9e9e;
-}
-
-/* The avatar used to be a hard-coded inline <svg> sitting in this div. It now
-   loads src/assets/default-profile.svg, so you can swap in your own image by
-   dropping it in src/assets/ and changing the src on the <img>. This rule handles
-   the sizing and circular crop for any image. */
-.profile-pic img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    border-radius: 50%;
-}
+/* The auth card shows the organisation logo and nothing else. A placeholder avatar
+   used to sit here, but before sign-in it stands in for nobody, and beside the logo
+   it read as a second, empty brand mark. src/assets/default-profile.svg is still
+   the fallback avatar for real accounts on the Team Members page. */
 
 .input-group {
     margin-bottom: 16px;
