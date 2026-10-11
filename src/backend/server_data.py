@@ -543,3 +543,82 @@ class ServerData:
             if str(member_id).isdigit()
         }
         return [user for user in users or [] if int(user["user_id"]) in member_ids]
+
+    async def get_change_history(self, project_id: int) -> list[dict]:
+        """US-20: the project's change history, newest first, from the server."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return []
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/history?user_id={user_id}",
+                method="GET",
+                headers={"Content-Type": "application/json"}
+            )
+            if response.status == 200:
+                return await response.json()
+            return []
+        except Exception as e:
+            print(f"[API Error] Failed to fetch change history: {e}")
+            return []
+
+    async def record_change(self, project_id: int, message: str, action: str = "project_change",
+                            sprint_id=None, sprint_name=None, task_id=None, task_title=None,
+                            from_status=None, to_status=None, timestamp=None) -> tuple[bool, str]:
+        """US-20: append one event to the project's audit trail on the server.
+
+        The server stamps the time and actor, so the feed reads the same on every
+        device. `timestamp` is only used by the one-time browser-data migration.
+        """
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired"
+
+        body = {
+            "user_id": user_id,
+            "action": action,
+            "message": message,
+            "sprint_id": str(sprint_id) if sprint_id is not None else None,
+            "sprint_name": sprint_name,
+            "task_id": str(task_id) if task_id is not None else None,
+            "task_title": task_title,
+            "from_status": from_status,
+            "to_status": to_status,
+        }
+        if timestamp:
+            body["timestamp"] = timestamp
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/history",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps(body)
+            )
+            if response.status in (200, 201):
+                return True, ""
+            err_data = await response.json()
+            return False, err_data.get("detail", "Failed to save change history.")
+        except Exception as e:
+            print(f"[API Error] Failed to save change history: {e}")
+            return False, "Unable to connect to the server."
+
+    async def get_contributions(self, project_id: int) -> dict:
+        """US-20: member contribution statistics calculated and stored server-side."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return {}
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/contributions?user_id={user_id}",
+                method="GET",
+                headers={"Content-Type": "application/json"}
+            )
+            if response.status == 200:
+                return await response.json()
+            return {}
+        except Exception as e:
+            print(f"[API Error] Failed to fetch contributions: {e}")
+            return {}

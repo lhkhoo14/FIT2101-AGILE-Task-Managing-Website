@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from database_manager import db_manager
 from dependencies import verify_project_access
+from routes.activity import refresh_contributions
 import sprint_logic
 
 router = APIRouter()
@@ -98,6 +99,8 @@ def create_sprint(project_id: int, payload: CreateSprintPayload):
         }
     }
     project.setdefault("sprints", []).append(sprint)
+    # US-20: keep the stored contribution table present from the start.
+    refresh_contributions(db, project)
     db_manager.write(db)
     return sprint
 
@@ -160,6 +163,9 @@ def save_kanban_state(project_id: int, sprint_id: str, payload: SaveKanbanStateP
 
     sprint_logic.stamp_completions(sprint.get("kanban_state", {}), payload.state, sprint)
     sprint["kanban_state"] = payload.state
+    # US-20 / US-21: assigned, completed and logged-time counts are recalculated
+    # and stored server-side in the same transaction as the board.
+    refresh_contributions(db, project)
     db_manager.write(db)
     return {"status": "success"}
 
@@ -195,6 +201,7 @@ def move_backlog_to_sprint(project_id: int, sprint_id: str, payload: MoveBacklog
     }
     kanban.setdefault("backlog", []).append(task_card)
     
+    refresh_contributions(db, project)
     db_manager.write(db)
     return {"status": "success"}
 

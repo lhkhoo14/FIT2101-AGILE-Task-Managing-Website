@@ -7,7 +7,7 @@ from html import escape
 if "." not in sys.path:
     sys.path.append(".")
 
-from datetime import date, datetime
+from datetime import date
 
 from pyscript import when, web, window, document  # type: ignore[reportMissingImports]
 from auth import show_snackbar
@@ -360,11 +360,12 @@ async def handle_sort_change(event):
     await render_sprints_grid()
 
 
-# History is still a browser-only activity feed. Sprint/project data itself is
-# not stored here; it comes from FastAPI through ServerData.
+# US-20: the activity feed now lives in the central database, so it reads the
+# same on every device and browser. `history-db.js` is kept only as a one-time
+# reader for events recorded in the browser before this change.
 async def _load_change_history():
-    entries = await window.sprintHistoryDb.getAll()
-    return json.loads(str(js.JSON.stringify(entries)))
+    entries = await server_data.get_change_history(PROJECT_ID)
+    return entries if isinstance(entries, list) else []
 
 
 # Resolve the active account to a readable actor name for new events.
@@ -374,20 +375,62 @@ async def _current_actor():
     return (user.get("username") or user.get("email")) if user else "Unknown user"
 
 
-# Store a timestamped dashboard event in the shared IndexedDB database.
+# Store a timestamped dashboard event in the project's server-side audit trail.
 async def record_change(message, sprint_id=None, sprint_name=None, task_id=None, task_title=None):
     actor = await _current_actor()
-    entry = {
-        "action": "project_change",
-        "message": f"{actor} {message}",
-        "sprint_id": sprint_id,
-        "sprint_name": sprint_name,
-        "task_id": task_id,
-        "task_title": task_title,
-        "actor": actor,
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
-    }
-    await window.sprintHistoryDb.add(js.JSON.parse(json.dumps(entry)))
+    success, err = await server_data.record_change(
+        PROJECT_ID,
+        f"{actor} {message}",
+        sprint_id=sprint_id,
+        sprint_name=sprint_name,
+        task_id=task_id,
+        task_title=task_title,
+    )
+    if not success:
+        print(f"[Change History] {err}")
+
+
+# US-20 transition: upload anything the old IndexedDB store still holds, once.
+# Entries keep their original timestamp so the feed stays in order.
+async def _migrate_legacy_history():
+    try:
+        legacy_store = window.sprintHistoryDb
+        # claimMigration() is true for the first caller only, so two open tabs
+        # cannot import the same events twice.
+        if legacy_store is None or not legacy_store.claimMigration():
+            return
+        entries = legacy_store.getLegacyEntries()
+        entries = json.loads(str(js.JSON.stringify(await entries))) if entries is not None else []
+    except Exception as exc:
+        print(f"[Change History] Legacy read skipped: {exc}")
+        return
+
+    migrated = 0
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        success, _err = await server_data.record_change(
+            PROJECT_ID,
+            entry.get("message") or "Recorded change",
+            action=entry.get("action") or "project_change",
+            sprint_id=entry.get("sprint_id"),
+            sprint_name=entry.get("sprint_name"),
+            task_id=entry.get("task_id"),
+            task_title=entry.get("task_title"),
+            from_status=entry.get("from_status"),
+            to_status=entry.get("to_status"),
+            timestamp=entry.get("timestamp"),
+        )
+        if success:
+            migrated += 1
+
+    # Only flag the migration once everything is safely on the server.
+    if migrated == len(entries or []):
+        try:
+            legacy_store.markMigrated()
+        except Exception as exc:
+            print(f"[Change History] Could not flag migration: {exc}")
+
 
 
 # Render activity newest-first and show a message when the database is empty.
@@ -402,7 +445,8 @@ async def render_change_history():
         history_list.appendChild(empty)
         return
 
-    for entry in reversed(history):
+    # The server already returns the feed newest-first.
+    for entry in history:
         row = document.createElement("li")
         row.className = "activity-row"
         summary = document.createElement("p")
@@ -935,6 +979,8 @@ async def initialize_dashboard():
     if not PROJECT_ID:
         return
     await render_sprints_grid()
+    # US-20: move any history recorded in this browser before the switchover.
+    asyncio.ensure_future(_migrate_legacy_history())
     first_available_card = document.querySelector('.sprint-card[data-member="true"]')
     if first_available_card:
         window.prepareSprintBoard(first_available_card.getAttribute("data-sprint-id"))

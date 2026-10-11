@@ -169,26 +169,33 @@ async def _current_actor():
 
 
 async def _record_change(action, sprint, task=None, from_status=None, to_status=None):
-    # The activity feed remains browser-local; the sprint board itself is API-backed.
+    # US-20: the activity feed is stored on the server, so an event recorded here
+    # is visible on every device that opens this project.
+    if not _project_id:
+        return
     actor = await _current_actor()
-    entry = {
-        "action": action,
-        "message": (
-            f"{actor} moved {task.get('title', 'a task')} from "
-            f"{from_status} to {to_status} in {sprint.get('name', 'a sprint')}"
-            if action == "moved"
-            else f"{actor} ended {sprint.get('name', 'a sprint')}"
-        ),
-        "sprint_id": _sprint_id,
-        "sprint_name": sprint.get("name", "Sprint"),
-        "task_id": task.get("id") if task else None,
-        "task_title": task.get("title") if task else None,
-        "from_status": from_status,
-        "to_status": to_status,
-        "actor": actor,
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-    }
-    await window.sprintHistoryDb.add(js.JSON.parse(json.dumps(entry)))
+    if action == "moved":
+        target = task.get("title", "a task") if task else "a task"
+        message = (
+            f"{actor} moved {target} from {from_status} to {to_status} "
+            f"in {sprint.get('name', 'a sprint')}"
+        )
+    else:
+        message = f"{actor} ended {sprint.get('name', 'a sprint')}"
+
+    success, err = await server_data.record_change(
+        _project_id,
+        message,
+        action=action,
+        sprint_id=_sprint_id,
+        sprint_name=sprint.get("name", "Sprint"),
+        task_id=task.get("id") if task else None,
+        task_title=task.get("title") if task else None,
+        from_status=from_status,
+        to_status=to_status,
+    )
+    if not success:
+        print(f"[Change History] {err}")
 
 
 def _task_matches_search(task, query):
