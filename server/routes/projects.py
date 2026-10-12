@@ -1,7 +1,12 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from database_manager import db_manager
-from dependencies import get_verified_project, verify_project_access
+from dependencies import (
+    get_verified_project, 
+    verify_project_access, 
+    verify_project_permission, 
+    validate_role_assignment
+)
 
 router = APIRouter()
 
@@ -20,26 +25,62 @@ class AddMemberPayload(BaseModel):
     user_id: int
     username: str
 
-def ensure_member_fields(project: dict) -> None:
-    """Backfills `contribute` and `roles` on projects created before member roles existed.
+class AssignRolePayload(BaseModel):
+    user_id: int          # Acting user
+    target_user_id: int   # User receiving the role
+    role_name: str        # Role to add
 
-    The project creator becomes Product Owner and everyone else a plain Member.
-    """
+@router.post("/projects/{project_id}/roles/assign")
+def assign_role_to_member(project_id: int, payload: AssignRolePayload):
+    db = db_manager.read()
+    project = db.get("projects", {}).get(str(project_id))
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Verify acting user has permission to manage roles
+    verify_project_permission(project, payload.user_id, "manage_roles")
+
+    if payload.target_user_id not in project.get("members", []):
+        raise HTTPException(status_code=404, detail="Target user is not a project member")
+
+    if payload.role_name not in project.get("roles", []):
+        raise HTTPException(status_code=422, detail="Invalid role specified")
+
+    # Validate that adding this role doesn't break restriction rules
+    validate_role_assignment(project, payload.target_user_id, payload.role_name)
+
+    # Add user to the role list if not already present (allowing multiple roles)
+    role_list = project["roles"][payload.role_name]
+    if payload.target_user_id not in role_list:
+        role_list.append(payload.target_user_id)
+
+    db_manager.write(db)
+    return {"status": "success", "message": f"Assigned role '{payload.role_name}' successfully."}
+
+def ensure_member_fields(project: dict) -> None:
+    """Backfills `contribute`, roles, and permissions on older projects."""
     members = project.get("members", [])
     if "contribute" not in project:
         project["contribute"] = list(members)
+        
     if "roles" not in project:
-        owners = [uid for uid in project.get("creator", []) if uid in members]
+        creators = [uid for uid in project.get("creator", []) if uid in members]
         project["roles"] = {
-            "Product Owner": owners,
-            "Scrum Master": [],
-            "Member": [uid for uid in members if uid not in owners],
+            "Project Creator": creators,
+            "Project Manager": [],
+            "Project Member": [uid for uid in members if uid not in creators],
         }
+    
+    # Ensure role_permissions always exist
+    if "role_permissions" not in project:
+        project["role_permissions"] = {
+            "Project Creator": ["add_members", "manage_sprints", "delete_project", "manage_roles"],
+            "Project Manager": ["add_members", "manage_sprints"],
+            "Project Member": []
+        },
 
 @router.post("/projects", status_code=status.HTTP_201_CREATED)
 def create_project(payload: CreateProjectPayload):
-    # CHANGE: read the DB once and find the user in it. find_user_by_id() would
-    # issue a second read (and a second connection) for data we already have.
     db = db_manager.read()
     user = next((u for u in db["users"] if u["user_id"] == payload.user_id), None)
 
@@ -57,9 +98,14 @@ def create_project(payload: CreateProjectPayload):
         "members": [payload.user_id],
         "contribute": [payload.user_id],
         "roles": {
-            "Product Owner": [payload.user_id],
-            "Scrum Master": [],
-            "Member": []
+            "Project Creator": [payload.user_id],
+            "Project Manager": [],
+            "Project Member": []
+        },
+        "role_permissions": {
+            "Project Creator": ["add_members", "manage_sprints", "delete_project", "manage_roles"],
+            "Project Manager": ["add_members", "manage_sprints", "manage_roles"],
+            "Project Member": []
         },
         "backlog": [],
         "sprints": []
@@ -132,8 +178,10 @@ def add_project_member(project_id: int, payload: AddMemberPayload):
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    if payload.user_id not in project.get("members", []):
-        raise HTTPException(status_code=403, detail="You are not a member of this project")
+    ensure_member_fields(project)
+    
+    # Check if the user has the 'add_members' permission, regardless of their role name
+    verify_project_permission(project, payload.user_id, "add_members")
 
     member = next(
         (user for user in db.get("users", []) if user.get("username") == payload.username),
@@ -146,10 +194,9 @@ def add_project_member(project_id: int, payload: AddMemberPayload):
     if member_id in project.get("members", []):
         raise HTTPException(status_code=409, detail="User is already a project member")
 
-    ensure_member_fields(project)
     project["members"].append(member_id)
     project["contribute"].append(member_id)
-    project["roles"].setdefault("Member", []).append(member_id)
+    project["roles"].setdefault("Project Member", []).append(member_id)
 
     db_manager.write(db)
 
@@ -157,5 +204,5 @@ def add_project_member(project_id: int, payload: AddMemberPayload):
         "status": "success",
         "member_id": member_id,
         "username": member["username"],
-        "role": "Member"
+        "role": "Project Member"
     }
