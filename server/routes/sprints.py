@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from database_manager import db_manager
 from dependencies import verify_project_access
 from routes.activity import refresh_contributions
-import sprint_logic
+import logic.sprint_logic as sprint_logic
 
 router = APIRouter()
 

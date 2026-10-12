@@ -68,7 +68,7 @@ def validate_task_dates(state: Dict[str, Any], sprint: Dict[str, Any]) -> None:
             if start and end and end < start:
                 raise ValueError(f"'{title}': end date cannot be before its start date.")
             for label, value in (("start", start), ("end", end)):
-                if value is None or s_start is None:
+                if value is None or s_start is None or s_end is None:
                     continue
                 if value < s_start or value > s_end:
                     raise ValueError(
@@ -147,7 +147,7 @@ def validate_sprint_members(members: Optional[list], project: Dict[str, Any]) ->
     because legacy sprints use it to mean "the whole project".
     """
     if members is None:
-        return None
+        return []
 
     project_members = _member_id_set(project)
     cleaned = []
