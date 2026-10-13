@@ -11,9 +11,12 @@ if "src/backend" not in sys.path:
 import topbar
 import sidebar_state
 
-def get_project_id_from_url():
+def get_project_id_from_url() -> int | None:
     params = js.URLSearchParams.new(window.location.search)
-    return params.get("project_id")
+    project_id = params.get("project_id")
+    if project_id and project_id.isdigit():
+        return int(project_id)
+    return None
 
 
 # CHANGE: project_layout.py is shared by three project views, each of which
@@ -23,6 +26,7 @@ _NAV_ITEMS = ("#nav-description", "#nav-members", "#nav-sprints")
 _ACTIVE_NAV_BY_PAGE = {
     "project-page.html": "#nav-description",
     "project-members.html": "#nav-members",
+    "project-roles.html": "#nav-roles",
     "sprint-dashboard.html": "#nav-sprints",
 }
 
@@ -97,6 +101,11 @@ def handle_nav_members(event):
     # on this page. Members now have their own page, so the sidebar button opens it.
     project_id = get_project_id_from_url()
     window.location.href = f"project-members.html?project_id={project_id}"
+
+@when("click", "#nav-roles")
+def handle_nav_roles(event):
+    project_id = get_project_id_from_url()
+    window.location.href = f"project-roles.html?project_id={project_id}"
 
 @when("click", "#nav-sprints")
 def handle_nav_sprints(event):

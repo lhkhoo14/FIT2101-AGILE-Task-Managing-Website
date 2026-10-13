@@ -618,3 +618,40 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to log task time: {e}")
             return False, "Unable to connect to the server.", None
+
+    async def create_project_role(
+        self,
+        project_id: int,
+        name: str,
+        colour: str,
+        description: str,
+        permissions: list[str],
+        conflicting_roles: list[str],
+    ) -> tuple[bool, str]:
+        """Sends a request to create a custom project role."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/roles",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({
+                    "user_id": user_id,
+                    "name": name,
+                    "colour": colour,
+                    "description": description,
+                    "permissions": permissions,
+                    "conflicting_roles": conflicting_roles
+                })
+            )
+            if response.status in (200, 201):
+                return True, "Role created successfully."
+            
+            data = await response.json()
+            return False, data.get("detail", "Failed to create role.")
+        except Exception as e:
+            print(f"[API Error] Failed to create role: {e}")
+            return False, "Unable to connect to the server."
