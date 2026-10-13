@@ -116,6 +116,10 @@
 
         <!-- Main content area -->
         <main id="project-view-content" class="main-content">
+            <div id="user-active-roles-banner" class="user-active-roles-banner">
+                <!-- Dynamically populated user roles summary -->
+            </div>
+            
             <div class="content-header">
                 <div>
                     <h1 class="page-title">Project Roles</h1>
@@ -146,10 +150,8 @@
                     <textarea id="role-desc-input" class="modal-textarea"></textarea>
 
                     <div class="modal-label">Permissions</div>
-                    <div class="permissions-checklist">
-                        <label><input type="checkbox" class="role-permission-checkbox" value="add_members"> Add Members</label>
-                        <label><input type="checkbox" class="role-permission-checkbox" value="manage_sprints"> Manage Sprints</label>
-                        <label><input type="checkbox" class="role-permission-checkbox" value="manage_roles"> Manage Roles</label>
+                    <div id="role-permissions-list" class="permissions-checklist">
+                        <!-- Dynamically populated from Python role_permissions dictionary -->
                     </div>
 
                     <div class="modal-label">Conflicting Roles (Mutually Exclusive)</div>
@@ -162,6 +164,20 @@
                         <button type="submit" class="modal-btn-submit">Create Role</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Role Confirmation Modal Overlay -->
+    <div id="delete-role-modal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h2 class="modal-title">Delete Role</h2>
+            <p id="delete-role-confirmation-text" class="modal-label" style="margin-top: 0; color: #334155; font-weight: 400; font-size: 15px;">
+                Are you sure you want to delete this role?
+            </p>
+            <div class="modal-actions">
+                <button type="button" class="modal-btn-cancel" id="cancel-delete-role-btn">Cancel</button>
+                <button type="button" class="modal-btn-submit confirm-delete-btn" id="confirm-delete-role-btn" style="background-color: #dc2626;">Delete Role</button>
             </div>
         </div>
     </div>

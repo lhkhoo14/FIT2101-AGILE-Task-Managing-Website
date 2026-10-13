@@ -92,11 +92,12 @@ def ensure_member_fields(project: dict) -> None:
             "permissions": []
         }
     })
-
-    # Migrate any legacy separate role_permissions into definitions
-    for r_name, meta in definitions.items():
-        if isinstance(meta, dict) and "permissions" not in meta:
-            meta["permissions"] = role_permissions.get(r_name, [])
+    
+    # Guarantee Project Creator has manage_roles even on existing loaded projects
+    if "Project Creator" in definitions and isinstance(definitions["Project Creator"], dict):
+        perms = definitions["Project Creator"].setdefault("permissions", [])
+        if "manage_roles" not in perms:
+            perms.append("manage_roles")
 
 @router.post("/projects", status_code=status.HTTP_201_CREATED)
 def create_project(payload: CreateProjectPayload):
@@ -295,3 +296,38 @@ def create_project_role(project_id: int, payload: CreateRolePayload):
             "conflicting_roles": payload.conflicting_roles
         }
     }
+
+class DeleteRolePayload(BaseModel):
+    user_id: int
+
+@router.delete("/projects/{project_id}/roles/{role_name}", status_code=status.HTTP_200_OK)
+def delete_project_role(project_id: int, role_name: str, payload: DeleteRolePayload):
+    db = db_manager.read()
+    project = db.get("projects", {}).get(str(project_id))
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    ensure_member_fields(project)
+    verify_project_permission(project, payload.user_id, "manage_roles")
+
+    # Prevent deletion of core default roles
+    protected_roles = {"Project Creator", "Project Manager", "Project Member"}
+    if role_name in protected_roles:
+        raise HTTPException(status_code=400, detail="Cannot delete default system roles.")
+
+    roles_dict = project.get("roles", {})
+    if role_name not in roles_dict and role_name not in project.get("role_definitions", {}):
+        raise HTTPException(status_code=404, detail="Role not found.")
+
+    # Remove role from assignments, definitions, and conflicts
+    roles_dict.pop(role_name, None)
+    project.get("role_definitions", {}).pop(role_name, None)
+    
+    if "role_conflicts" in project:
+        project["role_conflicts"].pop(role_name, None)
+        for target, conflicts in project["role_conflicts"].items():
+            if role_name in conflicts:
+                conflicts.remove(role_name)
+
+    db_manager.write(db)
+    return {"status": "success", "message": f"Role '{role_name}' deleted successfully."}

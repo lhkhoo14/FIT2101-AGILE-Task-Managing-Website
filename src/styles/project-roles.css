@@ -233,3 +233,61 @@
     font-weight: 600;
     cursor: pointer;
 }
+
+.delete-role-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  background: #d9534f;
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* --- USER ACTIVE ROLES BANNER --- */
+.user-roles-banner {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px 20px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.banner-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.banner-badges-container {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.user-role-badge {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  display: inline-flex;
+  align-items: center;
+}
+
+.no-role-badge {
+  color: #94a3b8;
+  font-style: italic;
+  font-size: 13px;
+}
+
+.confirm-delete-btn:hover {
+  background-color: #b91c1c !important;
+}

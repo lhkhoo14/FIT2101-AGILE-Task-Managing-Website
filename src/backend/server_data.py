@@ -655,3 +655,25 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to create role: {e}")
             return False, "Unable to connect to the server."
+
+    async def delete_project_role(self, project_id: int, role_name: str) -> tuple[bool, str]:
+        """Deletes a custom project role."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/roles/{role_name}",
+                method="DELETE",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id})
+            )
+            if response.status == 200:
+                return True, "Role deleted successfully."
+            
+            data = await response.json()
+            return False, data.get("detail", "Failed to delete role.")
+        except Exception as e:
+            print(f"[API Error] Failed to delete role: {e}")
+            return False, "Unable to connect to the server."

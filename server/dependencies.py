@@ -36,16 +36,25 @@ def verify_project_permission(project: Any, user_id: int, required_permission: s
     verify_project_access(project, user_id)
     
     roles = project.get("roles", {})
+    role_definitions = project.get("role_definitions", {})
     role_permissions = project.get("role_permissions", {})
     
     # Find all roles the user belongs to
     user_roles = [role_name for role_name, user_ids in roles.items() if user_id in user_ids]
     
-    # Check if any of the user's roles contain the required permission
-    has_permission = any(
-        required_permission in role_permissions.get(role, [])
-        for role in user_roles
-    )
+    # Check if any of the user's roles contain the required permission (checking unified role_definitions first)
+    has_permission = False
+    for role in user_roles:
+        # Check unified role_definitions structure
+        def_meta = role_definitions.get(role, {})
+        perms = def_meta.get("permissions", []) if isinstance(def_meta, dict) else []
+        
+        # Fallback check to separate role_permissions if needed
+        legacy_perms = role_permissions.get(role, [])
+        
+        if required_permission in perms or required_permission in legacy_perms:
+            has_permission = True
+            break
     
     if not has_permission:
         raise HTTPException(

@@ -11,15 +11,13 @@ from server_data import ServerData
 from project_layout import get_project_id_from_url  # type: ignore
 from auth import show_snackbar  # type: ignore
 
-role_permissions = [
-    "manage_roles",
-    "manage_sprints",
-    "view_contributions",
-    "edit_project",
-    "delete_project",
-    "add_members",
-    "remove_members"
-]
+role_permissions = {
+    "manage_members": "Allow members to add and remove members to the project.",
+    "manage_roles": "Allow members to create custom roles, delete existing roles, and configure role permissions/conflicts.",
+    "manage_sprints": "Allow members to create, edit or delete sprints.",
+    "edit_project": "Allow members to edit project description",
+    "delete_project": "Allow members to delete the project",
+}
 
 # Store active roles globally in module state for search filtering
 _all_roles = []
@@ -39,10 +37,17 @@ async def load_project_roles():
             container.innerHTML = '<p class="empty-roles">Unable to load project roles.</p>'
         return
 
-    # Extract role definitions and assignments from project record
+    current_user_id = db.get_active_session()
+    roles_map = project_data.get("roles", {})
     role_defs = project_data.get("role_definitions", {})
-    
-    # Fallback default roles if none are defined yet
+
+    user_roles = []
+    for r_name, member_ids in roles_map.items():
+        if current_user_id in member_ids or str(current_user_id) in [str(m) for m in member_ids]:
+            user_roles.append(r_name)
+
+    render_user_roles_banner(user_roles, role_defs)
+
     if not role_defs:
         role_defs = {
             "Project Creator": {"colour": "#4747D4", "description": "Full administrative access to the project."},
@@ -67,14 +72,60 @@ async def load_project_roles():
 
     render_roles_view(_all_roles)
     populate_conflict_checkboxes(_all_roles)
+    populate_permission_checkboxes() # Populate dynamic permissions list
+
+def populate_permission_checkboxes():
+    container = js.document.getElementById("role-permissions-list")
+    if not container:
+        return
+    
+    html_content = ""
+    for perm_key, perm_desc in role_permissions.items():
+        safe_key = html.escape(perm_key, quote=True)
+        safe_desc = html.escape(perm_desc)
+        title_text = html.escape(perm_key.replace('_', ' ').title())
+        
+        html_content += f"""
+        <label class="permission-item-label" style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; cursor: pointer;">
+            <input type="checkbox" class="role-permission-checkbox" value="{safe_key}" style="margin-top: 3px;">
+            <div>
+                <strong style="display: block; font-size: 13px; color: #1e293b;">{title_text}</strong>
+                <span style="font-size: 12px; color: #64748b;">{safe_desc}</span>
+            </div>
+        </label>
+        """
+    container.innerHTML = html_content
+
+def render_user_roles_banner(user_roles, role_defs):
+    banner_container = web.page["#user-active-roles-banner"]
+    if not banner_container:
+        return
+
+    if not user_roles:
+        banner_container.innerHTML = '<div class="user-roles-banner"><span>Your Active Roles: </span><span class="no-role-badge">None assigned</span></div>'
+        return
+
+    badges_html = ""
+    for r_name in user_roles:
+        meta = role_defs.get(r_name, {})
+        colour = meta.get("colour", "#4747D4") if isinstance(meta, dict) else "#4747D4"
+        badges_html += f'<span class="user-role-badge" style="border-left: 4px solid {colour};">{html.escape(r_name)}</span>'
+
+    banner_container.innerHTML = f"""
+    <div class="user-roles-banner">
+        <span class="banner-label">Your Active Roles in this Project:</span>
+        <div class="banner-badges-container">{badges_html}</div>
+    </div>
+    """
 
 def render_roles_view(roles_to_render):
-    # Target only the cards container so header/search inputs are never destroyed
     container = web.page["#roles-cards-container"]
     if not container:
         return
 
     html_content = ""
+    protected_roles = {"Project Creator", "Project Manager", "Project Member"}
+
     if not roles_to_render:
         html_content = '<p class="empty-roles">No roles found matching your search.</p>'
     else:
@@ -82,6 +133,9 @@ def render_roles_view(roles_to_render):
             name = html.escape(role["name"])
             colour = html.escape(role["colour"], quote=True)
             description = html.escape(role["description"])
+            
+            is_protected = name in protected_roles
+            delete_btn_html = "" if is_protected else f'<button type="button" class="delete-role-btn" data-role-name="{name}" onclick="event.stopPropagation(); triggerDeleteRole(\'{name}\')">Delete</button>'
 
             html_content += f"""
             <div class="role-card" data-role-name="{name}">
@@ -90,7 +144,10 @@ def render_roles_view(roles_to_render):
                         <span class="role-swatch" style="background: {colour};"></span>
                         <h3 class="role-name">{name}</h3>
                     </div>
-                    <span class="toggle-icon">▼</span>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        {delete_btn_html}
+                        <span class="toggle-icon">▼</span>
+                    </div>
                 </div>
                 <div class="role-description-container hidden">
                     <p class="role-description">{description}</p>
@@ -99,6 +156,52 @@ def render_roles_view(roles_to_render):
             """
 
     container.innerHTML = html_content
+
+# Store role pending deletion
+_role_to_delete = None
+
+def trigger_delete_role_flow(role_name):
+    global _role_to_delete
+    _role_to_delete = role_name
+    modal = web.page["#delete-role-modal"]
+    text_el = web.page["#delete-role-confirmation-text"]
+    if text_el:
+        text_el.innerHTML = f"Are you sure you want to delete the role <b>{html.escape(role_name)}</b>? This action cannot be undone."
+    if modal:
+        modal.classList.remove("hidden")
+
+window.triggerDeleteRole = lambda r_name: trigger_delete_role_flow(r_name)
+
+@when("click", "#cancel-delete-role-btn")
+def close_delete_modal(event):
+    modal = web.page["#delete-role-modal"]
+    if modal:
+        modal.classList.add("hidden")
+
+@when("click", "#confirm-delete-role-btn")
+async def confirm_delete_role(event):
+    global _role_to_delete
+    if not _role_to_delete:
+        return
+
+    project_id = get_project_id_from_url()
+    if not project_id:
+        return
+
+    # Hide modal first
+    modal = web.page["#delete-role-modal"]
+    if modal:
+        modal.classList.add("hidden")
+
+    db = ServerData()
+    success, message = await db.delete_project_role(project_id, _role_to_delete)
+
+    if success:
+        await show_snackbar(f"Role '{_role_to_delete}' deleted successfully.")
+        window.location.reload()
+    else:
+        await show_snackbar(message)
+    _role_to_delete = None
 
 def populate_conflict_checkboxes(roles):
     conflict_container = js.document.getElementById("role-conflicts-list")
@@ -168,6 +271,10 @@ async def handle_create_role(event):
     description = desc_el.value.strip() if desc_el else ""
 
     if not name:
+        # Hide modal first if validation fails
+        modal = web.page["#create-role-modal"]
+        if modal:
+            modal.classList.add("hidden")
         await show_snackbar("Role name is required.")
         return
 
@@ -176,6 +283,11 @@ async def handle_create_role(event):
 
     conflict_boxes = js.document.querySelectorAll(".role-conflict-checkbox:checked")
     conflicting_roles = [box.value for box in conflict_boxes]
+
+    # Hide modal before making the API call / showing snackbar
+    modal = web.page["#create-role-modal"]
+    if modal:
+        modal.classList.add("hidden")
 
     db = ServerData()
     success, message = await db.create_project_role(
