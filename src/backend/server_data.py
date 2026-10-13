@@ -176,7 +176,9 @@ class ServerData:
                         id=p.get("project_id", p.get("id", "")),
                         name=p.get("name", "Untitled Project"),
                         description=p.get("description", "No description provided."),
-                        status=p.get("status", "todo")
+                        status=p.get("status", "todo"),
+                        last_edited_by=p.get("last_edited_by"),
+                        last_edited_at=p.get("last_edited_at")
                     )
                     for p in data
                 ]
@@ -203,7 +205,9 @@ class ServerData:
                     id=data.get("project_id", data.get("id", "")),
                     name=data.get("name", "Untitled Project"),
                     description=data.get("description", "No description provided."),
-                    status=data.get("status", "todo")
+                    status=data.get("status", "todo"),
+                    last_edited_by=data.get("last_edited_by"),
+                    last_edited_at=data.get("last_edited_at")
                 )
             elif response.status in (403, 404):
                 print(f"[API Security] Project access denied or missing (Status {response.status}).")
@@ -213,6 +217,41 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to fetch project: {e}")
             return None
+
+    async def update_project_description(
+        self,
+        project_id: int,
+        description: str
+    ) -> tuple[bool, str, dict | None]:
+        user_id = self.get_active_session()
+
+        if user_id is None:
+            return False, "Session expired.", None
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/description",
+                method="PUT",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({
+                    "user_id": user_id,
+                    "description": description
+                })
+            )
+
+            data = await response.json()
+
+            if response.status == 200:
+                return True, "", data
+
+            return False, data.get(
+                "detail",
+                "Failed to update project description."
+            ), None
+
+        except Exception as e:
+            print(f"[API Error] Failed to update description: {e}")
+            return False, "Unable to connect to the server.", None   
 
     async def get_project_members(self, project_id: int) -> dict | None:
         """Fetches project members, contributors and roles from FastAPI."""
@@ -479,8 +518,18 @@ class ServerData:
 
 
 class Project:
-    def __init__(self, id: int, name: str, description: str, status: str) -> None:
+    def __init__(
+        self,
+        id: int,
+        name: str,
+        description: str,
+        status: str,
+        last_edited_by: str | None = None,
+        last_edited_at: str | None = None
+    ) -> None:
         self.id = id
         self.name = name
         self.description = description
         self.status = status
+        self.last_edited_by = last_edited_by
+        self.last_edited_at = last_edited_at
