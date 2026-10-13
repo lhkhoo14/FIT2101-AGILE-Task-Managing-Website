@@ -1,5 +1,7 @@
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from database_manager import db_manager
 from dependencies import (
     get_verified_project, 
@@ -58,7 +60,7 @@ def assign_role_to_member(project_id: int, payload: AssignRolePayload):
     return {"status": "success", "message": f"Assigned role '{payload.role_name}' successfully."}
 
 def ensure_member_fields(project: dict) -> None:
-    """Backfills `contribute`, roles, and permissions on older projects."""
+    """Backfills `contribute`, roles, permissions, and unified role definitions on projects."""
     members = project.get("members", [])
     if "contribute" not in project:
         project["contribute"] = list(members)
@@ -70,14 +72,31 @@ def ensure_member_fields(project: dict) -> None:
             "Project Manager": [],
             "Project Member": [uid for uid in members if uid not in creators],
         }
-    
-    # Ensure role_permissions always exist
-    if "role_permissions" not in project:
-        project["role_permissions"] = {
-            "Project Creator": ["add_members", "manage_sprints", "delete_project", "manage_roles"],
-            "Project Manager": ["add_members", "manage_sprints"],
-            "Project Member": []
+
+    # Unify role permissions inside role_definitions if they are separate or missing
+    role_permissions = project.get("role_permissions", {})
+    definitions = project.setdefault("role_definitions", {
+        "Project Creator": {
+            "colour": "#44E", 
+            "description": "Highest ranking role with full permissions.",
+            "permissions": ["add_members", "manage_sprints", "delete_project", "manage_roles"]
         },
+        "Project Manager": {
+            "colour": "#0ae", 
+            "description": "Can manage members and sprints.",
+            "permissions": ["add_members", "manage_sprints", "manage_roles"]
+        },
+        "Project Member": {
+            "colour": "#678", 
+            "description": "Standard contributor role.",
+            "permissions": []
+        }
+    })
+
+    # Migrate any legacy separate role_permissions into definitions
+    for r_name, meta in definitions.items():
+        if isinstance(meta, dict) and "permissions" not in meta:
+            meta["permissions"] = role_permissions.get(r_name, [])
 
 @router.post("/projects", status_code=status.HTTP_201_CREATED)
 def create_project(payload: CreateProjectPayload):
@@ -102,10 +121,22 @@ def create_project(payload: CreateProjectPayload):
             "Project Manager": [],
             "Project Member": []
         },
-        "role_permissions": {
-            "Project Creator": ["add_members", "manage_sprints", "delete_project", "manage_roles"],
-            "Project Manager": ["add_members", "manage_sprints", "manage_roles"],
-            "Project Member": []
+        "role_definitions": {
+            "Project Creator": {
+                "colour": "#44E",
+                "description": "Highest ranking role with full permissions.",
+                "permissions": ["add_members", "manage_sprints", "delete_project", "manage_roles"]
+            },
+            "Project Manager": {
+                "colour": "#0ae",
+                "description": "Can manage members and sprints.",
+                "permissions": ["add_members", "manage_sprints", "manage_roles"]
+            },
+            "Project Member": {
+                "colour": "#678",
+                "description": "Standard contributor role.",
+                "permissions": []
+            }
         },
         "backlog": [],
         "sprints": []
@@ -140,7 +171,8 @@ def get_project_members(project_id: int, user_id: int):
     return {
         "members": project.get("members", []),
         "contribute": project.get("contribute", []),
-        "roles": project.get("roles", {})
+        "roles": project.get("roles", {}),
+        "role_definitions": project.get("role_definitions", {})
     }
 
 @router.get("/projects/{project_id}/backlog")
@@ -205,4 +237,61 @@ def add_project_member(project_id: int, payload: AddMemberPayload):
         "member_id": member_id,
         "username": member["username"],
         "role": "Project Member"
+    }
+
+class CreateRolePayload(BaseModel):
+    user_id: int
+    name: str
+    colour: str
+    description: Optional[str] = None
+    permissions: list[str] = Field(default_factory=list)
+    conflicting_roles: Optional[list[str]] = Field(default_factory=list)
+
+@router.post("/projects/{project_id}/roles", status_code=status.HTTP_201_CREATED)
+def create_project_role(project_id: int, payload: CreateRolePayload):
+    db = db_manager.read()
+    project = db.get("projects", {}).get(str(project_id))
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    ensure_member_fields(project)
+
+    verify_project_permission(project, payload.user_id, "manage_roles")
+
+    role_name = payload.name.strip()
+    if not role_name:
+        raise HTTPException(status_code=422, detail="Role name cannot be empty.")
+
+    if role_name in project.get("roles", {}):
+        raise HTTPException(status_code=409, detail="A role with this name already exists.")
+
+    # 1. Initialize user list for the new role
+    project.setdefault("roles", {})[role_name] = []
+
+    # 2. Register conflict mappings
+    if payload.conflicting_roles:
+        conflicts = project.setdefault("role_conflicts", {})
+        conflicts[role_name] = payload.conflicting_roles
+        for conflict_target in payload.conflicting_roles:
+            conflicts.setdefault(conflict_target, []).append(role_name)
+
+    # 3. Store unified metadata (colour, description, and permissions together)
+    definitions = project.setdefault("role_definitions", {})
+    definitions[role_name] = {
+        "colour": payload.colour,
+        "description": payload.description or "",
+        "permissions": payload.permissions
+    }
+
+    db_manager.write(db)
+
+    return {
+        "status": "success",
+        "role": {
+            "name": role_name,
+            "colour": payload.colour,
+            "description": payload.description,
+            "permissions": payload.permissions,
+            "conflicting_roles": payload.conflicting_roles
+        }
     }
