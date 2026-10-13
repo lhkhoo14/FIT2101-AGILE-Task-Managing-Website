@@ -60,7 +60,7 @@ def assign_role_to_member(project_id: int, payload: AssignRolePayload):
     return {"status": "success", "message": f"Assigned role '{payload.role_name}' successfully."}
 
 def ensure_member_fields(project: dict) -> None:
-    """Backfills `contribute`, roles, permissions, and unified role definitions on projects."""
+    """Standardizes project roles, ensuring everything is unified under role_definitions and roles."""
     members = project.get("members", [])
     if "contribute" not in project:
         project["contribute"] = list(members)
@@ -73,28 +73,45 @@ def ensure_member_fields(project: dict) -> None:
             "Project Member": [uid for uid in members if uid not in creators],
         }
 
-    # Unify role permissions inside role_definitions if they are separate or missing
-    role_permissions = project.get("role_permissions", {})
+    # Standardize unified role_definitions
     definitions = project.setdefault("role_definitions", {
         "Project Creator": {
             "colour": "#44E", 
             "description": "Highest ranking role with full permissions.",
-            "permissions": ["add_members", "manage_sprints", "delete_project", "manage_roles"]
+            "permissions": ["add_members", "manage_sprints", "delete_project", "manage_roles"],
+            "conflicting_roles": []
         },
         "Project Manager": {
             "colour": "#0ae", 
             "description": "Can manage members and sprints.",
-            "permissions": ["add_members", "manage_sprints", "manage_roles"]
+            "permissions": ["add_members", "manage_sprints", "manage_roles"],
+            "conflicting_roles": []
         },
         "Project Member": {
             "colour": "#678", 
             "description": "Standard contributor role.",
-            "permissions": []
+            "permissions": [],
+            "conflicting_roles": []
         }
     })
-    
-    # Guarantee Project Creator has manage_roles even on existing loaded projects
-    if "Project Creator" in definitions and isinstance(definitions["Project Creator"], dict):
+
+    # Migrate any legacy separate structures or backfill missing attributes
+    for r_name, meta in definitions.items():
+        if isinstance(meta, dict):
+            meta.setdefault("permissions", [])
+            meta.setdefault("conflicting_roles", [])
+            meta.setdefault("colour", "#4747D4")
+            meta.setdefault("description", "")
+        else:
+            definitions[r_name] = {
+                "colour": "#4747D4",
+                "description": str(meta),
+                "permissions": [],
+                "conflicting_roles": []
+            }
+
+    # Guarantee Project Creator has manage_roles
+    if "Project Creator" in definitions:
         perms = definitions["Project Creator"].setdefault("permissions", [])
         if "manage_roles" not in perms:
             perms.append("manage_roles")
@@ -256,7 +273,6 @@ def create_project_role(project_id: int, payload: CreateRolePayload):
         raise HTTPException(status_code=404, detail="Project not found")
 
     ensure_member_fields(project)
-
     verify_project_permission(project, payload.user_id, "manage_roles")
 
     role_name = payload.name.strip()
@@ -266,22 +282,15 @@ def create_project_role(project_id: int, payload: CreateRolePayload):
     if role_name in project.get("roles", {}):
         raise HTTPException(status_code=409, detail="A role with this name already exists.")
 
-    # 1. Initialize user list for the new role
     project.setdefault("roles", {})[role_name] = []
 
-    # 2. Register conflict mappings
-    if payload.conflicting_roles:
-        conflicts = project.setdefault("role_conflicts", {})
-        conflicts[role_name] = payload.conflicting_roles
-        for conflict_target in payload.conflicting_roles:
-            conflicts.setdefault(conflict_target, []).append(role_name)
-
-    # 3. Store unified metadata (colour, description, and permissions together)
+    # Store unified metadata including conflicting_roles
     definitions = project.setdefault("role_definitions", {})
     definitions[role_name] = {
         "colour": payload.colour,
         "description": payload.description or "",
-        "permissions": payload.permissions
+        "permissions": payload.permissions,
+        "conflicting_roles": payload.conflicting_roles or []
     }
 
     db_manager.write(db)
@@ -331,3 +340,50 @@ def delete_project_role(project_id: int, role_name: str, payload: DeleteRolePayl
 
     db_manager.write(db)
     return {"status": "success", "message": f"Role '{role_name}' deleted successfully."}
+
+class UpdateRolePayload(BaseModel):
+    user_id: int
+    colour: str
+    description: Optional[str] = None
+    permissions: list[str] = Field(default_factory=list)
+    conflicting_roles: Optional[list[str]] = Field(default_factory=list)
+
+@router.put("/projects/{project_id}/roles/{role_name}", status_code=status.HTTP_200_OK)
+def update_project_role(project_id: int, role_name: str, payload: UpdateRolePayload):
+    db = db_manager.read()
+    project = db.get("projects", {}).get(str(project_id))
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    ensure_member_fields(project)
+    verify_project_permission(project, payload.user_id, "manage_roles")
+
+    protected_roles = {"Project Creator", "Project Manager", "Project Member"}
+    if role_name in protected_roles:
+        raise HTTPException(status_code=400, detail="Cannot modify default system roles.")
+
+    roles_dict = project.get("roles", {})
+    definitions = project.get("role_definitions", {})
+    if role_name not in roles_dict and role_name not in definitions:
+        raise HTTPException(status_code=404, detail="Role not found.")
+
+    # Update unified metadata including conflicting_roles inside role_definitions
+    definitions[role_name] = {
+        "colour": payload.colour,
+        "description": payload.description or "",
+        "permissions": payload.permissions,
+        "conflicting_roles": payload.conflicting_roles or []
+    }
+
+    db_manager.write(db)
+    return {
+        "status": "success", 
+        "message": f"Role '{role_name}' updated successfully.",
+        "role": {
+            "name": role_name,
+            "colour": payload.colour,
+            "description": payload.description,
+            "permissions": payload.permissions,
+            "conflicting_roles": payload.conflicting_roles
+        }
+    }

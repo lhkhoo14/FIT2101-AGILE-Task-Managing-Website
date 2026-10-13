@@ -3,17 +3,29 @@ from typing import Dict, Any
 from database_manager import db_manager
 
 def validate_role_assignment(project: dict, user_id: int, target_role: str) -> None:
-    """Ensures assigning `target_role` does not violate role restriction rules."""
+    """Ensures assigning `target_role` does not violate role restriction rules from unified role_definitions."""
     roles = project.get("roles", {})
-    conflicts = project.get("role_conflicts", {})
+    role_definitions = project.get("role_definitions", {})
     
     # Get roles the user currently holds
     current_user_roles = [role for role, uids in roles.items() if user_id in uids]
     
+    # Extract conflicting roles for the target role from unified role_definitions
+    target_meta = role_definitions.get(target_role, {})
+    forbidden_roles = target_meta.get("conflicting_roles", []) if isinstance(target_meta, dict) else []
+    
     # Check if any current role conflicts with the target role
-    forbidden_roles = conflicts.get(target_role, [])
     for current_role in current_user_roles:
         if current_role in forbidden_roles:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Conflict: User cannot hold both '{current_role}' and '{target_role}' simultaneously."
+            )
+        
+        # Also check bidirectional conflicts if current roles list them
+        current_meta = role_definitions.get(current_role, {})
+        current_conflicts = current_meta.get("conflicting_roles", []) if isinstance(current_meta, dict) else []
+        if target_role in current_conflicts:
             raise HTTPException(
                 status_code=422,
                 detail=f"Conflict: User cannot hold both '{current_role}' and '{target_role}' simultaneously."
@@ -32,27 +44,21 @@ def verify_project_creator(project: Any, user_id: int) -> Dict[str, Any]:
     return project
 
 def verify_project_permission(project: Any, user_id: int, required_permission: str) -> Dict[str, Any]:
-    """Enforces that the user has a specific permission based on their assigned role."""
+    """Enforces that the user has a specific permission based on their assigned role in role_definitions."""
     verify_project_access(project, user_id)
     
     roles = project.get("roles", {})
     role_definitions = project.get("role_definitions", {})
-    role_permissions = project.get("role_permissions", {})
     
     # Find all roles the user belongs to
     user_roles = [role_name for role_name, user_ids in roles.items() if user_id in user_ids]
     
-    # Check if any of the user's roles contain the required permission (checking unified role_definitions first)
+    # Check if any of the user's roles contain the required permission
     has_permission = False
     for role in user_roles:
-        # Check unified role_definitions structure
         def_meta = role_definitions.get(role, {})
         perms = def_meta.get("permissions", []) if isinstance(def_meta, dict) else []
-        
-        # Fallback check to separate role_permissions if needed
-        legacy_perms = role_permissions.get(role, [])
-        
-        if required_permission in perms or required_permission in legacy_perms:
+        if required_permission in perms:
             has_permission = True
             break
     

@@ -677,3 +677,31 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to delete role: {e}")
             return False, "Unable to connect to the server."
+
+    async def update_project_role(self, project_id: int, role_name: str, colour: str, description: str, permissions: list, conflicting_roles: list) -> tuple[bool, str]:
+        """Updates an existing custom project role."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/roles/{role_name}",
+                method="PUT",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({
+                    "user_id": user_id,
+                    "colour": colour,
+                    "description": description,
+                    "permissions": permissions,
+                    "conflicting_roles": conflicting_roles
+                })
+            )
+            if response.status == 200:
+                return True, "Role updated successfully."
+            
+            data = await response.json()
+            return False, data.get("detail", "Failed to update role.")
+        except Exception as e:
+            print(f"[API Error] Failed to update role: {e}")
+            return False, "Unable to connect to the server."

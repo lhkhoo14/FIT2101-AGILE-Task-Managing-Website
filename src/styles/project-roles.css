@@ -234,17 +234,6 @@
     cursor: pointer;
 }
 
-.delete-role-btn {
-  border: none;
-  border-radius: 8px;
-  padding: 10px 16px;
-  background: #d9534f;
-  color: white;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
 /* --- USER ACTIVE ROLES BANNER --- */
 .user-roles-banner {
   background: #ffffff;
@@ -290,4 +279,14 @@
 
 .confirm-delete-btn:hover {
   background-color: #b91c1c !important;
+}
+
+.role-dropdown-menu button:hover {
+  background-color: #f1f5f9 !important;
+}
+
+.role-menu-trigger-btn:hover {
+  color: #0f172a !important;
+  background-color: #f8fafc;
+  border-radius: 4px;
 }

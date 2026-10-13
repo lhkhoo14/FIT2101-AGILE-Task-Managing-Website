@@ -2,7 +2,7 @@ import sys
 import asyncio
 import html
 import js  # type: ignore
-from pyscript import web, window, when  # type: ignore
+from pyscript import document, web, window, when  # type: ignore
 
 if "." not in sys.path:
     sys.path.append(".")
@@ -61,13 +61,17 @@ async def load_project_roles():
             _all_roles.append({
                 "name": role_name,
                 "colour": meta.get("colour", "#4747D4"),
-                "description": meta.get("description", "No description provided.")
+                "description": meta.get("description", "No description provided."),
+                "permissions": meta.get("permissions", []),
+                "conflicting_roles": meta.get("conflicting_roles", [])
             })
         else:
             _all_roles.append({
                 "name": role_name,
                 "colour": "#4747D4",
-                "description": str(meta)
+                "description": str(meta),
+                "permissions": [],
+                "conflicting_roles": []
             })
 
     render_roles_view(_all_roles)
@@ -135,7 +139,15 @@ def render_roles_view(roles_to_render):
             description = html.escape(role["description"])
             
             is_protected = name in protected_roles
-            delete_btn_html = "" if is_protected else f'<button type="button" class="delete-role-btn" data-role-name="{name}" onclick="event.stopPropagation(); triggerDeleteRole(\'{name}\')">Delete</button>'
+            action_menu_html = "" if is_protected else f"""
+            <div class="profile-menu-container" style="position: relative;">
+                <button type="button" class="role-menu-trigger-btn profile-btn" onclick="toggleRoleDropdownMenu(event, this)" style="background: none; border: none; cursor: pointer; padding: 4px 8px; font-size: 16px; color: #64748b;" title="Role Options">⋮</button>
+                <div class="role-dropdown-menu dropdown-menu hidden" style="position: absolute; right: 0; top: 100%; min-width: 110px; padding: 4px 0; z-index: 10;">
+                    <button type="button" onclick="event.stopPropagation(); triggerEditRole('{name}')" class="dropdown-item" style="text-align: left; width: 100%; cursor: pointer;">Edit</button>
+                    <button type="button" onclick="event.stopPropagation(); triggerDeleteRole('{name}')" class="dropdown-item" style="text-align: left; width: 100%; color: #dc2626; cursor: pointer;">Delete</button>
+                </div>
+            </div>
+            """
 
             html_content += f"""
             <div class="role-card" data-role-name="{name}">
@@ -144,8 +156,8 @@ def render_roles_view(roles_to_render):
                         <span class="role-swatch" style="background: {colour};"></span>
                         <h3 class="role-name">{name}</h3>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        {delete_btn_html}
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        {action_menu_html}
                         <span class="toggle-icon">▼</span>
                     </div>
                 </div>
@@ -156,6 +168,15 @@ def render_roles_view(roles_to_render):
             """
 
     container.innerHTML = html_content
+
+# Global JS helpers for menu toggling and document-click dismissal
+window.toggleRoleMenu = lambda btn_el: (
+    document.querySelectorAll(".role-dropdown-menu").forEach(lambda m: m.classList.add("hidden") if m != btn_el.nextElementSibling else None),
+    btn_el.nextElementSibling.classList.toggle("hidden")
+)
+
+# Close dropdown menus when clicking outside
+window.addEventListener("click", lambda e: document.querySelectorAll(".role-dropdown-menu").forEach(lambda m: m.classList.add("hidden")))
 
 # Store role pending deletion
 _role_to_delete = None
@@ -304,6 +325,109 @@ async def handle_create_role(event):
         window.location.reload()
     else:
         await show_snackbar(message)
+
+# --- Edit Role Workflow Handlers ---
+
+def trigger_edit_role_flow(role_name):
+    target_role = next((r for r in _all_roles if r["name"] == role_name), None)
+    if not target_role:
+        return
+
+    # Populate modal fields
+    js.document.getElementById("edit-role-original-name").value = role_name
+    js.document.getElementById("edit-role-name-display").value = role_name
+    js.document.getElementById("edit-role-colour-input").value = target_role.get("colour", "#4F46E5")
+    js.document.getElementById("edit-role-desc-input").value = target_role.get("description", "")
+
+    # Populate permissions & conflict checklists
+    populate_edit_permissions_checklist(target_role.get("permissions", []))
+    populate_edit_conflict_checkboxes(_all_roles, role_name, target_role.get("conflicting_roles", []))
+
+    modal = web.page["#edit-role-modal"]
+    if modal:
+        modal.classList.remove("hidden")
+
+window.triggerEditRole = lambda r_name: trigger_edit_role_flow(r_name)
+
+def populate_edit_permissions_checklist(current_permissions):
+    container = js.document.getElementById("edit-role-permissions-list")
+    if not container:
+        return
+    
+    html_content = ""
+    for perm_key, perm_desc in role_permissions.items():
+        is_checked = "checked" if perm_key in current_permissions else ""
+        html_content += f"""
+        <label style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; cursor: pointer;">
+            <input type="checkbox" class="edit-role-permission-checkbox" value="{perm_key}" {is_checked} style="margin-top: 3px;">
+            <div>
+                <strong style="display: block; font-size: 12px; color: #1e293b;">{perm_key.replace('_', ' ').title()}</strong>
+                <span style="font-size: 11px; color: #64748b;">{perm_desc}</span>
+            </div>
+        </label>
+        """
+    container.innerHTML = html_content
+
+def populate_edit_conflict_checkboxes(roles, current_role_name, current_conflicts):
+    container = js.document.getElementById("edit-role-conflicts-list")
+    if not container:
+        return
+    
+    html_content = ""
+    for role in roles:
+        r_name = role["name"]
+        if r_name == current_role_name:
+            continue
+        is_checked = "checked" if r_name in current_conflicts else ""
+        html_content += f'<label class="conflict-checkbox-label"><input type="checkbox" class="edit-role-conflict-checkbox" value="{html.escape(r_name)}" {is_checked}> {html.escape(r_name)}</label>'
+    container.innerHTML = html_content
+
+@when("submit", "#edit-role-form")
+async def handle_edit_role_submit(event):
+    if event:
+        event.preventDefault()
+
+    project_id = get_project_id_from_url()
+    if not project_id:
+        return
+
+    role_name = js.document.getElementById("edit-role-original-name").value
+    colour = js.document.getElementById("edit-role-colour-input").value
+    description = js.document.getElementById("edit-role-desc-input").value.strip()
+
+    permission_boxes = js.document.querySelectorAll(".edit-role-permission-checkbox:checked")
+    permissions = [box.value for box in permission_boxes]
+
+    conflict_boxes = js.document.querySelectorAll(".edit-role-conflict-checkbox:checked")
+    conflicting_roles = [box.value for box in conflict_boxes]
+
+    modal = web.page["#edit-role-modal"]
+    if modal:
+        modal.classList.add("hidden")
+
+    db = ServerData()
+    success, message = await db.update_project_role(
+        project_id=project_id,
+        role_name=role_name,
+        colour=colour,
+        description=description,
+        permissions=permissions,
+        conflicting_roles=conflicting_roles
+    )
+
+    if success:
+        await show_snackbar(f"Role '{role_name}' updated successfully!")
+        window.location.reload()
+    else:
+        await show_snackbar(message)
+
+# --- Role Actions Dropdown Menu Handlers ---
+
+@when("click", "body")
+def close_role_dropdowns_on_outside_click(event):
+    for menu in js.document.querySelectorAll(".role-dropdown-menu"):
+        if "hidden" not in menu.classes:
+            menu.classes.add("hidden")
 
 # Initialize on page load
 asyncio.ensure_future(load_project_roles())
