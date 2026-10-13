@@ -10,14 +10,14 @@ if "." not in sys.path:
     sys.path.append(".")
 
 from pyscript import when, web, window, document  # type: ignore
-from auth import show_snackbar
-from sprint_access import is_sprint_member
+from auth import show_snackbar # type: ignore
+from sprint_access import is_sprint_member # type: ignore
 from html import escape
 import charts
 import js  # type: ignore
 
 from server_data import ServerData
-import topbar
+import topbar # type: ignore
 
 # ServerData owns the FastAPI session and provides the sprint/project API.
 # The page keeps only the currently displayed board in memory; every mutation

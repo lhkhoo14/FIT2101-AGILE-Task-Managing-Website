@@ -7,14 +7,7 @@ if "." not in sys.path:
     sys.path.append(".")
 
 from server_data import ServerData, Project
-
-
-def get_project_id_from_url():
-    params = js.URLSearchParams.new(window.location.search)
-    project_id = params.get("project_id")
-    if project_id and project_id.isdigit():
-        return int(project_id)
-    return None
+from project_layout import get_project_id_from_url
 
 
 def load_default_view(project: Project):

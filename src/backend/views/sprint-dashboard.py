@@ -10,7 +10,7 @@ if "." not in sys.path:
 from datetime import date
 
 from pyscript import when, web, window, document  # type: ignore[reportMissingImports]
-from auth import show_snackbar
+from auth import show_snackbar # type: ignore
 import js  # type: ignore[reportMissingImports]
 from server_data import ServerData
 import charts
@@ -19,7 +19,7 @@ import charts
 # The dashboard never owns sprint data; it asks FastAPI for the current project
 # state and re-renders the affected UI after successful mutations.
 server_data = ServerData()
-from sprint_access import (
+from sprint_access import ( # type: ignore
     is_sprint_member, sort_sprints, normalize_tags, filter_sprints_by_tag,
     PRIORITY_ORDER, DEFAULT_PRIORITY,
 )
