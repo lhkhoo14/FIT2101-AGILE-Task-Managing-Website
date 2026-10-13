@@ -641,3 +641,13 @@
   color: #555;
   margin-bottom: 10px;
 }
+
+/* --- Stopwatch button row --- */
+#task-detail-modal .time-log-buttons {
+  flex-wrap: wrap;
+}
+
+.modal-btn-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

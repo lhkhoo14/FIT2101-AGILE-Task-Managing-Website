@@ -1194,16 +1194,16 @@ def _render_stopwatch_ui(task):
     log_btn = document.getElementById("stopwatch-log-btn")
 
     if start_btn:
-        start_btn.classList.toggle("hidden", status != "idle" or _sprint_ended)
-        start_btn.disabled = _sprint_ended
+        start_btn.classList.remove("hidden")
+        start_btn.disabled = (status != "idle") or _sprint_ended
     if pause_btn:
-        pause_btn.classList.toggle("hidden", status != "running" or _sprint_ended)
-        pause_btn.disabled = _sprint_ended
+        pause_btn.classList.remove("hidden")
+        pause_btn.disabled = (status != "running") or _sprint_ended
     if resume_btn:
-        resume_btn.classList.toggle("hidden", status != "paused" or _sprint_ended)
-        resume_btn.disabled = _sprint_ended
+        resume_btn.classList.remove("hidden")
+        resume_btn.disabled = (status != "paused") or _sprint_ended
     if log_btn:
-        log_btn.classList.toggle("hidden", status == "idle" or _sprint_ended)
+        log_btn.classList.remove("hidden")
         log_btn.disabled = (status == "idle") or _sprint_ended
 
 async def _start_stopwatch_ticker():
@@ -1235,7 +1235,7 @@ def _handle_stopwatch_start(event):
         if not success:
             await show_snackbar("Failed to save stopwatch state.")
             return
-        _render_kanban_board()
+        _render_board(_kanban_state)
         _render_task_detail_modal()
     asyncio.ensure_future(_save_and_render())
 
@@ -1257,7 +1257,7 @@ def _handle_stopwatch_pause(event):
         if not success:
             await show_snackbar("Failed to save stopwatch state.")
             return
-        _render_kanban_board()
+        _render_board(_kanban_state)
         _render_task_detail_modal()
     asyncio.ensure_future(_save_and_render())
 
@@ -1280,7 +1280,7 @@ def _handle_stopwatch_resume(event):
         if not success:
             await show_snackbar("Failed to save stopwatch state.")
             return
-        _render_kanban_board()
+        _render_board(_kanban_state)
         _render_task_detail_modal()
     asyncio.ensure_future(_save_and_render())
 
@@ -1323,7 +1323,7 @@ def _handle_stopwatch_log(event):
         if not success:
             await show_snackbar("Failed to save time log.")
             return
-        _render_kanban_board()
+        _render_board(_kanban_state)
         _render_task_detail_modal()
         await show_snackbar(f"Logged {_format_hm(elapsed)}.")
     asyncio.ensure_future(_save_and_log())
