@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
+from datetime import datetime, timezone
 from database_manager import db_manager
 from dependencies import get_verified_project
 
@@ -19,6 +20,10 @@ class CreateBacklogPayload(BaseModel):
 class AddMemberPayload(BaseModel):
     user_id: int
     username: str
+
+class UpdateDescriptionPayload(BaseModel):
+    user_id: int
+    description: str
 
 @router.post("/projects", status_code=status.HTTP_201_CREATED)
 def create_project(payload: CreateProjectPayload):
@@ -65,6 +70,50 @@ def get_user_projects(user_id: int):
 @router.get("/projects/{project_id}")
 def get_project(project_id: int, user_id: int):
     return get_verified_project(project_id, user_id)
+
+@router.put("/projects/{project_id}/description")
+def update_project_description(
+    project_id: int,
+    payload: UpdateDescriptionPayload
+):
+    # Verify that the requester belongs to this project.
+    get_verified_project(project_id, payload.user_id)
+
+    # Read the database that will be updated and saved.
+    db = db_manager.read()
+    project = db.get("projects", {}).get(str(project_id))
+
+    if project is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Project not found"
+        )
+
+    # Find the user who made the edit.
+    user = db_manager.find_user_by_id(payload.user_id)
+
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    # Update the description and audit metadata.
+    project["description"] = payload.description
+    project["last_edited_by"] = user.get("username", "Unknown User")
+    project["last_edited_at"] = datetime.now(
+        timezone.utc
+    ).isoformat()
+
+    # Persist the changes to the JSON database.
+    db_manager.write(db)
+
+    return {
+        "status": "success",
+        "description": project["description"],
+        "last_edited_by": project["last_edited_by"],
+        "last_edited_at": project["last_edited_at"]
+    }
 
 @router.get("/projects/{project_id}/members")
 def get_project_members(project_id: int, user_id: int):
