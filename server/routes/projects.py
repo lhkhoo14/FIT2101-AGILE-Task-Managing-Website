@@ -7,7 +7,7 @@ from dependencies import get_verified_project
 
 router = APIRouter()
 
-VALID_PROJECT_STATUSES = ("active", "completed", "archived")
+VALID_PROJECT_STATUSES = ("active", "completed")
 DEFAULT_PROJECT_STATUS = "active"
 
 def with_project_defaults(project: dict) -> dict:
@@ -121,6 +121,11 @@ def update_project_status(project_id: int, payload: UpdateProjectStatusPayload):
 
     db = db_manager.read()
     project = db["projects"][str(project_id)]
+
+    # Same rule as sprints: once ended, a project cannot be reopened.
+    if project.get("status") == "completed" and payload.status == "active":
+        raise HTTPException(status_code=409, detail="A completed project cannot be reopened.")
+
     project["status"] = payload.status
     project.setdefault("created_at", None)
     db_manager.write(db)

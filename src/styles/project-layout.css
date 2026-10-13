@@ -170,3 +170,51 @@
   border-bottom: 1px solid #e2e8f0;
   border-radius: 8px 8px 0 0;
 }
+
+/* --- Project status badge + End Project button --- */
+.project-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.status-active {
+  background-color: #e0f2fe;
+  color: #0369a1;
+}
+
+.status-completed {
+  background-color: #dcfce7;
+  color: #15803d;
+}
+
+.btn-end-project {
+  padding: 10px 20px;
+  background-color: #ffffff;
+  color: #d9534f;
+  border: 1px solid #d9534f;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-end-project:hover {
+  background-color: #d9534f;
+  color: #ffffff;
+}
+
+.btn-end-project:disabled {
+  background-color: #f0f0f0;
+  color: #999999;
+  border-color: #dddddd;
+  cursor: not-allowed;
+}

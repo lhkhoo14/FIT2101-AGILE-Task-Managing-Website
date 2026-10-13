@@ -31,7 +31,7 @@ SORT_STATUS = "status"
 SORT_NAME = "name"
 
 # Status sort order: what users most likely want to find first comes first.
-STATUS_ORDER = {"active": 0, "completed": 1, "archived": 2}
+STATUS_ORDER = {"active": 0, "completed": 1}
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -55,7 +55,7 @@ def sort_projects(projects, sort_key: str) -> list:
 
     date-desc -> newest first (default)
     date-asc  -> oldest first
-    status    -> Active, Completed, Archived; newest first within each status
+    status    -> Active, then Completed; newest first within each status
     name      -> A-Z, case-insensitive
     """
     items = list(projects)

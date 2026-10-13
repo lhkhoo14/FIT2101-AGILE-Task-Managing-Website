@@ -198,7 +198,7 @@ class ServerData:
             return None
     
     async def update_project_status(self, project_id: int, status: str) -> tuple[bool, str]:
-        """Changes a project's status (active / completed / archived)."""
+        """Changes a project's status (active / completed)."""
         user_id = self.get_active_session()
         if user_id is None:
             return False, "Session expired"
