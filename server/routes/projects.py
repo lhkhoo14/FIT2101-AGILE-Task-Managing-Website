@@ -1,7 +1,10 @@
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from database_manager import db_manager
 from dependencies import get_verified_project, verify_project_access
+import sprint_logic
 
 router = APIRouter()
 
@@ -13,8 +16,10 @@ class CreateProjectPayload(BaseModel):
 class CreateBacklogPayload(BaseModel):
     user_id: int
     title: str
-    tag: str
     priority: str
+    tags: list[str] = Field(default_factory=list)
+    # Older clients send a single tag; it is folded into `tags` below.
+    tag: Optional[str] = None
 
 class AddMemberPayload(BaseModel):
     user_id: int
@@ -117,7 +122,7 @@ def create_backlog_item(project_id: int, payload: CreateBacklogPayload):
     item = {
         "id": backlog_id,
         "title": payload.title,
-        "tag": payload.tag,
+        "tags": sprint_logic.normalize_tags(payload.tags) or sprint_logic.normalize_tags(payload.tag),
         "priority": payload.priority
     }
     project.setdefault("backlog", []).append(item)
