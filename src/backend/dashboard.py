@@ -69,6 +69,29 @@ def sort_projects(projects, sort_key: str) -> list:
     return sorted(items, key=_created_key, reverse=True)
 
 
+def filter_projects(projects, query: str) -> list:
+    """Projects matching the search text. Returns all projects for an empty query.
+
+    The query is split on whitespace and every word must partially match the
+    project's name or description (case-insensitive), so "web" finds "Website
+    redesign" and "web redesign" finds it too.
+    """
+    terms = str(query or "").casefold().split()
+    if not terms:
+        return list(projects)
+    result = []
+    for project in projects:
+        haystack = f"{project.name} {project.description}".casefold()
+        if all(term in haystack for term in terms):
+            result.append(project)
+    return result
+
+
+def current_search_query() -> str:
+    search = web.page["global-search"]
+    return search.value.strip() if search is not None else ""
+
+
 def format_created_date(created_at) -> str:
     """Formats epoch milliseconds as e.g. '13 Oct 2026' in the user's timezone."""
     if not created_at:
@@ -118,7 +141,13 @@ def render_projects():
         grid.innerHTML = "<p class='no-projects'>No projects found. Click 'Create' to get started!</p>"
         return
 
-    for project in sort_projects(loaded_projects, current_sort_key()):
+    query = current_search_query()
+    visible = filter_projects(loaded_projects, query)
+    if not visible:
+        grid.innerHTML = f"<p class='no-projects'>No projects match \"{escape(query)}\".</p>"
+        return
+
+    for project in sort_projects(visible, current_sort_key()):
         grid.appendChild(create_project_card(project))
 
 
@@ -127,6 +156,12 @@ async def list_projects():
     global loaded_projects
     db = ServerData()
     loaded_projects = await db.get_projects() or []
+    render_projects()
+
+
+@when("input", "#global-search")
+def handle_search_input(event):
+    """Filters the cards as the user types; no page reload or refetch."""
     render_projects()
 
 
