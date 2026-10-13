@@ -79,6 +79,8 @@ def _find_sprint(sprints, sprint_id):
 
 async def _persist_kanban_state(state):
     """Persist the current in-memory board through the FastAPI client."""
+    if not _project_id or not _sprint_id:
+        return
     success, err = await server_data.update_kanban_state(_project_id, _sprint_id, state)
     if not success:
         await show_snackbar(f"Failed to update board: {err}")
@@ -487,6 +489,8 @@ async def handle_end_sprint(event):
     global _sprint_ended, _active_sprint
     if _sprint_ended:
         return
+    if not _project_id or not _sprint_id:
+        return
     success, err, sprint = await server_data.update_sprint_status(
         _project_id, _sprint_id, "ended"
     )
@@ -773,6 +777,8 @@ def _render_task_assignee_and_dates(task):
     s_end = charts.parse_iso((_active_sprint or {}).get("end_date"))
     has_range = s_start is not None and s_end is not None
     if has_range:
+        if not s_start or not s_end:
+            return
         start_input.min = end_input.min = s_start.isoformat()
         start_input.max = end_input.max = s_end.isoformat()
         hint.textContent = f"Dates must fall within the sprint: {charts.format_day(s_start)} \u2013 {charts.format_day(s_end, True)}."
@@ -831,6 +837,8 @@ async def handle_save_task_details(event):
     task["start_date"] = start_text or None
     task["end_date"] = end_text or None
 
+    if not _project_id or not _sprint_id:
+        return
     success, err = await server_data.update_kanban_state(_project_id, _sprint_id, _kanban_state)
     if not success:
         task.update(previous)  # roll back the in-memory change so the UI matches the server
@@ -1130,6 +1138,8 @@ async def _submit_time_log(action, verb):
     if target_task is None:
         return
 
+    if not _project_id or not _sprint_id:
+        return
     success, err, payload = await server_data.log_task_time(
         _project_id, _sprint_id, target_task.get("id"), action
     )

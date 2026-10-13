@@ -1,12 +1,10 @@
 import sys
+import os
 import asyncio
 import html
-import js
+import js # type: ignore
 
-from pyscript import web, window, when
-
-if "." not in sys.path:
-    sys.path.append(".")
+from pyscript import web, window, when # type: ignore
 
 from server_data import ServerData
 

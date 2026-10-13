@@ -1,9 +1,11 @@
 import sys
+import os
 import js  # type: ignore
 from pyscript import when, web, window  # type: ignore
 
-if "." not in sys.path:
-    sys.path.append(".")
+backend_path = os.path.abspath(os.path.join(os.path.dirname(__name__), ".."))
+if "src/backend" not in sys.path:
+    sys.path.append("src/backend")
 
 # Import decoupled topbar module
 import topbar
