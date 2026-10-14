@@ -110,8 +110,6 @@ def get_users(user_id: int):
 import secrets
 import hashlib
 import hmac
-import time
-from pydantic import EmailStr
 import mailer
 
 class UpdateProfilePayload(BaseModel):
@@ -131,217 +129,311 @@ class PasswordChangePayload(BaseModel):
 class DeleteAccountPayload(BaseModel):
     password: str
 
-DEFAULT_PROFILE_PHOTO = "../assets/default-profile.svg"
+ALLOWED_PHOTO_PREFIXES = (
+    "data:image/png;base64,",
+    "data:image/jpeg;base64,",
+    "data:image/webp;base64,",
+)
+MAX_PHOTO_LENGTH = 300000
+ROLE_PRODUCT_OWNER = "Product Owner"
+ROLE_SCRUM_MASTER = "Scrum Master"
+ROLE_MEMBER = "Member"
+KANBAN_COLUMNS = ("backlog", "active", "review", "completed")
+
+
+def _find_user(db, user_id):
+    """Users are stored as a list of dicts keyed by `user_id`."""
+    return next(
+        (u for u in db.get("users", []) if str(u.get("user_id")) == str(user_id)),
+        None
+    )
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _clear_pending_email(user):
+    user.pop("pending_email", None)
+    user.pop("pending_email_token_hash", None)
+    user.pop("pending_email_expires", None)
+
 
 @router.get("/users/{user_id}/settings")
 def get_user_settings(user_id: int):
-    user = db_manager.db["users"].get(str(user_id)) or db_manager.db["users"].get(user_id)
+    db = db_manager.read()
+    user = _find_user(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return {
-        "user_id": user.get("id"),
-        "username": user.get("username"),
-        "email": user.get("email"),
+        "user_id": user["user_id"],
+        "username": user["username"],
+        "email": user["email"],
         "pending_email": user.get("pending_email"),
         "profile_photo": user.get("profile_photo", DEFAULT_PROFILE_PHOTO)
     }
 
+
 @router.patch("/users/{user_id}/profile")
 def update_user_profile(user_id: int, payload: UpdateProfilePayload):
-    user = db_manager.db["users"].get(str(user_id)) or db_manager.db["users"].get(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    updates = {}
-    if payload.username is not None:
-        uname = payload.username.strip()
-        if not uname or len(uname) > 50:
-            raise HTTPException(status_code=422, detail="Username must be between 1 and 50 characters.")
-        for u in db_manager.db["users"].values():
-            if str(u.get("id")) != str(user_id) and u.get("username", "").lower() == uname.lower():
-                raise HTTPException(status_code=409, detail="That display name is already taken.")
-        updates["username"] = uname
-
-    if payload.profile_photo is not None:
-        photo = payload.profile_photo
-        if photo == "":
-            updates["profile_photo"] = DEFAULT_PROFILE_PHOTO
-        else:
-            if not (photo.startswith("data:image/png;base64,") or photo.startswith("data:image/jpeg;base64,") or photo.startswith("data:image/webp;base64,")) or len(photo) > 300000:
-                raise HTTPException(status_code=422, detail="Image is too large or not a supported type.")
-            updates["profile_photo"] = photo
-
     def mutate(db):
-        u = db["users"].get(str(user_id)) or db["users"].get(user_id)
-        if not u:
+        user = _find_user(db, user_id)
+        if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        for k, v in updates.items():
-            u[k] = v
 
-    db_manager.update(mutate)
-    return {"status": "success", "username": user.get("username"), "profile_photo": user.get("profile_photo", DEFAULT_PROFILE_PHOTO)}
+        if payload.username is not None:
+            name = payload.username.strip()
+            if not name or len(name) > 50:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Display name must be between 1 and 50 characters."
+                )
+            # Members are looked up by username, so it has to stay unique.
+            if any(
+                str(u.get("user_id")) != str(user_id)
+                and str(u.get("username", "")).lower() == name.lower()
+                for u in db["users"]
+            ):
+                raise HTTPException(status_code=409, detail="That display name is already taken.")
+            user["username"] = name
+
+        if payload.profile_photo is not None:
+            photo = payload.profile_photo
+            if photo == "":
+                user.pop("profile_photo", None)
+            elif not photo.startswith(ALLOWED_PHOTO_PREFIXES) or len(photo) > MAX_PHOTO_LENGTH:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Image is too large or not a supported type."
+                )
+            else:
+                user["profile_photo"] = photo
+
+        return {
+            "status": "success",
+            "username": user["username"],
+            "profile_photo": user.get("profile_photo", DEFAULT_PROFILE_PHOTO)
+        }
+
+    return db_manager.update(mutate)
+
 
 @router.post("/users/{user_id}/email-change")
 def request_email_change(user_id: int, payload: EmailChangePayload):
-    user = db_manager.db["users"].get(str(user_id)) or db_manager.db["users"].get(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
     new_email = payload.new_email.strip()
-    if new_email.lower() == user.get("email", "").lower():
-        raise HTTPException(status_code=400, detail="New email cannot be the same as current email.")
-    
-    for u in db_manager.db["users"].values():
-        if str(u.get("id")) != str(user_id) and u.get("email", "").lower() == new_email.lower():
-            raise HTTPException(status_code=409, detail="Email is already registered.")
-
     token = secrets.token_urlsafe(32)
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-    expires = time.time() + 24 * 3600
 
     def mutate(db):
-        u = db["users"].get(str(user_id)) or db["users"].get(user_id)
-        if u:
-            u["pending_email"] = new_email
-            u["pending_email_token_hash"] = token_hash
-            u["pending_email_expires"] = expires
+        user = _find_user(db, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if new_email.lower() == str(user.get("email", "")).lower():
+            raise HTTPException(status_code=400, detail="That is already your current email address.")
+        if any(
+            str(u.get("user_id")) != str(user_id)
+            and str(u.get("email", "")).lower() == new_email.lower()
+            for u in db["users"]
+        ):
+            raise HTTPException(status_code=409, detail="Email is already registered.")
+
+        # The current email is NOT changed until the link is confirmed.
+        # A new request overwrites any earlier pending one.
+        user["pending_email"] = new_email
+        user["pending_email_token_hash"] = _hash_token(token)
+        user["pending_email_expires"] = time.time() + 24 * 3600
 
     db_manager.update(mutate)
-    
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5500")
+
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5500").rstrip("/")
     link = f"{frontend_url}/src/views/settings.html?verify_email={token}"
     email_sent = mailer.send_verification_email(new_email, link)
     return {"status": "success", "email_sent": email_sent}
 
+
 @router.post("/users/email-verify")
 def verify_email_change(payload: EmailVerifyPayload):
-    token_hash = hashlib.sha256(payload.token.encode()).hexdigest()
-    found_user = None
-    for u in db_manager.db["users"].values():
-        stored_hash = u.get("pending_email_token_hash")
-        if stored_hash and hmac.compare_digest(stored_hash, token_hash):
-            found_user = u
-            break
-            
-    if not found_user:
-        raise HTTPException(status_code=400, detail="This verification link is invalid or has expired.")
-    
-    if time.time() > found_user.get("pending_email_expires", 0):
-        def mutate_clear(db):
-            for u in db["users"].values():
-                if u.get("pending_email_token_hash") == token_hash:
-                    u.pop("pending_email", None)
-                    u.pop("pending_email_token_hash", None)
-                    u.pop("pending_email_expires", None)
-        db_manager.update(mutate_clear)
-        raise HTTPException(status_code=400, detail="This verification link is invalid or has expired.")
+    token_hash = _hash_token(payload.token)
+    invalid = HTTPException(
+        status_code=400,
+        detail="This verification link is invalid or has expired."
+    )
+    result = {}
 
-    pending_email = found_user["pending_email"]
-    for u in db_manager.db["users"].values():
-        if str(u.get("id")) != str(found_user.get("id")) and u.get("email", "").lower() == pending_email.lower():
-            raise HTTPException(status_code=409, detail="Email is already registered.")
+    def mutate(db):
+        user = next(
+            (
+                u for u in db.get("users", [])
+                if u.get("pending_email_token_hash")
+                and hmac.compare_digest(u["pending_email_token_hash"], token_hash)
+            ),
+            None
+        )
+        if user is None:
+            return "invalid"
 
-    def mutate_verify(db):
-        for u in db["users"].values():
-            if u.get("pending_email_token_hash") == token_hash:
-                u["email"] = u["pending_email"]
-                u.pop("pending_email", None)
-                u.pop("pending_email_token_hash", None)
-                u.pop("pending_email_expires", None)
+        if time.time() > user.get("pending_email_expires", 0):
+            _clear_pending_email(user)
+            return "invalid"
 
-    db_manager.update(mutate_verify)
-    return {"status": "success", "email": pending_email}
+        pending = user.get("pending_email")
+        if not pending:
+            return "invalid"
+        if any(
+            u is not user and str(u.get("email", "")).lower() == pending.lower()
+            for u in db["users"]
+        ):
+            return "taken"
+
+        user["email"] = pending
+        _clear_pending_email(user)
+        result["email"] = pending
+        return "ok"
+
+    outcome = db_manager.update(mutate)
+    if outcome == "taken":
+        raise HTTPException(status_code=409, detail="Email is already registered.")
+    if outcome != "ok":
+        raise invalid
+    return {"status": "success", "email": result["email"]}
+
 
 @router.post("/users/{user_id}/password")
 def change_password(user_id: int, payload: PasswordChangePayload):
-    user = db_manager.db["users"].get(str(user_id)) or db_manager.db["users"].get(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    if not verify_password(payload.current_password, user.get("password_hash", "")):
-        raise HTTPException(status_code=401, detail="Current password is incorrect.")
-    if len(payload.new_password) < 8:
-        raise HTTPException(status_code=422, detail="New password must be at least 8 characters long.")
-    if payload.current_password == payload.new_password:
-        raise HTTPException(status_code=400, detail="New password must be different from the current password.")
-
-    new_hash = hash_password(payload.new_password)
     def mutate(db):
-        u = db["users"].get(str(user_id)) or db["users"].get(user_id)
-        if u:
-            u["password_hash"] = new_hash
+        user = _find_user(db, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if not verify_password(payload.current_password, user["password"]):
+            raise HTTPException(status_code=401, detail="Current password is incorrect.")
+        if len(payload.new_password) < 8:
+            raise HTTPException(
+                status_code=422,
+                detail="New password must be at least 8 characters long."
+            )
+        if payload.current_password == payload.new_password:
+            raise HTTPException(
+                status_code=400,
+                detail="New password must be different from the current password."
+            )
+        user["password"] = hash_password(payload.new_password)
+        return {"status": "success"}
 
-    db_manager.update(mutate)
-    return {"status": "success"}
+    return db_manager.update(mutate)
+
+
+def _without(values, user_id):
+    """Return a copy of a list with every entry equal to user_id (int or str) removed."""
+    return [v for v in (values or []) if str(v) != str(user_id)]
+
+
+def _ensure_roles(project):
+    """Backfill roles on old projects (same rule as routes/projects.ensure_member_fields)."""
+    members = project.get("members", [])
+    if "roles" not in project:
+        creators = project.get("creator", [])
+        if not isinstance(creators, list):
+            creators = [creators]
+        owners = [m for m in members if any(str(m) == str(c) for c in creators)]
+        project["roles"] = {
+            ROLE_PRODUCT_OWNER: owners,
+            ROLE_SCRUM_MASTER: [],
+            ROLE_MEMBER: [m for m in members if m not in owners],
+        }
+    return project["roles"]
+
+
+def _promote_if_no_owner(project):
+    """If the project has no Product Owner left, promote the highest-ranking member.
+
+    Ranking: Scrum Master, then Member, then anyone remaining in `members`.
+    """
+    roles = project["roles"]
+    roles.setdefault(ROLE_PRODUCT_OWNER, [])
+    roles.setdefault(ROLE_SCRUM_MASTER, [])
+    roles.setdefault(ROLE_MEMBER, [])
+    if roles[ROLE_PRODUCT_OWNER]:
+        return
+
+    if roles[ROLE_SCRUM_MASTER]:
+        promoted = roles[ROLE_SCRUM_MASTER][0]
+    elif roles[ROLE_MEMBER]:
+        promoted = roles[ROLE_MEMBER][0]
+    else:
+        promoted = project["members"][0]
+
+    for name, holders in roles.items():
+        if isinstance(holders, list):
+            roles[name] = _without(holders, promoted)
+    roles[ROLE_PRODUCT_OWNER].append(promoted)
+
+
+def _unassign_tasks(sprint, user):
+    state = sprint.get("kanban_state") or {}
+    names = {
+        str(user.get("username", "")).lower(),
+        str(user.get("email", "")).lower(),
+    } - {""}
+    for column in KANBAN_COLUMNS:
+        for task in state.get(column, []) or []:
+            assignee_id = task.get("assignee_id")
+            if assignee_id is not None:
+                matches = str(assignee_id) == str(user["user_id"])
+            else:
+                matches = str(task.get("assignee") or "").lower() in names
+            if matches:
+                task["assignee_id"] = None
+                task["assignee"] = None
+
 
 @router.post("/users/{user_id}/delete")
 def delete_account(user_id: int, payload: DeleteAccountPayload):
-    user = db_manager.db["users"].get(str(user_id)) or db_manager.db["users"].get(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    if not verify_password(payload.password, user.get("password_hash", "")):
-        raise HTTPException(status_code=401, detail="Password is incorrect.")
-
     def mutate(db):
-        uid_str = str(user_id)
-        projects_to_delete = []
-        
-        for pid, proj in list(db.get("projects", {}).items()):
-            members = proj.get("members", [])
-            is_member = any(str(m) == uid_str for m in members)
-            if is_member:
-                proj["members"] = [m for m in members if str(m) != uid_str]
-                if "contribute" in proj and isinstance(proj["contribute"], list):
-                    proj["contribute"] = [c for c in proj["contribute"] if str(c) != uid_str]
-                if str(proj.get("creator")) == uid_str:
-                    proj["creator"] = None
-                
-                roles = proj.get("roles", {})
-                for rname, rlist in roles.items():
-                    if isinstance(rlist, list):
-                        roles[rname] = [r for r in rlist if str(r) != uid_str]
-                
-                if not proj["members"]:
-                    projects_to_delete.append(pid)
-                else:
-                    roles.setdefault("Product Owner", [])
-                    if not roles["Product Owner"]:
-                        roles.setdefault("Scrum Master", [])
-                        roles.setdefault("Member", [])
-                        promoted = None
-                        if roles["Scrum Master"]:
-                            promoted = roles["Scrum Master"].pop(0)
-                        elif roles["Member"]:
-                            promoted = roles["Member"].pop(0)
-                        else:
-                            for m in proj["members"]:
-                                promoted = m
-                                break
-                        if promoted is not None:
-                            for rname, rlist in roles.items():
-                                if rname != "Product Owner" and isinstance(rlist, list):
-                                    roles[rname] = [x for x in rlist if str(x) != str(promoted)]
-                            roles["Product Owner"].append(promoted)
+        user = _find_user(db, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if not verify_password(payload.password, user["password"]):
+            raise HTTPException(status_code=401, detail="Password is incorrect.")
 
-            for s in proj.get("sprints", []):
-                s_members = s.get("members", [])
-                s["members"] = [m for m in s_members if str(m) != uid_str]
-                kanban = s.get("kanban_state", {})
-                for col_name, tasks in kanban.items():
-                    if isinstance(tasks, list):
-                        for t in tasks:
-                            if str(t.get("assignee_id")) == uid_str:
-                                t["assignee_id"] = None
-                                t["assignee"] = None
+        deleted_projects = []
+        for pid, project in list(db.get("projects", {}).items()):
+            if not any(str(m) == str(user_id) for m in project.get("members", [])):
+                continue
 
-        for pid in projects_to_delete:
+            _ensure_roles(project)   # must run BEFORE the user is removed
+            project["members"] = _without(project.get("members"), user_id)
+            if "contribute" in project:
+                project["contribute"] = _without(project["contribute"], user_id)
+            creators = project.get("creator", [])
+            project["creator"] = (
+                _without(creators, user_id) if isinstance(creators, list)
+                else (None if str(creators) == str(user_id) else creators)
+            )
+            for name, holders in project["roles"].items():
+                if isinstance(holders, list):
+                    project["roles"][name] = _without(holders, user_id)
+            if isinstance(project.get("contributions"), dict):
+                project["contributions"].pop(str(user_id), None)
+
+            if not project["members"]:
+                # The user was the sole remaining member: clean the project up.
+                deleted_projects.append(pid)
+                continue
+
+            _promote_if_no_owner(project)
+            for sprint in project.get("sprints", []):
+                if sprint.get("members") is not None:
+                    sprint["members"] = _without(sprint["members"], user_id)
+                _unassign_tasks(sprint, user)
+
+        for pid in deleted_projects:
             db["projects"].pop(pid, None)
-            for u in db["users"].values():
-                if "projects" in u and isinstance(u["projects"], list):
-                    u["projects"] = [p for p in u["projects"] if str(p) != str(pid)]
+        removed = {str(d) for d in deleted_projects}
+        for other in db["users"]:
+            if "projects" in other:
+                other["projects"] = [p for p in other["projects"] if str(p) not in removed]
 
-        db["users"].pop(uid_str, None)
+        # Remove the user. next_user_id is deliberately left alone so ids are never reused.
+        db["users"] = [u for u in db["users"] if str(u.get("user_id")) != str(user_id)]
+        return {"status": "success"}
 
-    db_manager.update(mutate)
-    return {"status": "success"}
+    return db_manager.update(mutate)
