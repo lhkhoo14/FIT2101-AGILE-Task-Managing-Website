@@ -81,8 +81,13 @@ def normalize_tags(raw) -> list:
 
 def tags_match_query(tags, query) -> bool:
     """True if a tag list matches the search text (shared by sprints and tasks).
+def tags_match_query(tags, query) -> bool:
+    """True if a tag list matches the search text (shared by sprints and tasks).
 
     The query is split on commas/whitespace (a leading "#" is ignored). Every
+    term must partially match at least one of the tags, so "front" finds
+    "frontend" and "api urgent" finds items tagged both. An empty query matches
+    everything. Items with no tags never match a search.
     term must partially match at least one of the tags, so "front" finds
     "frontend" and "api urgent" finds items tagged both. An empty query matches
     everything. Items with no tags never match a search.

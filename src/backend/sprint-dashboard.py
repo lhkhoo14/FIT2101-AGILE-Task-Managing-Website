@@ -97,6 +97,8 @@ def _make_backlog_card(item):
     card.setAttribute("data-backlog-id", str(item["id"]))
     chips = "".join(f'<span class="task-tag-chip">{escape(tag)}</span>' for tag in task_tags(item))
     tags_html = f'<div class="task-card-tags">{chips}</div>' if chips else ""
+    chips = "".join(f'<span class="task-tag-chip">{escape(tag)}</span>' for tag in task_tags(item))
+    tags_html = f'<div class="task-card-tags">{chips}</div>' if chips else ""
     priority = str(item.get("priority", "medium")).lower()
     title = escape(str(item.get("title", "")))
     description = str(item.get("description") or "").strip()
@@ -104,6 +106,7 @@ def _make_backlog_card(item):
         f'<p class="task-card-description">{escape(description)}</p>' if description else ""
     )
     card.innerHTML = f"""
+        {tags_html}
         {tags_html}
         <p class="task-card-title">{title}</p>
         {description_html}
@@ -663,6 +666,17 @@ async def open_burndown(sprint_id):
                 + (" Sprint ended." if sprint.get("status") == "ended" else "")
             )
     _open_modal("burndown-modal")
+
+
+@when("app:sprint-backlog-changed", "body")
+async def handle_sprint_backlog_changed(event):
+    """A task was returned to the product backlog from the open sprint board.
+
+    The board sits in an iframe over this page, so refresh what is behind it: the
+    product-backlog sidebar and each sprint card's task count.
+    """
+    await render_backlog_list()
+    await _refresh_all_card_badges()
 
 
 @when("app:sprint-backlog-changed", "body")
