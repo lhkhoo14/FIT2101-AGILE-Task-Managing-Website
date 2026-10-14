@@ -523,7 +523,7 @@ class ServerData:
         if not user_id:
             return False, "Session has expired."
         try:
-            response = await pyfetch(f"{self.API_URL}/users/{user_id}/settings", method="GET")
+            response = await pyfetch(f"{self.api_url}/users/{user_id}/settings", method="GET")
             data = await response.json()
             if response.status == 200:
                 return True, data
@@ -542,7 +542,7 @@ class ServerData:
             if profile_photo is not None:
                 payload["profile_photo"] = profile_photo
             response = await pyfetch(
-                f"{self.API_URL}/users/{user_id}/profile",
+                f"{self.api_url}/users/{user_id}/profile",
                 method="PATCH",
                 headers={"Content-Type": "application/json"},
                 body=json.dumps(payload)
@@ -563,7 +563,7 @@ class ServerData:
             return False, "Session has expired."
         try:
             response = await pyfetch(
-                f"{self.API_URL}/users/{user_id}/email-change",
+                f"{self.api_url}/users/{user_id}/email-change",
                 method="POST",
                 headers={"Content-Type": "application/json"},
                 body=json.dumps({"new_email": new_email})
@@ -581,7 +581,7 @@ class ServerData:
     async def verify_email_change(self, token):
         try:
             response = await pyfetch(
-                f"{self.API_URL}/users/email-verify",
+                f"{self.api_url}/users/email-verify",
                 method="POST",
                 headers={"Content-Type": "application/json"},
                 body=json.dumps({"token": token})
@@ -602,7 +602,7 @@ class ServerData:
             return False, "Session has expired."
         try:
             response = await pyfetch(
-                f"{self.API_URL}/users/{user_id}/password",
+                f"{self.api_url}/users/{user_id}/password",
                 method="POST",
                 headers={"Content-Type": "application/json"},
                 body=json.dumps({"current_password": current_password, "new_password": new_password})
@@ -623,7 +623,7 @@ class ServerData:
             return False, "Session has expired."
         try:
             response = await pyfetch(
-                f"{self.API_URL}/users/{user_id}/delete",
+                f"{self.api_url}/users/{user_id}/delete",
                 method="POST",
                 headers={"Content-Type": "application/json"},
                 body=json.dumps({"password": password})
