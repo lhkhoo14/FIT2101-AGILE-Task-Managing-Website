@@ -1,0 +1,153 @@
+.settings-main {
+  max-width: 800px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+.settings-nav-back {
+  margin-bottom: 1rem;
+}
+
+.settings-nav-back a {
+  color: #4747D4;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.settings-card {
+  background: #f4f5f9;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.settings-card h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #333;
+}
+
+.profile-avatar-section {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.settings-avatar-img {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #e8e8fb;
+  border: 2px solid #4747D4;
+}
+
+.avatar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5r em;
+}
+
+.danger-zone-card {
+  border: 1px solid #e53935;
+  background: #fdf8f8;
+}
+
+.danger-zone-card h3 {
+  color: #e53935;
+}
+
+.btn-danger-outline {
+  background: transparent;
+  border: 1px solid #e53935;
+  color: #e53935;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.btn-danger-outline:hover {
+  background: #e53935;
+  color: white;
+}
+
+.pending-email-text {
+  color: #e65100;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+/* Modal styles copied verbatim from sprint-page.css plus modal-btn-danger */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-box {
+  background: #fff;
+  padding: 2rem;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 450px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.modal-title {
+  margin-top: 0;
+  font-size: 1.25rem;
+  color: #333;
+}
+
+.modal-warning {
+  color: #e53935;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  line-height: 1.4;
+}
+
+.modal-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.modal-input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.modal-btn-danger {
+  background: #e53935;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.modal-btn-danger:disabled {
+  background: #ffcdd2;
+  cursor: not-allowed;
+}

@@ -1,7 +1,7 @@
 import sys
 import asyncio
 import re
-
+from auth import show_snackbar
 from server_data import ServerData
 
 if "." not in sys.path:
@@ -84,3 +84,12 @@ async def handle_login(event):
 @when("click", "#toggle-password")
 def handle_password_toggle(event):
     toggle_password_mask("password", "eye-icon", "eye-off-icon")
+
+    # --- SECTION: Account deleted message (US-38) ---
+try:
+    msg = window.sessionStorage.getItem("account_deleted_message")
+    if msg:
+        window.sessionStorage.removeItem("account_deleted_message")
+        asyncio.ensure_future(show_snackbar(msg, 4))
+except Exception:
+    pass

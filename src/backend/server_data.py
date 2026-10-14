@@ -518,6 +518,126 @@ class ServerData:
             print(f"[API Error] Failed to update sprint status: {e}")
             return False, "Unable to connect to the server.", None
 
+    async def get_account_settings(self):
+        user_id = self.get_active_session()
+        if not user_id:
+            return False, "Session has expired."
+        try:
+            response = await pyfetch(f"{self.API_URL}/users/{user_id}/settings", method="GET")
+            data = await response.json()
+            if response.status == 200:
+                return True, data
+            return False, data.get("detail", "Failed to load settings.")
+        except Exception as e:
+            return False, str(e)
+
+    async def update_profile(self, username=None, profile_photo=None):
+        user_id = self.get_active_session()
+        if not user_id:
+            return False, "Session has expired."
+        try:
+            payload = {}
+            if username is not None:
+                payload["username"] = username
+            if profile_photo is not None:
+                payload["profile_photo"] = profile_photo
+            response = await pyfetch(
+                f"{self.API_URL}/users/{user_id}/profile",
+                method="PATCH",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps(payload)
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data
+            detail = data.get("detail", "Failed to update profile.")
+            if isinstance(detail, list):
+                detail = "; ".join([err.get("msg", str(err)) for err in detail])
+            return False, detail
+        except Exception as e:
+            return False, str(e)
+
+    async def request_email_change(self, new_email):
+        user_id = self.get_active_session()
+        if not user_id:
+            return False, "Session has expired."
+        try:
+            response = await pyfetch(
+                f"{self.API_URL}/users/{user_id}/email-change",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"new_email": new_email})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data
+            detail = data.get("detail", "Failed to request email change.")
+            if isinstance(detail, list):
+                detail = "; ".join([err.get("msg", str(err)) for err in detail])
+            return False, detail
+        except Exception as e:
+            return False, str(e)
+
+    async def verify_email_change(self, token):
+        try:
+            response = await pyfetch(
+                f"{self.API_URL}/users/email-verify",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"token": token})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data
+            detail = data.get("detail", "Verification failed.")
+            if isinstance(detail, list):
+                detail = "; ".join([err.get("msg", str(err)) for err in detail])
+            return False, detail
+        except Exception as e:
+            return False, str(e)
+
+    async def change_password(self, current_password, new_password):
+        user_id = self.get_active_session()
+        if not user_id:
+            return False, "Session has expired."
+        try:
+            response = await pyfetch(
+                f"{self.API_URL}/users/{user_id}/password",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"current_password": current_password, "new_password": new_password})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data
+            detail = data.get("detail", "Failed to change password.")
+            if isinstance(detail, list):
+                detail = "; ".join([err.get("msg", str(err)) for err in detail])
+            return False, detail
+        except Exception as e:
+            return False, str(e)
+
+    async def delete_account(self, password):
+        user_id = self.get_active_session()
+        if not user_id:
+            return False, "Session has expired."
+        try:
+            response = await pyfetch(
+                f"{self.API_URL}/users/{user_id}/delete",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"password": password})
+            )
+            data = await response.json()
+            if response.status == 200:
+                self.clear_session()
+                return True, data
+            detail = data.get("detail", "Failed to delete account.")
+            if isinstance(detail, list):
+                detail = "; ".join([err.get("msg", str(err)) for err in detail])
+            return False, detail
+        except Exception as e:
+            return False, str(e)
 
 class Project:
     def __init__(self, id: int, name: str, description: str, status: str,

@@ -378,7 +378,8 @@ def handle_show_contributions(event):
 
 @when("click", "#settings-btn")
 def handle_unavailable_settings(event):
-    asyncio.ensure_future(show_snackbar("Settings are not available yet."))
+    # CHANGE: navigation to settings.html is handled by topbar.py
+    return
 
 
 def _navigate_to_dashboard(view=None, action=None):
