@@ -22,7 +22,7 @@ async def _load_settings():
         show_snackbar(data, 3)
         return
     
-    document.querySelector("#topbar-username").textContent = data.get("username", "User")
+    document.querySelector("#user-display-name").textContent = data.get("username", "User")
     document.querySelector("#display-name").value = data.get("username", "")
     document.querySelector("#current-email-display").textContent = data.get("email", "")
     
@@ -49,7 +49,7 @@ async def _handle_verification(token):
         pass
     await _load_settings()
 
-@when("app:avatar-selected")
+@when("app:avatar-selected", "body")
 def handle_avatar_selected(event):
     global _pending_avatar
     _pending_avatar = event.detail
