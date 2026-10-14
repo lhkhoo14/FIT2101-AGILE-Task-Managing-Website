@@ -20,8 +20,8 @@ import charts
 # state and re-renders the affected UI after successful mutations.
 server_data = ServerData()
 from sprint_access import (
-    is_sprint_member, sort_sprints, normalize_tags, filter_sprints_by_tag,
-    PRIORITY_ORDER, DEFAULT_PRIORITY,
+    is_sprint_member, sort_sprints, normalize_tags, filter_sprints_by_tag, task_tags,
+    PRIORITY_ORDER, DEFAULT_PRIORITY, MAX_DESCRIPTION_LENGTH,
 )
 
 # CHANGE: the per-column walk over every sprint board used to live here as the
@@ -95,14 +95,18 @@ def _make_backlog_card(item):
     card.id = f"backlog-item-{item['id']}"
     card.setAttribute("draggable", "true")
     card.setAttribute("data-backlog-id", str(item["id"]))
-    tag = str(item.get("tag", "frontend")).lower()
+    chips = "".join(f'<span class="task-tag-chip">{escape(tag)}</span>' for tag in task_tags(item))
+    tags_html = f'<div class="task-card-tags">{chips}</div>' if chips else ""
     priority = str(item.get("priority", "medium")).lower()
     title = escape(str(item.get("title", "")))
+    description = str(item.get("description") or "").strip()
+    description_html = (
+        f'<p class="task-card-description">{escape(description)}</p>' if description else ""
+    )
     card.innerHTML = f"""
-        <div class="task-card-header">
-            <span class="tag-badge tag-{tag}">{tag.capitalize()}</span>
-        </div>
+        {tags_html}
         <p class="task-card-title">{title}</p>
+        {description_html}
         <div class="task-card-footer">
             <span class="priority-badge priority-{priority}">{priority.capitalize()}</span>
         </div>
@@ -661,6 +665,17 @@ async def open_burndown(sprint_id):
     _open_modal("burndown-modal")
 
 
+@when("app:sprint-backlog-changed", "body")
+async def handle_sprint_backlog_changed(event):
+    """A task was returned to the product backlog from the open sprint board.
+
+    The board sits in an iframe over this page, so refresh what is behind it: the
+    product-backlog sidebar and each sprint card's task count.
+    """
+    await render_backlog_list()
+    await _refresh_all_card_badges()
+
+
 @when("app:sprint-dashboard-navigation", "body")
 async def handle_sprint_page_navigation(event):
     """Handle navigation messages from the sprint board iframe."""
@@ -849,7 +864,8 @@ async def handle_create_task_submit(event):
     if event:
         event.preventDefault()
     title = web.page["task-title-input"].value.strip()
-    tag = web.page["task-tag-input"].value
+    tags = normalize_tags(web.page["task-tags-input"].value)
+    description = web.page["task-description-input"].value.strip()[:MAX_DESCRIPTION_LENGTH]
     priority = web.page["task-priority-input"].value
     if not title:
         return
@@ -864,7 +880,7 @@ async def handle_create_task_submit(event):
 
     try:
         success, err, item = await server_data.create_backlog_item(
-            PROJECT_ID, title, tag, priority
+            PROJECT_ID, title, tags, priority, description
         )
         if not success:
             _notify(err)
