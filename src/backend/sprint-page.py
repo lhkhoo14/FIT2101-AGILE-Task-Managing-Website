@@ -742,6 +742,8 @@ def _render_task_detail_modal():
             line_div.textContent = line
             status_el.appendChild(line_div)
 
+    _render_stopwatch_ui(task)
+
 
 def _render_task_assignee_and_dates(task):
     """Fill the assignee picker and the start/end date inputs for the open task."""
@@ -1167,6 +1169,198 @@ def handle_close_modal_click(event):
 def handle_modal_backdrop_click(event):
     if event.target.id == event.currentTarget.id:
         _close_task_detail_modal()
+
+
+# --- SECTION: Task Stopwatch ---
+
+_stopwatch_ticker_started = False
+
+def _stopwatch_elapsed(task):
+    sw = task.get("stopwatch", {})
+    status = sw.get("status", "idle")
+    accumulated = sw.get("accumulated_seconds", 0)
+    if status == "running":
+        resumed_at = sw.get("resumed_at")
+        if resumed_at:
+            diff = time.time() - resumed_at
+            if diff > 0:
+                return int(accumulated + diff)
+    return int(accumulated)
+
+def _format_hms(seconds):
+    seconds = max(0, int(seconds))
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+def _format_hm(seconds):
+    seconds = max(0, int(seconds))
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    if h > 0:
+        return f"{h}h {m}m"
+    return f"{m}m"
+
+def _render_stopwatch_ui(task):
+    global _stopwatch_ticker_started
+    if not _stopwatch_ticker_started:
+        _stopwatch_ticker_started = True
+        asyncio.ensure_future(_start_stopwatch_ticker())
+
+    sw = task.get("stopwatch", {"status": "idle", "accumulated_seconds": 0, "resumed_at": None})
+    status = sw.get("status", "idle")
+    elapsed = _stopwatch_elapsed(task)
+
+    display_el = document.getElementById("stopwatch-display")
+    if display_el:
+        display_el.textContent = _format_hms(elapsed)
+
+    total_seconds = task.get("time_spent_seconds", 0)
+    total_el = document.getElementById("stopwatch-total")
+    if total_el:
+        total_el.textContent = f"Total time spent: {_format_hm(total_seconds)}"
+
+    start_btn = document.getElementById("stopwatch-start-btn")
+    pause_btn = document.getElementById("stopwatch-pause-btn")
+    resume_btn = document.getElementById("stopwatch-resume-btn")
+    log_btn = document.getElementById("stopwatch-log-btn")
+
+    if start_btn:
+        start_btn.classList.remove("hidden")
+        start_btn.disabled = (status != "idle") or _sprint_ended
+    if pause_btn:
+        pause_btn.classList.remove("hidden")
+        pause_btn.disabled = (status != "running") or _sprint_ended
+    if resume_btn:
+        resume_btn.classList.remove("hidden")
+        resume_btn.disabled = (status != "paused") or _sprint_ended
+    if log_btn:
+        log_btn.classList.remove("hidden")
+        log_btn.disabled = (status == "idle") or _sprint_ended
+
+async def _start_stopwatch_ticker():
+    while True:
+        await asyncio.sleep(1)
+        if _open_task_id:
+            task = _find_open_task()
+            if task:
+                sw = task.get("stopwatch", {})
+                if sw.get("status") == "running":
+                    display_el = document.getElementById("stopwatch-display")
+                    if display_el:
+                        display_el.textContent = _format_hms(_stopwatch_elapsed(task))
+
+@when("click", "#stopwatch-start-btn")
+def _handle_stopwatch_start(event):
+    if _sprint_ended or not _open_task_id:
+        return
+    task = _find_open_task()
+    if not task:
+        return
+    task["stopwatch"] = {
+        "status": "running",
+        "accumulated_seconds": 0,
+        "resumed_at": time.time()
+    }
+    async def _save_and_render():
+        success = await _persist_kanban_state(_kanban_state)
+        if not success:
+            await show_snackbar("Failed to save stopwatch state.")
+            return
+        _render_board(_kanban_state)
+        _render_task_detail_modal()
+    asyncio.ensure_future(_save_and_render())
+
+@when("click", "#stopwatch-pause-btn")
+def _handle_stopwatch_pause(event):
+    if _sprint_ended or not _open_task_id:
+        return
+    task = _find_open_task()
+    if not task:
+        return
+    elapsed = _stopwatch_elapsed(task)
+    task["stopwatch"] = {
+        "status": "paused",
+        "accumulated_seconds": elapsed,
+        "resumed_at": None
+    }
+    async def _save_and_render():
+        success = await _persist_kanban_state(_kanban_state)
+        if not success:
+            await show_snackbar("Failed to save stopwatch state.")
+            return
+        _render_board(_kanban_state)
+        _render_task_detail_modal()
+    asyncio.ensure_future(_save_and_render())
+
+@when("click", "#stopwatch-resume-btn")
+def _handle_stopwatch_resume(event):
+    if _sprint_ended or not _open_task_id:
+        return
+    task = _find_open_task()
+    if not task:
+        return
+    sw = task.get("stopwatch", {})
+    accumulated = sw.get("accumulated_seconds", 0)
+    task["stopwatch"] = {
+        "status": "running",
+        "accumulated_seconds": accumulated,
+        "resumed_at": time.time()
+    }
+    async def _save_and_render():
+        success = await _persist_kanban_state(_kanban_state)
+        if not success:
+            await show_snackbar("Failed to save stopwatch state.")
+            return
+        _render_board(_kanban_state)
+        _render_task_detail_modal()
+    asyncio.ensure_future(_save_and_render())
+
+@when("click", "#stopwatch-log-btn")
+def _handle_stopwatch_log(event):
+    if _sprint_ended or not _open_task_id:
+        return
+    task = _find_open_task()
+    if not task:
+        return
+    elapsed = _stopwatch_elapsed(task)
+    if elapsed < 60:
+        asyncio.ensure_future(show_snackbar("Run the stopwatch for at least a minute before logging."))
+        return
+    
+    entry_id = str(int(time.time() * 1000))
+    logged_at = datetime.now().isoformat()
+    entry = {
+        "id": entry_id,
+        "seconds": elapsed,
+        "logged_at": logged_at,
+        "user_id": _current_user_id
+    }
+    
+    if "time_entries" not in task:
+        task["time_entries"] = []
+    task["time_entries"].append(entry)
+    
+    current_spent = task.get("time_spent_seconds", 0)
+    task["time_spent_seconds"] = current_spent + elapsed
+    
+    task["stopwatch"] = {
+        "status": "idle",
+        "accumulated_seconds": 0,
+        "resumed_at": None
+    }
+    
+    async def _save_and_log():
+        success = await _persist_kanban_state(_kanban_state)
+        if not success:
+            await show_snackbar("Failed to save time log.")
+            return
+        _render_board(_kanban_state)
+        _render_task_detail_modal()
+        await show_snackbar(f"Logged {_format_hm(elapsed)}.")
+    asyncio.ensure_future(_save_and_log())
+
 
 _page_params = js.URLSearchParams.new(window.location.search)
 if _page_params.get("prewarm") == "1":

@@ -182,15 +182,6 @@
         <button type="button" id="end-sprint-btn" class="btn-end-sprint">End Sprint</button>
       </div>
 
-      <!--
-          Kanban Board: #kanban-board and each .kanban-column-body / column-count
-          element are the ONLY permanent nodes here. Python's _render_board()
-          wipes and rebuilds the task-card children on every load and every
-          drag/drop move — so the drag listeners below are attached to
-          #kanban-board itself (event delegation via closest()), never to
-          individual .task-card / .kanban-column-body nodes, or they'd go
-          stale the moment the board re-renders.
-        -->
       <div class="kanban-board" id="kanban-board">
 
         <div class="kanban-column" data-column="backlog">
@@ -233,14 +224,6 @@
 
   <div id="snackbar">Some text some message..</div>
 
-  <!--
-      Plain JS owns the raw HTML5 drag events. It reads the dragged card's id
-      and the drop target's column key SYNCHRONOUSLY (before the browser can
-      null them out), then hands Python only plain strings via a custom
-      "app:card-drop" event. Listeners are bound to the permanent #kanban-board
-      wrapper with closest() lookups, not to individual cards/columns, so they
-      keep working after Python rebuilds the column contents.
-    -->
   <script>
     (function () {
       const board = document.getElementById("kanban-board");
@@ -329,6 +312,17 @@
         <button type="button" id="end-task-btn" class="modal-btn-cancel">End Task</button>
       </div>
       <div id="time-log-status" class="time-log-status"></div>
+
+      <!-- Stopwatch Section -->
+      <div class="modal-label">Stopwatch</div>
+      <div id="stopwatch-display" class="stopwatch-display">00:00:00</div>
+      <div id="stopwatch-total" class="stopwatch-total">Total time spent: 0m</div>
+      <div class="time-log-buttons">
+        <button id="stopwatch-start-btn" class="modal-btn modal-btn-submit">Start Stopwatch</button>
+        <button id="stopwatch-pause-btn" class="modal-btn modal-btn-secondary">Pause Task</button>
+        <button id="stopwatch-resume-btn" class="modal-btn modal-btn-secondary">Resume Task</button>
+        <button id="stopwatch-log-btn" class="modal-btn modal-btn-primary">Log Time</button>
+      </div>
 
       <!-- Manager Feedback / Review Chat -->
       <div id="review-feedback-section" class="review-feedback-section hidden">

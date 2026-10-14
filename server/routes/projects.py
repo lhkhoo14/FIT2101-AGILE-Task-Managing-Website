@@ -1,9 +1,26 @@
+import time
+
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from database_manager import db_manager
 from dependencies import get_verified_project, verify_project_access
 
 router = APIRouter()
+
+VALID_PROJECT_STATUSES = ("active", "completed")
+DEFAULT_PROJECT_STATUS = "active"
+
+def with_project_defaults(project: dict) -> dict:
+    """Returns a copy of a project with `status` and `created_at` always present.
+
+    Projects saved before US-28 have neither field. They default to Active, and
+    `created_at` is None (unknown) so the frontend sorts them oldest, falling
+    back to project_id order, which is monotonic with creation order.
+    """
+    result = dict(project)
+    result.setdefault("status", DEFAULT_PROJECT_STATUS)
+    result.setdefault("created_at", None)
+    return result
 
 class CreateProjectPayload(BaseModel):
     user_id: int
@@ -15,6 +32,10 @@ class CreateBacklogPayload(BaseModel):
     title: str
     tag: str
     priority: str
+
+class UpdateProjectStatusPayload(BaseModel):
+    user_id: int
+    status: str
 
 class AddMemberPayload(BaseModel):
     user_id: int
@@ -53,6 +74,8 @@ def create_project(payload: CreateProjectPayload):
         "project_id": project_id,
         "name": payload.name,
         "description": payload.description,
+        "status": DEFAULT_PROJECT_STATUS,
+        "created_at": int(time.time() * 1000),  # epoch ms, same unit as sprints
         "creator": [payload.user_id],
         "members": [payload.user_id],
         "contribute": [payload.user_id],
@@ -80,11 +103,36 @@ def get_user_projects(user_id: int):
         raise HTTPException(status_code=404, detail="User not found")
 
     all_projects = db.get("projects", {})
-    return [p for p in all_projects.values() if user_id in p.get("members", [])]
+    return [
+        with_project_defaults(p)
+        for p in all_projects.values()
+        if user_id in p.get("members", [])
+    ]
 
 @router.get("/projects/{project_id}")
 def get_project(project_id: int, user_id: int):
-    return get_verified_project(project_id, user_id)
+    return with_project_defaults(get_verified_project(project_id, user_id))
+
+@router.patch("/projects/{project_id}/status")
+def update_project_status(project_id: int, payload: UpdateProjectStatusPayload):
+    if payload.status not in VALID_PROJECT_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail="Status must be one of: " + ", ".join(VALID_PROJECT_STATUSES) + ".",
+        )
+    get_verified_project(project_id, payload.user_id)
+
+    db = db_manager.read()
+    project = db["projects"][str(project_id)]
+
+    # Same rule as sprints: once ended, a project cannot be reopened.
+    if project.get("status") == "completed" and payload.status == "active":
+        raise HTTPException(status_code=409, detail="A completed project cannot be reopened.")
+
+    project["status"] = payload.status
+    project.setdefault("created_at", None)
+    db_manager.write(db)
+    return {"status": "success", "project": with_project_defaults(project)}
 
 @router.get("/projects/{project_id}/members")
 def get_project_members(project_id: int, user_id: int):
