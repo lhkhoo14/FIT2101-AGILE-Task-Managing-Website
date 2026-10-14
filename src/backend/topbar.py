@@ -5,7 +5,7 @@ from server_data import ServerData
 if "." not in sys.path:
     sys.path.append(".")
 
-from pyscript import when, web, window  # type: ignore
+from pyscript import when, web, window, document  # type: ignore
 from auth import show_snackbar
 
 # --- 1. TOGGLE PROFILE DROPDOWN MENU ---
