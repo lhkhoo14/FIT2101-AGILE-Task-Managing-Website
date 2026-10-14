@@ -16,6 +16,8 @@
     "./src/backend/views/dashboard.py": "./dashboard.py",
     "./src/backend/views/create_project.py": "./create_project.py",
     "./src/backend/server_data.py": "./server_data.py",
-    "./src/backend/charts.py": "./charts.py"
+    "./src/backend/charts.py": "./charts.py",
+    "./src/backend/utils/project_helpers.py": "./project_helpers.py",
+    "./src/backend/utils/project_role_helpers.py": "./project_role_helpers.py"
   }
 }

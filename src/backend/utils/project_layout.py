@@ -10,14 +10,7 @@ if "src/backend" not in sys.path:
 # Import decoupled topbar module
 import topbar
 import sidebar_state
-
-def get_project_id_from_url() -> int | None:
-    params = js.URLSearchParams.new(window.location.search)
-    project_id = params.get("project_id")
-    if project_id and project_id.isdigit():
-        return int(project_id)
-    return None
-
+from project_helpers import get_project_id_from_url
 
 # CHANGE: project_layout.py is shared by three project views, each of which
 # ships a different nav item already marked "active" in its own markup.

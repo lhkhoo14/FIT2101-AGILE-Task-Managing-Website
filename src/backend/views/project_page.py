@@ -7,7 +7,7 @@ if "." not in sys.path:
     sys.path.append(".")
 
 from server_data import ServerData, Project
-from project_layout import get_project_id_from_url
+from project_helpers import get_project_id_from_url # type: ignore
 
 
 def load_default_view(project: Project):
