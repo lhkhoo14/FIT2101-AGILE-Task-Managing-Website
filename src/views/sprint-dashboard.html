@@ -115,6 +115,10 @@
         // A task went back to the product backlog from the open board: the
         // sidebar list and the sprint cards' task counts behind it are stale.
         document.body.dispatchEvent(new CustomEvent("app:sprint-backlog-changed"));
+      } else if (event.data?.type === "sprint-backlog-changed") {
+        // A task went back to the product backlog from the open board: the
+        // sidebar list and the sprint cards' task counts behind it are stale.
+        document.body.dispatchEvent(new CustomEvent("app:sprint-backlog-changed"));
       } else if (event.data?.type === "sprint-dashboard-navigation") {
         // "Create Sprint" opens its modal on top of the open board, so the user is
         // not thrown back to the sprint list; every other link leaves the board.

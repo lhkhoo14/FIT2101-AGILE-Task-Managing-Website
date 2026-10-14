@@ -98,6 +98,12 @@ def _tag_chips_html(task):
     return f'<div class="task-card-tags">{chips}</div>' if chips else ""
 
 
+def _tag_chips_html(task):
+    """The task's tags as chips (same look as sprint tags), or "" when untagged."""
+    chips = "".join(f'<span class="task-tag-chip">{escape(tag)}</span>' for tag in task_tags(task))
+    return f'<div class="task-card-tags">{chips}</div>' if chips else ""
+
+
 def _make_task_card(task, column_key):
     card = document.createElement("div")
     card.className = "task-card"
@@ -152,6 +158,7 @@ def _make_task_card(task, column_key):
 
     card.innerHTML = f"""
         {_tag_chips_html(task)}
+        {_tag_chips_html(task)}
         <p class="task-card-title">{escape(str(task['title']))}</p>
         {dates_html}
         {progress_html}
@@ -189,6 +196,12 @@ async def _record_change(action, sprint, task=None, from_status=None, to_status=
             f"{actor} returned {target} from {sprint.get('name', 'a sprint')} "
             "to the product backlog"
         )
+    elif action == "returned":
+        target = task.get("title", "a task") if task else "a task"
+        message = (
+            f"{actor} returned {target} from {sprint.get('name', 'a sprint')} "
+            "to the product backlog"
+        )
     else:
         message = f"{actor} ended {sprint.get('name', 'a sprint')}"
 
@@ -215,9 +228,17 @@ def _task_matches_search(task, query):
     shows every task.
     """
     return task_matches_tag_query(task, query)
+    """Tag search: tasks whose tags do not fit the search text are hidden.
+
+    Same rules as the sprint search on the dashboard (see sprint_access): every
+    search term must partially match one of the task's tags, and an empty search
+    shows every task.
+    """
+    return task_matches_tag_query(task, query)
 
 
 def _render_board(state):
+    shown = 0
     shown = 0
     for column_key in COLUMN_ORDER:
         body = web.page[f"column-{column_key}"]
@@ -226,6 +247,14 @@ def _render_board(state):
             for task in state.get(column_key, []):
                 if _task_matches_search(task, _search_query):
                     body.appendChild(_make_task_card(task, column_key))
+                    shown += 1
+
+    note = web.page["board-search-empty"]
+    if note is not None:
+        no_match = bool(_search_query) and shown == 0
+        if no_match:
+            note.textContent = f'No tasks have a tag matching "{_search_query}".'
+        note.classList.toggle("hidden", not no_match)
                     shown += 1
 
     note = web.page["board-search-empty"]
@@ -595,8 +624,14 @@ def _render_task_detail_modal():
     web.page["task-detail-title"].textContent = task.get("title", "Task Details")
 
     # Tags & Priority Meta
+    # Tags & Priority Meta
     meta_container = web.page["task-detail-meta"]
     meta_container.innerHTML = ""
+    for tag in task_tags(task):
+        tag_span = document.createElement("span")
+        tag_span.className = "task-tag-chip"
+        tag_span.textContent = tag
+        meta_container.appendChild(tag_span)
     for tag in task_tags(task):
         tag_span = document.createElement("span")
         tag_span.className = "task-tag-chip"
@@ -1240,6 +1275,57 @@ async def handle_start_task(event):
 @when("click", "#end-task-btn")
 async def handle_end_task(event):
     await _submit_time_log("stop", "stop")
+
+
+def _has_logged_work(task):
+    """True once the task's timer has been started (work time is on record)."""
+    time_log = task.get("time_log") or {}
+    return bool(time_log.get("started_at") or time_log.get("entries"))
+
+
+def _has_sprint_details(task):
+    """True if the card holds sprint-only details that returning it would clear."""
+    return bool(
+        task.get("checklist") or task.get("assignee") or task.get("assignee_id") is not None
+        or task.get("start_date") or task.get("end_date") or task.get("feedback")
+    )
+
+
+def _notify_dashboard_backlog_changed():
+    """Ask the dashboard hosting this board (in an iframe) to refresh the product
+    backlog list and each sprint card's task count."""
+    if window.isEmbeddedSprintPage:
+        payload = {"type": "sprint-backlog-changed"}
+        window.parent.postMessage(js.JSON.parse(json.dumps(payload)), str(window.location.origin))
+
+
+@when("click", "#return-to-backlog-btn")
+async def handle_return_to_backlog(event):
+    """Send the open task from the sprint backlog back to the product backlog."""
+    if _sprint_ended or not _open_task_id:
+        return
+    task, column = _find_task_and_column(_open_task_id)
+    if task is None or column != "backlog":
+        return
+    if _has_logged_work(task):
+        await show_snackbar("This task has logged work time, so it can't go back to the product backlog.")
+        return
+    if _has_sprint_details(task) and not window.confirm(
+        "Return this task to the product backlog? Its checklist, assignee and dates will be cleared."
+    ):
+        return
+
+    success, err, _item = await server_data.return_task_to_backlog(_project_id, _sprint_id, task.get("id"))
+    if not success:
+        await show_snackbar(f"Could not return the task: {err}")
+        return
+
+    _kanban_state["backlog"] = [t for t in _kanban_state.get("backlog", []) if t is not task]
+    _close_task_detail_modal()
+    _render_board(_kanban_state)
+    _notify_dashboard_backlog_changed()
+    await _record_change("returned", _active_sprint or {"name": "Sprint"}, task)
+    await show_snackbar("Task returned to the product backlog.")
 
 
 def _has_logged_work(task):

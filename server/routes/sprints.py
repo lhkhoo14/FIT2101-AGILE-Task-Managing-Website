@@ -50,6 +50,9 @@ class MoveBacklogPayload(BaseModel):
 class ReturnTaskPayload(BaseModel):
     user_id: int
 
+class ReturnTaskPayload(BaseModel):
+    user_id: int
+
 class SaveKanbanStatePayload(BaseModel):
     user_id: int
     state: dict

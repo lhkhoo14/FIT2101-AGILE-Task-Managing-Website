@@ -330,11 +330,18 @@
   width: 360px;
   max-width: 90vw;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  /* Never taller than the window (small laptop screens): scroll inside the
+     popup instead of cropping its top and bottom. The box is content-box, so
+     the limit is 16px of breathing room top and bottom (32px) plus its own
+     24px padding top and bottom (48px). The 100vh line is the fallback for
+     browsers without dynamic viewport units. */
   max-height: calc(100vh - 80px);
   max-height: calc(100dvh - 80px);
   overflow-y: auto;
 }
 
+/* The box is a flex column (see sprint-page.css). Keep its sections at full
+   size so the popup scrolls rather than squashing the form fields. */
 .modal-box > * {
   flex-shrink: 0;
 }
