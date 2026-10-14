@@ -20,6 +20,7 @@ class CreateBacklogPayload(BaseModel):
     tags: list[str] = Field(default_factory=list)
     # Older clients send a single tag; it is folded into `tags` below.
     tag: Optional[str] = None
+    description: str = ""
 
 class AddMemberPayload(BaseModel):
     user_id: int
@@ -119,11 +120,19 @@ def create_backlog_item(project_id: int, payload: CreateBacklogPayload):
     backlog_id = db.get("next_backlog_id", 1)
     db["next_backlog_id"] = backlog_id + 1
 
+    description = sprint_logic.clean_description(payload.description)
+    if len(description) > sprint_logic.MAX_DESCRIPTION_LENGTH:
+        raise HTTPException(
+            status_code=422,
+            detail=f"The description is too long (maximum {sprint_logic.MAX_DESCRIPTION_LENGTH} characters)."
+        )
+
     item = {
         "id": backlog_id,
         "title": payload.title,
         "tags": sprint_logic.normalize_tags(payload.tags) or sprint_logic.normalize_tags(payload.tag),
-        "priority": payload.priority
+        "priority": payload.priority,
+        "description": description
     }
     project.setdefault("backlog", []).append(item)
     db_manager.write(db)

@@ -271,7 +271,8 @@ class ServerData:
             return []
 
     async def create_backlog_item(
-        self, project_id: int, title: str, tags: list[str], priority: str
+        self, project_id: int, title: str, tags: list[str], priority: str,
+        description: str = ""
     ) -> tuple[bool, str, dict | None]:
         """Creates a new backlog task item in server database."""
         user_id = self.get_active_session()
@@ -283,7 +284,10 @@ class ServerData:
                 f"{self.api_url}/projects/{project_id}/backlog",
                 method="POST",
                 headers={"Content-Type": "application/json"},
-                body=json.dumps({"user_id": user_id, "title": title, "tags": tags or [], "priority": priority})
+                body=json.dumps({
+                    "user_id": user_id, "title": title, "tags": tags or [],
+                    "priority": priority, "description": description or ""
+                })
             )
             if response.status in (200, 201):
                 item = await response.json()

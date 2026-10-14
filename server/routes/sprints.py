@@ -156,7 +156,13 @@ def save_kanban_state(project_id: int, sprint_id: str, payload: SaveKanbanStateP
     if sprint.get("status") == "ended":
         raise HTTPException(status_code=409, detail="This sprint has ended and can no longer be changed.")
 
+    # Task descriptions can be added and edited by the sprint's members only.
+    if (sprint_logic.descriptions_changed(sprint.get("kanban_state", {}), payload.state)
+            and not sprint_logic.is_sprint_member(sprint, payload.user_id)):
+        raise HTTPException(status_code=403, detail="Only members of this sprint can edit task descriptions.")
+
     try:
+        sprint_logic.validate_descriptions(payload.state)
         sprint_logic.validate_task_dates(payload.state, sprint)
         sprint_logic.validate_completion_checklists(sprint.get("kanban_state", {}), payload.state)
         # US-19: refuse a board that assigns work to somebody outside the project.
@@ -197,6 +203,7 @@ def move_backlog_to_sprint(project_id: int, sprint_id: str, payload: MoveBacklog
         "id": f"task-{item['id']}",
         "title": item["title"],
         "tags": sprint_logic.task_tags(item),
+        "description": sprint_logic.clean_description(item.get("description")),
         "priority": item["priority"],
         "assignee": None,
         "start_date": None,
@@ -263,13 +270,14 @@ def return_task_to_product_backlog(project_id: int, sprint_id: str, task_id: str
     if used_fresh_id:
         db["next_backlog_id"] = fresh_id + 1
 
-    # Only what a product-backlog item holds goes back; sprint-specific details
-    # (checklist, assignee, dates, feedback) stay behind with the card.
+    # Only what a product-backlog item holds goes back (including its description);
+    # sprint-specific details (checklist, assignee, dates, feedback) stay behind.
     item = {
         "id": backlog_id,
         "title": task.get("title", "Untitled task"),
         "tags": sprint_logic.task_tags(task),
-        "priority": task.get("priority", "medium")
+        "priority": task.get("priority", "medium"),
+        "description": sprint_logic.clean_description(task.get("description"))
     }
     sprint_backlog.remove(task)
     product_backlog.append(item)

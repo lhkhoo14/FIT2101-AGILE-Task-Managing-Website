@@ -667,3 +667,25 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* --- TASK DESCRIPTION --- */
+.task-description-input {
+  min-height: 80px;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.45;
+}
+
+/* Product-backlog cards show the first lines of a description. */
+.task-card-description {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #777777;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}

@@ -21,7 +21,7 @@ import charts
 server_data = ServerData()
 from sprint_access import (
     is_sprint_member, sort_sprints, normalize_tags, filter_sprints_by_tag, task_tags,
-    PRIORITY_ORDER, DEFAULT_PRIORITY,
+    PRIORITY_ORDER, DEFAULT_PRIORITY, MAX_DESCRIPTION_LENGTH,
 )
 
 # CHANGE: the per-column walk over every sprint board used to live here as the
@@ -99,9 +99,14 @@ def _make_backlog_card(item):
     tags_html = f'<div class="task-card-tags">{chips}</div>' if chips else ""
     priority = str(item.get("priority", "medium")).lower()
     title = escape(str(item.get("title", "")))
+    description = str(item.get("description") or "").strip()
+    description_html = (
+        f'<p class="task-card-description">{escape(description)}</p>' if description else ""
+    )
     card.innerHTML = f"""
         {tags_html}
         <p class="task-card-title">{title}</p>
+        {description_html}
         <div class="task-card-footer">
             <span class="priority-badge priority-{priority}">{priority.capitalize()}</span>
         </div>
@@ -860,6 +865,7 @@ async def handle_create_task_submit(event):
         event.preventDefault()
     title = web.page["task-title-input"].value.strip()
     tags = normalize_tags(web.page["task-tags-input"].value)
+    description = web.page["task-description-input"].value.strip()[:MAX_DESCRIPTION_LENGTH]
     priority = web.page["task-priority-input"].value
     if not title:
         return
@@ -874,7 +880,7 @@ async def handle_create_task_submit(event):
 
     try:
         success, err, item = await server_data.create_backlog_item(
-            PROJECT_ID, title, tags, priority
+            PROJECT_ID, title, tags, priority, description
         )
         if not success:
             _notify(err)

@@ -113,3 +113,7 @@ def task_tags(task) -> list:
 def task_matches_tag_query(task, query) -> bool:
     """True if the task's tags match the search text (same rules as sprints)."""
     return tags_match_query(task_tags(task), query)
+
+
+# Longest task description a member can save (the server enforces the same limit).
+MAX_DESCRIPTION_LENGTH = 1000

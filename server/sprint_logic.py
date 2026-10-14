@@ -279,3 +279,43 @@ def backlog_id_for_task(task: Dict[str, Any], taken_ids: set, fallback_id: int):
     if raw.isdigit() and int(raw) not in taken_ids:
         return int(raw), False
     return fallback_id, True
+
+
+# ---------------------------------------------------------------------------
+# Task descriptions
+# ---------------------------------------------------------------------------
+MAX_DESCRIPTION_LENGTH = 1000
+
+
+def clean_description(raw: Any) -> str:
+    """A description as stored: surrounding whitespace removed, "" when absent."""
+    return raw.strip() if isinstance(raw, str) else ""
+
+
+def validate_descriptions(state: Dict[str, Any]) -> None:
+    """Every task description must be text no longer than MAX_DESCRIPTION_LENGTH."""
+    for column in COLUMNS:
+        for task in state.get(column, []) or []:
+            description = task.get("description")
+            if description is None:
+                continue
+            title = task.get("title", "Task")
+            if not isinstance(description, str):
+                raise ValueError(f"The description of '{title}' must be text.")
+            if len(description) > MAX_DESCRIPTION_LENGTH:
+                raise ValueError(
+                    f"The description of '{title}' is too long "
+                    f"(maximum {MAX_DESCRIPTION_LENGTH} characters)."
+                )
+
+
+def descriptions_changed(old_state: Dict[str, Any], new_state: Dict[str, Any]) -> bool:
+    """True if saving new_state would add, edit or remove any task description."""
+    def by_id(state):
+        return {
+            str(task.get("id")): clean_description(task.get("description"))
+            for column in COLUMNS
+            for task in (state or {}).get(column, []) or []
+        }
+    old, new = by_id(old_state), by_id(new_state)
+    return any(text != old.get(task_id, "") for task_id, text in new.items())

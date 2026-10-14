@@ -11,7 +11,7 @@ if "." not in sys.path:
 
 from pyscript import when, web, window, document  # type: ignore
 from auth import show_snackbar
-from sprint_access import is_sprint_member, task_tags, task_matches_tag_query
+from sprint_access import is_sprint_member, task_tags, task_matches_tag_query, MAX_DESCRIPTION_LENGTH
 from html import escape
 import charts
 import js  # type: ignore
@@ -539,6 +539,9 @@ def handle_search_input(event):
 # --- SECTION: Task Checklist & Detail Modal ---
 
 _open_task_id = None
+# True while the description box holds typing that has not been saved yet, so a
+# re-render of the modal (e.g. after ticking a checklist item) does not wipe it.
+_description_dirty = False
 
 
 def _checklist_progress(task):
@@ -603,6 +606,16 @@ def _render_task_detail_modal():
     prio_span.className = f"task-priority priority-{task.get('priority', 'medium').lower()}"
     prio_span.textContent = task.get("priority", "Medium")
     meta_container.appendChild(prio_span)
+
+    # Description: any sprint member can add or edit it until the sprint ends.
+    description_input = web.page["task-description-input"]
+    if not _description_dirty:
+        description_input.value = task.get("description") or ""
+    description_input.disabled = _sprint_ended
+    description_input.placeholder = (
+        "No description." if _sprint_ended else "Add a description..."
+    )
+    web.page["task-description-save-btn"].disabled = _sprint_ended
 
     # Return to product backlog: only for tasks still in the sprint backlog.
     return_btn = web.page["return-to-backlog-btn"]
@@ -875,6 +888,49 @@ async def handle_save_task_details(event):
     await show_snackbar("Task details saved.")
 
 
+@when("input", "#task-description-input")
+def handle_description_typing(event):
+    """Remember there is unsaved text so re-rendering the modal keeps it."""
+    global _description_dirty
+    _description_dirty = True
+
+
+@when("click", "#task-description-save-btn")
+async def handle_save_task_description(event):
+    """Save the open task's description (an empty box removes it)."""
+    global _description_dirty
+    if _sprint_ended or not _open_task_id:
+        return
+    task = _find_open_task()
+    if task is None:
+        return
+
+    text = web.page["task-description-input"].value.strip()
+    if len(text) > MAX_DESCRIPTION_LENGTH:
+        await show_snackbar(f"Descriptions can be at most {MAX_DESCRIPTION_LENGTH} characters.")
+        return
+    previous = task.get("description")
+    if text == (previous or ""):
+        _description_dirty = False
+        await show_snackbar("No changes to save.")
+        return
+
+    task["description"] = text
+    success, err = await server_data.update_kanban_state(_project_id, _sprint_id, _kanban_state)
+    if not success:
+        # Roll back the in-memory change so the UI matches the server (the text stays in the box).
+        if previous is None:
+            task.pop("description", None)
+        else:
+            task["description"] = previous
+        await show_snackbar(f"Could not save the description: {err}")
+        return
+
+    _description_dirty = False
+    _render_task_detail_modal()
+    await show_snackbar("Description saved." if text else "Description removed.")
+
+
 @when("click", "#kanban-board")
 def handle_kanban_click(event):
     card = event.target.closest(".task-card")
@@ -882,8 +938,9 @@ def handle_kanban_click(event):
         return
 
     task_id = card.id
-    global _open_task_id
+    global _open_task_id, _description_dirty
     _open_task_id = task_id
+    _description_dirty = False
 
     _render_task_detail_modal()
     web.page["task-detail-modal"].classList.remove("hidden")
@@ -1237,8 +1294,9 @@ async def handle_return_to_backlog(event):
 
 
 def _close_task_detail_modal():
-    global _open_task_id
+    global _open_task_id, _description_dirty
     _open_task_id = None
+    _description_dirty = False
     web.page["task-detail-modal"].classList.add("hidden")
 
 

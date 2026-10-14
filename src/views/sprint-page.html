@@ -39,7 +39,7 @@
   <!-- Layout Stylesheet -->
   <link rel="stylesheet" href="../styles/project-layout.css">
   <!-- Page Stylesheet -->
-  <link rel="stylesheet" href="../styles/sprint-page.css?v=20261013">
+  <link rel="stylesheet" href="../styles/sprint-page.css?v=20261014">
   <!-- Snackbar Stylesheet -->
   <link rel="stylesheet" href="../styles/snackbar.css">
   <!--
@@ -292,6 +292,11 @@
       <h3 id="task-detail-title" class="modal-title">Task Details</h3>
       <div id="task-detail-meta" class="task-detail-meta"></div>
 
+      <label class="modal-label" for="task-description-input">Description</label>
+      <textarea id="task-description-input" class="modal-input task-description-input" rows="4"
+        maxlength="1000" placeholder="Add a description..."></textarea>
+      <button type="button" id="task-description-save-btn" class="modal-btn-submit task-save-btn">Save description</button>
+
       <div id="task-progress-container" class="task-progress-container">
         <div class="task-progress-bar-bg">
           <div id="task-progress-fill" class="task-progress-bar-fill"></div>
@@ -350,7 +355,7 @@
 
   <!-- Link settings.json for PyScript backend -->
   <script type="py" config="../../settings.json" src="../backend/layout.py?v=20261011"></script>
-  <script type="py" config="../../settings.json" src="../backend/sprint-page.py?v=20261013"></script>
+  <script type="py" config="../../settings.json" src="../backend/sprint-page.py?v=20261014"></script>
 </body>
 
 </html>
