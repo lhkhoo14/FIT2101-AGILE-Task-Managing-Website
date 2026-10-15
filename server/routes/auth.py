@@ -135,9 +135,13 @@ ALLOWED_PHOTO_PREFIXES = (
     "data:image/webp;base64,",
 )
 MAX_PHOTO_LENGTH = 300000
-ROLE_PRODUCT_OWNER = "Product Owner"
+# These two have to match the presets defined in routes/projects.py, because the
+# promotion below only helps if it lands in the role that actually carries the
+# project's permissions in this app: "Project Creator" is the top role here, and
+# the ordinary members' preset is "Employee" (there is no "Member" role).
+ROLE_PRODUCT_OWNER = "Project Creator"
 ROLE_SCRUM_MASTER = "Scrum Master"
-ROLE_MEMBER = "Member"
+ROLE_MEMBER = "Employee"
 KANBAN_COLUMNS = ("backlog", "active", "review", "completed")
 
 

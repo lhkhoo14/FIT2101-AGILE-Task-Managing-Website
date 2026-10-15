@@ -239,20 +239,24 @@ async def handle_create_role(event):
     conflict_boxes = js.document.querySelectorAll(".role-conflict-checkbox:checked")
     conflicting_roles = [box.value for box in conflict_boxes]
 
-    # Hide modal before making the API call / showing snackbar
-    modal.classList.add("hidden")
-
     db = ServerData()
-    success, message = await db.create_project_role(
-        project_id=project_id,
-        name=name,
-        colour=colour,
-        description=description,
-        permissions=permissions,
-        conflicting_roles=conflicting_roles
-    )
+    try:
+        success, message = await db.create_project_role(
+            project_id=project_id,
+            name=name,
+            colour=colour,
+            description=description,
+            permissions=permissions,
+            conflicting_roles=conflicting_roles
+        )
+    except Exception as exc:
+        # Leave the modal open with the user's input intact so the failure is
+        # visible and can be retried, instead of closing over a silent error.
+        await show_snackbar(f"Could not create the role: {exc}")
+        return
 
     if success:
+        modal.classList.add("hidden")
         await show_snackbar("Custom role created successfully!")
         window.location.reload()
     else:

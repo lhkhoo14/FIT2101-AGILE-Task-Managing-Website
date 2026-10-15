@@ -30,6 +30,29 @@ def is_sprint_member(sprint, user_id) -> bool:
     return uid in {int(m) for m in members}
 
 
+# The roles that own a project's sprints. This mirrors LEADERSHIP_ROLES in
+# server/logic/sprint_logic.py, which is what actually puts them on every sprint:
+# the server unions these members into each sprint it saves. It is repeated here
+# so the create-sprint dialog can show who is already on the sprint, not to
+# enforce anything - the server decides.
+LEADERSHIP_ROLES = ("Project Creator", "Scrum Master", "Product Owner")
+
+
+def leadership_role_for(project_payload, user_id):
+    """The sprint-leadership role this user holds in the project, or None.
+
+    Reads the roles map that a /projects/{id}/members payload and a raw project
+    record both carry, so it works with either.
+    """
+    roles = (project_payload or {}).get("roles") or {}
+    wanted = str(user_id)
+    for role_name in LEADERSHIP_ROLES:
+        holders = roles.get(role_name) or []
+        if wanted in {str(holder) for holder in holders}:
+            return role_name
+    return None
+
+
 def sprint_created_at(sprint) -> int:
     """Creation time in ms. Falls back to the id (a ms timestamp for sprints
     created by older versions of the UI), else 0 for the seeded sprints."""

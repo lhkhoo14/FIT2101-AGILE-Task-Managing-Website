@@ -10,7 +10,13 @@ if "." not in sys.path:
 from datetime import date
 
 from pyscript import when, web, window, document  # type: ignore[reportMissingImports]
-from auth import show_snackbar
+
+# `auth`, `dialog` and `sprint_access` are loaded by their flat names via
+# settings.json's file map (src/backend/utils/auth.py -> ./auth.py), so Pylance
+# cannot resolve them from this folder; the ignores keep those runtime-correct
+# imports quiet.
+from auth import show_snackbar  # type: ignore[reportMissingImports]
+from dialog import confirm_action  # type: ignore[reportMissingImports]
 import js  # type: ignore[reportMissingImports]
 from server_data import ServerData
 import charts
@@ -19,9 +25,10 @@ import charts
 # The dashboard never owns sprint data; it asks FastAPI for the current project
 # state and re-renders the affected UI after successful mutations.
 server_data = ServerData()
-from sprint_access import (
-    is_sprint_member, sort_sprints, normalize_tags, filter_sprints_by_tag,
-    PRIORITY_ORDER, DEFAULT_PRIORITY,
+from sprint_access import (  # type: ignore[reportMissingImports]
+    is_sprint_member, sort_sprints, normalize_tags, filter_sprints_by_tag, task_tags,
+    leadership_role_for,
+    PRIORITY_ORDER, DEFAULT_PRIORITY, MAX_DESCRIPTION_LENGTH,
 )
 
 # CHANGE: the per-column walk over every sprint board used to live here as the
@@ -95,14 +102,18 @@ def _make_backlog_card(item):
     card.id = f"backlog-item-{item['id']}"
     card.setAttribute("draggable", "true")
     card.setAttribute("data-backlog-id", str(item["id"]))
-    tag = str(item.get("tag", "frontend")).lower()
+    chips = "".join(f'<span class="task-tag-chip">{escape(tag)}</span>' for tag in task_tags(item))
+    tags_html = f'<div class="task-card-tags">{chips}</div>' if chips else ""
     priority = str(item.get("priority", "medium")).lower()
     title = escape(str(item.get("title", "")))
+    description = str(item.get("description") or "").strip()
+    description_html = (
+        f'<p class="task-card-description">{escape(description)}</p>' if description else ""
+    )
     card.innerHTML = f"""
-        <div class="task-card-header">
-            <span class="tag-badge tag-{tag}">{tag.capitalize()}</span>
-        </div>
+        {tags_html}
         <p class="task-card-title">{title}</p>
+        {description_html}
         <div class="task-card-footer">
             <span class="priority-badge priority-{priority}">{priority.capitalize()}</span>
         </div>
@@ -275,6 +286,13 @@ def _members_html(item, users):
 
 
 def _make_sprint_card(item, users):
+    """One sprint card: the whole card opens the sprint (see the click handler).
+
+    CHANGE: the per-card Delete button is gone. It sat inside the element whose
+    click opens the sprint, so the two handlers raced and the card usually won.
+    Deleting now lives on the sprint's own board, in its sidebar, behind the same
+    manage_sprints permission.
+    """
     is_member = is_sprint_member(item, current_user_id)
     status = item.get("status", "active")
     priority = item.get("priority", DEFAULT_PRIORITY)
@@ -661,6 +679,17 @@ async def open_burndown(sprint_id):
     _open_modal("burndown-modal")
 
 
+@when("app:sprint-backlog-changed", "body")
+async def handle_sprint_backlog_changed(event):
+    """A task was returned to the product backlog from the open sprint board.
+
+    The board sits in an iframe over this page, so refresh what is behind it: the
+    product-backlog sidebar and each sprint card's task count.
+    """
+    await render_backlog_list()
+    await _refresh_all_card_badges()
+
+
 @when("app:sprint-dashboard-navigation", "body")
 async def handle_sprint_page_navigation(event):
     """Handle navigation messages from the sprint board iframe."""
@@ -707,17 +736,27 @@ async def _render_member_options():
     line of defence.
     """
     users = await server_data.get_project_member_users(PROJECT_ID) if PROJECT_ID else []
+    # The project's role map says which of these members are on EVERY sprint: the
+    # server adds its leadership (Project Creator, Scrum Master, Product Owner) to
+    # each sprint it saves. They are shown ticked and disabled so the dialog says
+    # who the sprint really has, matching how the creator's own row works.
+    payload = await server_data.get_project_members(PROJECT_ID) if PROJECT_ID else None
     container = web.page["sprint-members-list"]
     container.innerHTML = ""
 
     for user in users:
         uid = user["user_id"]
         is_self = uid == current_user_id
-        name = _display_name(user) + (" (you)" if is_self else "")
+        leadership_role = leadership_role_for(payload, uid)
+        locked = is_self or leadership_role is not None
+        suffix = " (you)" if is_self else (f" ({leadership_role})" if leadership_role else "")
+        name = _display_name(user) + suffix
         label = document.createElement("label")
         label.className = "member-option"
+        if leadership_role is not None:
+            label.title = f"{leadership_role} is part of every sprint in this project."
         label.innerHTML = (
-            f'<input type="checkbox" value="{uid}"{" checked disabled" if is_self else ""}>'
+            f'<input type="checkbox" value="{uid}"{" checked disabled" if locked else ""}>'
             f'<span class="member-option-avatar">{escape(_initials(_display_name(user)))}</span>'
             f'<span class="member-option-name">{escape(name)}</span>'
         )
@@ -740,6 +779,9 @@ def _selected_member_ids():
     # accepts this list unchanged.
     if current_user_id is not None and current_user_id not in ids:
         ids.insert(0, current_user_id)
+    # The project's leadership rows are rendered pre-checked and disabled, so the
+    # loop above already collected them; the server adds them to every sprint
+    # regardless, which is what keeps them able to open the boards they own.
     return ids
 
 
@@ -849,7 +891,8 @@ async def handle_create_task_submit(event):
     if event:
         event.preventDefault()
     title = web.page["task-title-input"].value.strip()
-    tag = web.page["task-tag-input"].value
+    tags = normalize_tags(web.page["task-tags-input"].value)
+    description = web.page["task-description-input"].value.strip()[:MAX_DESCRIPTION_LENGTH]
     priority = web.page["task-priority-input"].value
     if not title:
         return
@@ -864,7 +907,7 @@ async def handle_create_task_submit(event):
 
     try:
         success, err, item = await server_data.create_backlog_item(
-            PROJECT_ID, title, tag, priority
+            PROJECT_ID, title, tags, priority, description
         )
         if not success:
             _notify(err)
@@ -884,11 +927,40 @@ async def handle_create_task_submit(event):
             submit_button.disabled = False
 
 
+async def refresh_after_sprint_delete():
+    """Re-sync everything a deleted sprint leaves stale: the cards, the product
+    backlog (a sprint's board can hold backlog items that were dragged in), and
+    each remaining card's task count."""
+    await render_sprints_grid()
+    await render_backlog_list()
+    await _refresh_all_card_badges()
+
+
+@when("app:sprint-deleted", "body")
+async def handle_sprint_deleted(event):
+    """The open sprint board deleted its own sprint.
+
+    The board sits in an iframe over this page, so everything behind it is one
+    sprint out of date, and the panel behind it is still showing that (now
+    deleted) board's view. Refreshing the cards and returning to the sprint list
+    is what the user sees; the board inside the iframe asks for this itself,
+    rather than this page deleting a sprint and then telling the board to hide.
+    """
+    await refresh_after_sprint_delete()
+    _show_dashboard_view("sprints-view")
+    _notify("Sprint deleted.")
+
+
 @when("click", ".sprints-grid")
 async def handle_sprint_card_click(event):
     # Open the selected sprint board unless the chart control was clicked.
     # The dashboard keeps one hidden iframe warm so this transition does not
     # restart PyScript for every sprint selection.
+    #
+    # CHANGE: this is the only click this handler has to disambiguate now. It
+    # used to also test for a Delete button inside the card, which never worked
+    # reliably: the card is a navigation target, so a click that started on the
+    # button still bubbled here and opened the sprint.
     card = event.target.closest(".sprint-card")
     if not card:
         return

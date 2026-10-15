@@ -122,6 +122,23 @@
             </nav>
 
             <div class="sidebar-footer">
+                <!-- CHANGE: Delete Project now lives on the project page instead of
+                     on the project's dashboard card. The card navigates into the
+                     project when clicked, so a Delete button inside it had to fight
+                     the card's own click handler and lost - the card opened the
+                     project every time. This button is revealed only to a role
+                     holding delete_project (the Project Creator among the presets)
+                     and the server re-checks that permission on the request, so
+                     hiding it is presentation, not protection. -->
+                <button type="button" id="delete-project-btn" class="nav-item nav-item-danger hidden"
+                    title="Delete this project and everything in it">
+                    <svg viewBox="0 0 24 24" class="icon">
+                        <path
+                            d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+                    </svg>
+                    <span>Delete Project</span>
+                </button>
+
                 <button type="button" id="settings-btn" class="nav-item">
                     <svg viewBox="0 0 24 24" class="icon">
                         <path
@@ -139,8 +156,10 @@
     <div id="snackbar">Some text some message..</div>
 
     <!-- Link settings.json for PyScript backend -->
+    <div id="snackbar">Some text some message..</div>
+
     <script type="py" config="../../settings.json" src="../backend/utils/project_layout.py?v=20261011"></script>
-    <script type="py" config="../../settings.json" src="../backend/views/project_page.py"></script>
+    <script type="py" config="../../settings.json" src="../backend/views/project_page.py?v=20261015"></script>
 </body>
 
 </html>
