@@ -3,7 +3,7 @@ import html
 
 from pyscript import when, web, window, document  # type: ignore
 from server_data import ServerData
-from auth import show_snackbar
+from auth import show_snackbar # type: ignore
 
 def show_error(field_id: str, message: str):
     """Displays an error message underneath a form field."""
