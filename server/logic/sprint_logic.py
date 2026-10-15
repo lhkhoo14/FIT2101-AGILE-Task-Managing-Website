@@ -68,7 +68,7 @@ def validate_task_dates(state: Dict[str, Any], sprint: Dict[str, Any]) -> None:
             if start and end and end < start:
                 raise ValueError(f"'{title}': end date cannot be before its start date.")
             for label, value in (("start", start), ("end", end)):
-                if value is None or s_start is None:
+                if value is None or s_start is None or s_end is None:
                     continue
                 if value < s_start or value > s_end:
                     raise ValueError(
@@ -147,7 +147,7 @@ def validate_sprint_members(members: Optional[list], project: Dict[str, Any]) ->
     because legacy sprints use it to mean "the whole project".
     """
     if members is None:
-        return None
+        return []
 
     project_members = _member_id_set(project)
     cleaned = []
@@ -203,3 +203,119 @@ def validate_assignees(old_state: Dict[str, Any], new_state: Dict[str, Any],
                     "member of this project."
                 )
 
+
+
+# ---------------------------------------------------------------------------
+# Task tags and returning tasks to the product backlog
+# ---------------------------------------------------------------------------
+MAX_TAGS = 10
+MAX_TAG_LENGTH = 20
+
+
+def normalize_tags(raw) -> list:
+    """Turn user input ("Frontend, #API ,, urgent") into a clean tag list.
+
+    Mirrors the browser-side helper in src/backend/sprint_access.py so the API
+    stores the same tags whichever client sent them: lowercased, a leading "#"
+    removed, de-duplicated (order kept), capped in length and in number.
+    """
+    if raw is None:
+        return []
+    parts = raw.split(",") if isinstance(raw, str) else list(raw)
+    tags = []
+    for part in parts:
+        tag = " ".join(str(part).strip().lstrip("#").split()).lower()[:MAX_TAG_LENGTH].strip()
+        if tag and tag not in tags:
+            tags.append(tag)
+    return tags[:MAX_TAGS]
+
+
+def task_tags(task: Dict[str, Any]) -> list:
+    """Tags on a task card or backlog item.
+
+    Items saved before tasks had several tags carry a single "tag" string; it is
+    read as a one-item list so old data keeps its tag without a migration.
+    """
+    tags = task.get("tags")
+    return normalize_tags(tags if tags is not None else task.get("tag"))
+
+
+def is_sprint_member(sprint: Dict[str, Any], user_id: Any) -> bool:
+    """True if the user is assigned to the sprint.
+
+    Legacy sprints saved before members existed have no "members" key and stay
+    open to everyone; a sprint with an explicit (even empty) list is restricted.
+    """
+    members = sprint.get("members")
+    if members is None:
+        return True
+    try:
+        uid = int(user_id)
+        return uid in {int(m) for m in members}
+    except (TypeError, ValueError):
+        return False
+
+
+def normalized_task_id(task_id: Any) -> str:
+    """Board cards are named "task-<backlog id>"; strip the prefix for comparisons."""
+    text = str(task_id or "")
+    return text[5:] if text.startswith("task-") else text
+
+
+def has_logged_work(task: Dict[str, Any]) -> bool:
+    """True once someone has started the task's timer (work time has been recorded)."""
+    time_log = task.get("time_log") or {}
+    return bool(time_log.get("started_at") or time_log.get("entries"))
+
+
+def backlog_id_for_task(task: Dict[str, Any], taken_ids: set, fallback_id: int):
+    """The product-backlog id a returned task goes back under: (id, used_fallback).
+
+    A card made from a backlog item is named "task-<backlog id>", so its original
+    id is restored when it is still free. Otherwise the fallback (a fresh id) is
+    used so two backlog items can never share an id.
+    """
+    raw = normalized_task_id(task.get("id"))
+    if raw.isdigit() and int(raw) not in taken_ids:
+        return int(raw), False
+    return fallback_id, True
+
+
+# ---------------------------------------------------------------------------
+# Task descriptions
+# ---------------------------------------------------------------------------
+MAX_DESCRIPTION_LENGTH = 1000
+
+
+def clean_description(raw: Any) -> str:
+    """A description as stored: surrounding whitespace removed, "" when absent."""
+    return raw.strip() if isinstance(raw, str) else ""
+
+
+def validate_descriptions(state: Dict[str, Any]) -> None:
+    """Every task description must be text no longer than MAX_DESCRIPTION_LENGTH."""
+    for column in COLUMNS:
+        for task in state.get(column, []) or []:
+            description = task.get("description")
+            if description is None:
+                continue
+            title = task.get("title", "Task")
+            if not isinstance(description, str):
+                raise ValueError(f"The description of '{title}' must be text.")
+            if len(description) > MAX_DESCRIPTION_LENGTH:
+                raise ValueError(
+                    f"The description of '{title}' is too long "
+                    f"(maximum {MAX_DESCRIPTION_LENGTH} characters)."
+                )
+
+
+def descriptions_changed(old_state: Dict[str, Any], new_state: Dict[str, Any]) -> bool:
+    """True if saving new_state would add, edit or remove any task description."""
+    def by_id(state):
+        return {
+            str(task.get("id")): clean_description(task.get("description"))
+            for column in COLUMNS
+            for task in (state or {}).get(column, []) or []
+        }
+    old, new = by_id(old_state), by_id(new_state)
+    return any(text != old.get(task_id, "") for task_id, text in new.items())
