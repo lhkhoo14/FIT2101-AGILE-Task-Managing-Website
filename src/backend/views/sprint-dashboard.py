@@ -10,7 +10,13 @@ if "." not in sys.path:
 from datetime import date
 
 from pyscript import when, web, window, document  # type: ignore[reportMissingImports]
-from auth import show_snackbar
+
+# `auth`, `dialog` and `sprint_access` are loaded by their flat names via
+# settings.json's file map (src/backend/utils/auth.py -> ./auth.py), so Pylance
+# cannot resolve them from this folder; the ignores keep those runtime-correct
+# imports quiet.
+from auth import show_snackbar  # type: ignore[reportMissingImports]
+from dialog import confirm_action  # type: ignore[reportMissingImports]
 import js  # type: ignore[reportMissingImports]
 from server_data import ServerData
 import charts
@@ -280,6 +286,13 @@ def _members_html(item, users):
 
 
 def _make_sprint_card(item, users):
+    """One sprint card: the whole card opens the sprint (see the click handler).
+
+    CHANGE: the per-card Delete button is gone. It sat inside the element whose
+    click opens the sprint, so the two handlers raced and the card usually won.
+    Deleting now lives on the sprint's own board, in its sidebar, behind the same
+    manage_sprints permission.
+    """
     is_member = is_sprint_member(item, current_user_id)
     status = item.get("status", "active")
     priority = item.get("priority", DEFAULT_PRIORITY)
@@ -914,11 +927,40 @@ async def handle_create_task_submit(event):
             submit_button.disabled = False
 
 
+async def refresh_after_sprint_delete():
+    """Re-sync everything a deleted sprint leaves stale: the cards, the product
+    backlog (a sprint's board can hold backlog items that were dragged in), and
+    each remaining card's task count."""
+    await render_sprints_grid()
+    await render_backlog_list()
+    await _refresh_all_card_badges()
+
+
+@when("app:sprint-deleted", "body")
+async def handle_sprint_deleted(event):
+    """The open sprint board deleted its own sprint.
+
+    The board sits in an iframe over this page, so everything behind it is one
+    sprint out of date, and the panel behind it is still showing that (now
+    deleted) board's view. Refreshing the cards and returning to the sprint list
+    is what the user sees; the board inside the iframe asks for this itself,
+    rather than this page deleting a sprint and then telling the board to hide.
+    """
+    await refresh_after_sprint_delete()
+    _show_dashboard_view("sprints-view")
+    _notify("Sprint deleted.")
+
+
 @when("click", ".sprints-grid")
 async def handle_sprint_card_click(event):
     # Open the selected sprint board unless the chart control was clicked.
     # The dashboard keeps one hidden iframe warm so this transition does not
     # restart PyScript for every sprint selection.
+    #
+    # CHANGE: this is the only click this handler has to disambiguate now. It
+    # used to also test for a Delete button inside the card, which never worked
+    # reliably: the card is a navigation target, so a click that started on the
+    # button still bubbled here and opened the sprint.
     card = event.target.closest(".sprint-card")
     if not card:
         return

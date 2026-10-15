@@ -261,6 +261,33 @@ def _column_index(column_key):
 # ==========================================
 # PAGE INITIALIZATION & BOOTSTRAP
 # ==========================================
+def _apply_delete_sprint_state(sprint):
+    """Offer Delete Sprint to the roles that hold manage_sprints, and nobody else.
+
+    Two rules, the same two the DELETE endpoint enforces: the user must hold
+    manage_sprints, and a completed sprint cannot be deleted at all - it is the
+    record its burndown and its members' contribution figures were computed from.
+    A completed sprint keeps the button visible but disabled so the rule is
+    legible rather than looking like a missing feature.
+    """
+    button = web.page["#delete-sprint-btn"]
+    if button is None:
+        return
+
+    if "manage_sprints" not in _permissions:
+        button.classList.add("hidden")
+        return
+
+    ended = sprint.get("status") == "ended"
+    button.classList.remove("hidden")
+    button.disabled = ended
+    button.setAttribute(
+        "title",
+        "A completed sprint is kept as the record of what the team finished, so it cannot be deleted."
+        if ended else "Delete this sprint and everything on its board",
+    )
+
+
 def _apply_header_and_lock_state(sprint):
     name_el = web.page["sprint-name"]
     if name_el:
@@ -268,6 +295,8 @@ def _apply_header_and_lock_state(sprint):
 
     global _sprint_ended
     _sprint_ended = sprint.get("status") == "ended"
+
+    _apply_delete_sprint_state(sprint)
 
     range_el = web.page["sprint-range"]
     if range_el:
@@ -417,6 +446,42 @@ def handle_show_contributions(event):
 @when("click", "#settings-btn")
 def handle_unavailable_settings(event):
     asyncio.ensure_future(show_snackbar("Settings are not available yet."))
+
+
+@when("click", "#delete-sprint-btn")
+async def handle_delete_sprint(event):
+    """Confirm, delete the sprint this board is showing, then leave the board.
+
+    Bound with @when so PyScript - not a hand-made create_proxy() - schedules the
+    coroutine: an async handler wrapped in create_proxy() runs after the click has
+    already finished bubbling, which is what made the old card-level Delete button
+    lose to the card's own "open this sprint" handler.
+    """
+    if not _project_id or not _sprint_id or not _has_access or _sprint_ended:
+        return
+
+    name = (_active_sprint or {}).get("name") or f"sprint {_sprint_id}"
+
+    confirmed, _password = await confirm_action(title=f"Delete sprint {name}")
+    if not confirmed:
+        return
+
+    success, message = await server_data.delete_sprint(_project_id, _sprint_id)
+    if not success:
+        await show_snackbar(message)
+        return
+
+    # The board on screen has just been deleted, so leave it. Embedded, the
+    # dashboard behind this iframe is where the sprint's card, its backlog counts
+    # and the panel currently showing this board all live, so it is asked to
+    # refresh and to come back to the sprint list.
+    if window.isEmbeddedSprintPage:
+        payload = {"type": "sprint-deleted", "sprint_id": str(_sprint_id)}
+        window.parent.postMessage(js.JSON.parse(json.dumps(payload)), str(window.location.origin))
+        return
+
+    await show_snackbar(message)
+    window.location.href = f"sprint-dashboard.html?project_id={_project_id}&view=sprints"
 
 
 def _navigate_to_dashboard(view=None, action=None):

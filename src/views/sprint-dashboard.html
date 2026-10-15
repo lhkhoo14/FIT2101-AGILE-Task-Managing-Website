@@ -115,6 +115,18 @@
         // A task went back to the product backlog from the open board: the
         // sidebar list and the sprint cards' task counts behind it are stale.
         document.body.dispatchEvent(new CustomEvent("app:sprint-backlog-changed"));
+      } else if (event.data?.type === "sprint-deleted") {
+        // The board inside the frame deleted its own sprint. Hide the frame (it is
+        // showing a sprint that no longer exists) and let the dashboard re-render
+        // what is behind it - see the app:sprint-deleted handler. The warm-iframe
+        // flags are deliberately left alone: the next card click reuses this same
+        // frame and activates the new sprint in it, which only happens while
+        // dataset.ready is still "true".
+        frame.hidden = true;
+        activeSprintId = null;
+        document.body.dispatchEvent(new CustomEvent("app:sprint-deleted", {
+          detail: event.data,
+        }));
       } else if (event.data?.type === "sprint-dashboard-navigation") {
         // "Create Sprint" opens its modal on top of the open board, so the user is
         // not thrown back to the sprint list; every other link leaves the board.

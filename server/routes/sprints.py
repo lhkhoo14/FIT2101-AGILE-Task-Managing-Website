@@ -323,6 +323,55 @@ def delete_task(project_id: int, sprint_id: str, task_id: str, payload: DeleteTa
 
 
 
+@router.delete("/projects/{project_id}/sprints/{sprint_id}", status_code=status.HTTP_200_OK)
+def delete_sprint(project_id: int, sprint_id: str, payload: DeleteSprintPayload):
+    """Delete a sprint together with everything on its board.
+
+    An ended sprint is the historical record its burndown and its members'
+    contribution figures were computed from, so it is refused. A sprint that is
+    running, or not started yet, can be deleted by anyone holding manage_sprints.
+    """
+    def mutate(db):
+        project = verify_project_access(db.get("projects", {}).get(str(project_id)), payload.user_id)
+        # Repair a project stored before roles existed, so the permission check on
+        # the next line is not reading an empty role map (see ensure_member_fields).
+        ensure_member_fields(project)
+        verify_project_permission(project, payload.user_id, "manage_sprints")
+        if sprint_logic.auto_complete_sprints(project):
+            project["status_synced_at"] = contribution_logic.utc_stamp()
+        # Same repair as _load_project: this route reads the project itself, so
+        # the project's leadership is ensured a place on every sprint here too.
+        sprint_logic.ensure_leadership_membership(project)
+
+        sprint = _find_sprint(project, sprint_id)
+        if sprint.get("status") == "ended":
+            raise HTTPException(status_code=409, detail="A completed sprint cannot be deleted.")
+
+        wanted = str(sprint.get("id"))
+        project["sprints"] = [
+            item for item in project.get("sprints", []) or [] if str(item.get("id")) != wanted
+        ]
+
+        actor = actor_label(db, payload.user_id)
+        append_history(project, {
+            "action": "deleted_sprint",
+            "message": f"{actor} deleted sprint {sprint.get('name', 'Sprint')}",
+            "actor": actor,
+            "actor_id": payload.user_id,
+            "sprint_id": wanted,
+            "sprint_name": sprint.get("name", "Sprint"),
+        })
+
+        refresh_contributions(db, project)
+        return {
+            "status": "success",
+            "message": f"Sprint '{sprint.get('name', 'Sprint')}' deleted.",
+            "sprint_id": wanted,
+        }
+
+    return db_manager.update(mutate)
+
+
 @router.post("/projects/{project_id}/sprints/{sprint_id}/backlog")
 def move_backlog_to_sprint(project_id: int, sprint_id: str, payload: MoveBacklogPayload):
     db, project = _load_project(project_id, payload.user_id)
