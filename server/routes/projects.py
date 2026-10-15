@@ -10,6 +10,14 @@ from dependencies import (
     validate_role_assignment
 )
 
+import logic.membership_logic as membership_logic
+# CHANGE: create_backlog_item() normalises tags and descriptions with
+# sprint_logic, but the module was never imported here, so every request to
+# POST /projects/{id}/backlog died with "NameError: name 'sprint_logic' is not
+# defined" (a 500) before the item was stored.
+import logic.sprint_logic as sprint_logic
+from routes.activity import actor_label, append_history, refresh_contributions
+
 router = APIRouter()
 
 PRESET_ROLES = {
@@ -388,7 +396,12 @@ def add_project_member(project_id: int, payload: AddMemberPayload):
 
     project["members"].append(member_id)
     project["contribute"].append(member_id)
-    project["roles"].setdefault("Project Member", []).append(member_id)
+    # CHANGE: the newcomer joins the Employee preset, the "standard contributor"
+    # role that holds edit_sprints and manage_tasks. The previous default,
+    # "Project Member", has no entry in role_definitions, so a member added here
+    # held no permissions at all: no delete controls, and a 403 from every gated
+    # route, until somebody assigned them a role by hand.
+    project["roles"].setdefault("Employee", []).append(member_id)
 
     db_manager.write(db)
 
@@ -396,8 +409,68 @@ def add_project_member(project_id: int, payload: AddMemberPayload):
         "status": "success",
         "member_id": member_id,
         "username": member["username"],
-        "role": "Project Member"
+        "role": "Employee"
     }
+
+class RemoveMemberPayload(BaseModel):
+    user_id: int        # Acting user
+
+@router.post("/projects/{project_id}/members/{member_id}/remove", status_code=status.HTTP_200_OK)
+def remove_project_member(project_id: int, member_id: int, payload: RemoveMemberPayload):
+    """Remove a member from the project (manage_members).
+
+    Their role assignments, sprint membership and task assignments go with them,
+    but the work itself stays: the tasks they were holding are left on their
+    boards, unassigned. The account is untouched and can be added back later, so
+    this is not how an account is deleted.
+    """
+    def mutate(db):
+        project = db.get("projects", {}).get(str(project_id))
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        ensure_member_fields(project)
+        verify_project_permission(project, payload.user_id, "manage_members")
+
+        if member_id not in project.get("members", []):
+            raise HTTPException(status_code=404, detail="User is not a project member")
+
+        if membership_logic.is_sole_creator(project, member_id):
+            raise HTTPException(status_code=400, detail="Cannot remove the sole Project Creator.")
+
+        # manage_members says a member may remove people; the ranking says which
+        # people. The Members page only offers Remove where this passes, so this
+        # is the API-level half of the same rule (preset rank, then the smaller
+        # permission set; never yourself).
+        if not membership_logic.can_remove_member(project, payload.user_id, member_id):
+            raise HTTPException(
+                status_code=403,
+                detail="This member's role ranks equal to or above yours, so you cannot remove them.",
+            )
+
+        # Another member of the project is named in the audit entry, so read the
+        # name before the cascade takes the member out of the member lists.
+        removed_name = actor_label(db, member_id)
+        membership_logic.detach_member(project, member_id)
+
+        actor = actor_label(db, payload.user_id)
+        append_history(project, {
+            "action": "removed_member",
+            "message": f"{actor} removed {removed_name} from the project",
+            "actor": actor,
+            "actor_id": payload.user_id,
+        })
+
+        # US-20: the member's row disappears from the contribution table with the
+        # membership, because the table is built from the project's member list.
+        refresh_contributions(db, project)
+        return {
+            "status": "success",
+            "message": f"{removed_name} was removed from the project.",
+            "member_id": member_id,
+        }
+
+    return db_manager.update(mutate)
 
 class CreateRolePayload(BaseModel):
     user_id: int
