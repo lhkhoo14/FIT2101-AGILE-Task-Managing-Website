@@ -1,16 +1,18 @@
 import sys
-import os
 import js  # type: ignore
 from pyscript import when, web, window  # type: ignore
 
-backend_path = os.path.abspath(os.path.join(os.path.dirname(__name__), ".."))
-if "src/backend" not in sys.path:
-    sys.path.append("src/backend")
+if "." not in sys.path:
+    sys.path.append(".")
 
 # Import decoupled topbar module
 import topbar
 import sidebar_state
-from project_helpers import get_project_id_from_url
+
+def get_project_id_from_url():
+    params = js.URLSearchParams.new(window.location.search)
+    return params.get("project_id")
+
 
 # CHANGE: project_layout.py is shared by three project views, each of which
 # ships a different nav item already marked "active" in its own markup.
@@ -19,7 +21,6 @@ _NAV_ITEMS = ("#nav-description", "#nav-members", "#nav-sprints")
 _ACTIVE_NAV_BY_PAGE = {
     "project-page.html": "#nav-description",
     "project-members.html": "#nav-members",
-    "project-roles.html": "#nav-roles",
     "sprint-dashboard.html": "#nav-sprints",
 }
 
@@ -94,11 +95,6 @@ def handle_nav_members(event):
     # on this page. Members now have their own page, so the sidebar button opens it.
     project_id = get_project_id_from_url()
     window.location.href = f"project-members.html?project_id={project_id}"
-
-@when("click", "#nav-roles")
-def handle_nav_roles(event):
-    project_id = get_project_id_from_url()
-    window.location.href = f"project-roles.html?project_id={project_id}"
 
 @when("click", "#nav-sprints")
 def handle_nav_sprints(event):

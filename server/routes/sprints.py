@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from database_manager import db_manager
 from dependencies import verify_project_access
 from routes.activity import refresh_contributions
-import logic.sprint_logic as sprint_logic
+import sprint_logic
 
 router = APIRouter()
 
@@ -46,9 +46,6 @@ class CreateSprintPayload(BaseModel):
 class MoveBacklogPayload(BaseModel):
     user_id: int
     backlog_id: int
-
-class ReturnTaskPayload(BaseModel):
-    user_id: int
 
 class SaveKanbanStatePayload(BaseModel):
     user_id: int
@@ -156,13 +153,7 @@ def save_kanban_state(project_id: int, sprint_id: str, payload: SaveKanbanStateP
     if sprint.get("status") == "ended":
         raise HTTPException(status_code=409, detail="This sprint has ended and can no longer be changed.")
 
-    # Task descriptions can be added and edited by the sprint's members only.
-    if (sprint_logic.descriptions_changed(sprint.get("kanban_state", {}), payload.state)
-            and not sprint_logic.is_sprint_member(sprint, payload.user_id)):
-        raise HTTPException(status_code=403, detail="Only members of this sprint can edit task descriptions.")
-
     try:
-        sprint_logic.validate_descriptions(payload.state)
         sprint_logic.validate_task_dates(payload.state, sprint)
         sprint_logic.validate_completion_checklists(sprint.get("kanban_state", {}), payload.state)
         # US-19: refuse a board that assigns work to somebody outside the project.
@@ -202,8 +193,7 @@ def move_backlog_to_sprint(project_id: int, sprint_id: str, payload: MoveBacklog
     task_card = {
         "id": f"task-{item['id']}",
         "title": item["title"],
-        "tags": sprint_logic.task_tags(item),
-        "description": sprint_logic.clean_description(item.get("description")),
+        "tag": item["tag"],
         "priority": item["priority"],
         "assignee": None,
         "start_date": None,
@@ -214,77 +204,6 @@ def move_backlog_to_sprint(project_id: int, sprint_id: str, payload: MoveBacklog
     refresh_contributions(db, project)
     db_manager.write(db)
     return {"status": "success"}
-
-@router.post("/projects/{project_id}/sprints/{sprint_id}/tasks/{task_id}/return-to-backlog")
-def return_task_to_product_backlog(project_id: int, sprint_id: str, task_id: str, payload: ReturnTaskPayload):
-    """Move a task that is still in the sprint's Backlog column back to the product backlog.
-
-    The reverse of move_backlog_to_sprint. Only tasks nobody has started working
-    on can go back: once a task has left the sprint backlog, or has logged work
-    time, returning it would discard progress, so it is refused.
-    """
-    db, project = _load_project(project_id, payload.user_id)
-    sprint = _find_sprint(project, sprint_id)
-
-    if not sprint_logic.is_sprint_member(sprint, payload.user_id):
-        raise HTTPException(status_code=403, detail="You are not assigned to this sprint.")
-    if sprint.get("status") == "ended":
-        raise HTTPException(status_code=409, detail="This sprint has ended and can no longer be changed.")
-
-    kanban = sprint.setdefault("kanban_state", {
-        "backlog": [],
-        "active": [],
-        "review": [],
-        "completed": []
-    })
-    wanted = sprint_logic.normalized_task_id(task_id)
-
-    def matches(card):
-        return sprint_logic.normalized_task_id(card.get("id")) == wanted
-
-    sprint_backlog = kanban.setdefault("backlog", [])
-    task = next((card for card in sprint_backlog if matches(card)), None)
-    if task is None:
-        started = any(
-            matches(card)
-            for column, cards in kanban.items() if column != "backlog"
-            for card in cards or []
-        )
-        if started:
-            raise HTTPException(
-                status_code=409,
-                detail="Only tasks still in the sprint backlog can be returned to the product backlog."
-            )
-        raise HTTPException(status_code=404, detail="Task not found in this sprint")
-
-    if sprint_logic.has_logged_work(task):
-        raise HTTPException(
-            status_code=409,
-            detail="This task has logged work time, so it can't be returned to the product backlog."
-        )
-
-    product_backlog = project.setdefault("backlog", [])
-    taken_ids = {int(entry["id"]) for entry in product_backlog if str(entry.get("id")).isdigit()}
-    fresh_id = max(db.get("next_backlog_id", 1), max(taken_ids, default=0) + 1)
-    backlog_id, used_fresh_id = sprint_logic.backlog_id_for_task(task, taken_ids, fresh_id)
-    if used_fresh_id:
-        db["next_backlog_id"] = fresh_id + 1
-
-    # Only what a product-backlog item holds goes back (including its description);
-    # sprint-specific details (checklist, assignee, dates, feedback) stay behind.
-    item = {
-        "id": backlog_id,
-        "title": task.get("title", "Untitled task"),
-        "tags": sprint_logic.task_tags(task),
-        "priority": task.get("priority", "medium"),
-        "description": sprint_logic.clean_description(task.get("description"))
-    }
-    sprint_backlog.remove(task)
-    product_backlog.append(item)
-
-    refresh_contributions(db, project)
-    db_manager.write(db)
-    return {"status": "success", "backlog_item": item}
 
 @router.get("/projects/{project_id}/sprints/{sprint_id}/backlog")
 def get_sprint_backlog(project_id: int, sprint_id: str, user_id: int):
