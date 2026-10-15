@@ -2,6 +2,7 @@ from pyodide.http import pyfetch # type: ignore
 from pyscript import window       # type: ignore
 import asyncio
 import json
+from urllib.parse import quote
 
 from constants import ACTIVE_SESSION_KEY, API_URL
 
@@ -294,7 +295,8 @@ class ServerData:
             return []
 
     async def create_backlog_item(
-        self, project_id: int, title: str, tag: str, priority: str
+        self, project_id: int, title: str, tags: list[str], priority: str,
+        description: str = ""
     ) -> tuple[bool, str, dict | None]:
         """Creates a new backlog task item in server database."""
         user_id = self.get_active_session()
@@ -306,7 +308,10 @@ class ServerData:
                 f"{self.api_url}/projects/{project_id}/backlog",
                 method="POST",
                 headers={"Content-Type": "application/json"},
-                body=json.dumps({"user_id": user_id, "title": title, "tag": tag, "priority": priority})
+                body=json.dumps({
+                    "user_id": user_id, "title": title, "tags": tags or [],
+                    "priority": priority, "description": description or ""
+                })
             )
             if response.status in (200, 201):
                 item = await response.json()
@@ -467,6 +472,33 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to move backlog item: {e}")
             return False, "Unable to connect to the server."
+
+    async def return_task_to_backlog(
+        self, project_id: int, sprint_id: str | int, task_id: str | int
+    ) -> tuple[bool, str, dict | None]:
+        """Moves a task still in a sprint's backlog column back to the product backlog."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired", None
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/sprints/{sprint_id}/tasks/{task_id}/return-to-backlog",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id})
+            )
+            if response.status in (200, 201):
+                data = await response.json()
+                return True, "", data.get("backlog_item")
+            err_data = await response.json()
+            detail = err_data.get("detail", "Failed to return task to the product backlog.")
+            if isinstance(detail, list):
+                detail = "; ".join(str(err.get("msg", "Invalid input")) for err in detail)
+            return False, str(detail), None
+        except Exception as e:
+            print(f"[API Error] Failed to return task to backlog: {e}")
+            return False, "Unable to connect to the server.", None
 
     async def update_kanban_state(
         self, project_id: int, sprint_id: str | int, kanban_state: dict
@@ -637,6 +669,8 @@ class ServerData:
                 detail = "; ".join([err.get("msg", str(err)) for err in detail])
             return False, detail
         except Exception as e:
+            print(f"[API Error] Failed to log task time: {e}")
+            return False, "Unable to connect to the server.", None
             return False, str(e)
 
 class Project:
@@ -647,3 +681,165 @@ class Project:
         self.description = description
         self.status = status
         self.created_at = created_at  # epoch milliseconds, None for legacy projects
+            
+    async def create_project_role(
+        self,
+        project_id: int,
+        name: str,
+        colour: str,
+        description: str,
+        permissions: list[str],
+        conflicting_roles: list[str],
+    ) -> tuple[bool, str]:
+        """Sends a request to create a custom project role."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/roles",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({
+                    "user_id": user_id,
+                    "name": name,
+                    "colour": colour,
+                    "description": description,
+                    "permissions": permissions,
+                    "conflicting_roles": conflicting_roles
+                })
+            )
+            if response.status in (200, 201):
+                return True, "Role created successfully."
+            
+            data = await response.json()
+            return False, data.get("detail", "Failed to create role.")
+        except Exception as e:
+            print(f"[API Error] Failed to create role: {e}")
+            return False, "Unable to connect to the server."
+
+    async def delete_project_role(self, project_id: int, role_name: str) -> tuple[bool, str]:
+        """Deletes a custom project role."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/roles/{role_name}",
+                method="DELETE",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id})
+            )
+            if response.status == 200:
+                return True, "Role deleted successfully."
+            
+            data = await response.json()
+            return False, data.get("detail", "Failed to delete role.")
+        except Exception as e:
+            print(f"[API Error] Failed to delete role: {e}")
+            return False, "Unable to connect to the server."
+
+    async def update_project_role(self, project_id: int, role_name: str, colour: str, description: str, permissions: list, conflicting_roles: list) -> tuple[bool, str]:
+        """Updates an existing custom project role."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/roles/{role_name}",
+                method="PUT",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({
+                    "user_id": user_id,
+                    "colour": colour,
+                    "description": description,
+                    "permissions": permissions,
+                    "conflicting_roles": conflicting_roles
+                })
+            )
+            if response.status == 200:
+                return True, "Role updated successfully."
+            
+            data = await response.json()
+            return False, data.get("detail", "Failed to update role.")
+        except Exception as e:
+            print(f"[API Error] Failed to update role: {e}")
+            return False, "Unable to connect to the server."
+
+    async def get_role_members(self, project_id: int, role_name: str) -> list:
+        user_id = self.get_active_session()
+        if user_id is None:
+            return []
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/roles/{role_name}/members?user_id={user_id}",
+                method="GET"
+            )
+            if response.status == 200:
+                data = await response.json()
+                return data.get("members", [])
+        except Exception as e:
+            print(f"[API Error] Failed to fetch role members: {e}")
+        return []
+
+    async def remove_role_member(self, project_id: int, role_name: str, target_user_id: int) -> tuple[bool, str]:
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/roles/{role_name}/remove",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id, "target_user_id": target_user_id})
+            )
+            if response.status == 200:
+                return True, "Member removed from role successfully."
+            data = await response.json()
+            return False, data.get("detail", "Failed to remove member.")
+        except Exception as e:
+            return False, "Unable to connect to server."
+
+    async def assign_project_role(self, project_id: int, role_name: str, target_user_id: int) -> tuple[bool, str]:
+        """Assigns a project role to a member."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/roles/assign",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({
+                    "user_id": user_id, 
+                    "target_user_id": target_user_id, 
+                    "role_name": role_name
+                })
+            )
+            if response.status == 200:
+                return True, "Role assigned successfully."
+            data = await response.json()
+            return False, data.get("detail", "Failed to assign role.")
+        except Exception as e:
+            return False, "Unable to connect to server."
+
+    async def get_all_users(self) -> list[dict]:
+        """Fetches all registered users."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return []
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/users?user_id={user_id}",
+                method="GET",
+                headers={"Content-Type": "application/json"}
+            )
+            if response.status == 200:
+                return await response.json()
+            return []
+        except Exception as e:
+            print(f"[API Error] Failed to fetch users: {e}")
+            return []

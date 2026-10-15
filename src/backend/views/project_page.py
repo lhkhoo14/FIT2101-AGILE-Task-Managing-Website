@@ -9,6 +9,7 @@ if "." not in sys.path:
     sys.path.append(".")
 
 from server_data import ServerData, Project
+from project_helpers import get_project_id_from_url # type: ignore
 from auth import show_snackbar
 
 # Set once the project has loaded; used by the End Project button.
