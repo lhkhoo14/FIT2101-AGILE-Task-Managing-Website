@@ -5,8 +5,10 @@ from server_data import ServerData
 if "." not in sys.path:
     sys.path.append(".")
 
-from pyscript import when, web, window  # type: ignore
+from pyscript import when, web, window, document  # type: ignore
+from pyodide.ffi import create_proxy  # type: ignore
 from auth import show_snackbar
+from dialog import confirm_action
 
 # --- 1. TOGGLE PROFILE DROPDOWN MENU ---
 @when("click", "#profile-menu-btn")
@@ -71,6 +73,55 @@ async def guard_session(server_data: ServerData) -> dict | None:
 
     return user
 
+async def handle_delete_account(event):
+    """Delete the signed-in account, once the owner confirms with its password."""
+    event.stopPropagation()
+
+    dropdown = web.page["#profile-dropdown"]
+    if dropdown:
+        dropdown.classes.add("hidden")
+
+    confirmed, password = await confirm_action(
+        title="Delete my account",
+        require_password=True
+    )
+    if not confirmed:
+        return
+    if not password:
+        await show_snackbar("Enter your password to confirm.")
+        return
+
+    db = ServerData()
+    success, message = await db.delete_account(password)
+    await show_snackbar(message)
+
+    if success:
+        db.clear_session()
+        window.location.replace("login.html")
+
+# Created once and kept, so the callback cannot be garbage collected.
+_delete_account_proxy = create_proxy(handle_delete_account)
+
+
+def add_delete_account_item():
+    """Add the self-service account deletion entry to the profile dropdown.
+
+    Injected from here rather than written into every page's copy of the top bar,
+    and only once the session guard has confirmed somebody is signed in.
+    """
+    dropdown = web.page["#profile-dropdown"]
+    if not dropdown or web.page["#delete-account-btn"]:
+        return
+
+    button = document.createElement("button")
+    button.id = "delete-account-btn"
+    button.type = "button"
+    button.className = "dropdown-item"
+    button.innerText = "Delete Account"
+    button.addEventListener("click", _delete_account_proxy)
+    dropdown.appendChild(button)
+
+
 async def init_topbar():
     server_data = ServerData()
     current_user = await guard_session(server_data)
@@ -78,6 +129,7 @@ async def init_topbar():
     if current_user:
         # Update UI elements with logged-in user details if present
         render_user_profile(current_user)
+        add_delete_account_item()
 
 @when("click", ".brand-title")
 def handle_brand_home_click(event):

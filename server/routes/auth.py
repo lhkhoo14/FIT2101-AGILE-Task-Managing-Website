@@ -4,6 +4,9 @@ import time
 from database_manager import db_manager
 from security import hash_password, verify_password
 
+import logic.membership_logic as membership_logic
+from routes.activity import refresh_contributions
+
 router = APIRouter()
 
 # Fallback avatar (path is relative to src/views/, where the pages that display it live).
@@ -104,3 +107,60 @@ def get_users(user_id: int):
         }
         for user in db["users"]
     ]
+
+class DeleteAccountPayload(BaseModel):
+    password: str
+
+@router.post("/users/{user_id}/delete", status_code=status.HTTP_200_OK)
+def delete_account(user_id: int, payload: DeleteAccountPayload):
+    """Delete the caller's own account and unlink them from every project.
+
+    Self-service, and confirmed with the account's own password: there is no
+    route that lets one user delete another user's account, however privileged
+    their role, because a password can only be supplied by the person holding it.
+    The cascade removes the user record and every reference to it - project
+    membership, role assignments, sprint membership and task assignments - while
+    keeping the projects, the tasks and the logged work, so nothing a team built
+    disappears because one person left.
+
+    Refused while the user is the sole Project Creator of a project they are
+    still a member of: removing them would leave that project with no owner and
+    nobody able to appoint one. That role has to be handed over first.
+    """
+    # The password is checked before the transaction opens, so bcrypt is not
+    # holding the application_state row lock while it runs.
+    db = db_manager.read()
+    user = next((u for u in db.get("users", []) if str(u.get("user_id")) == str(user_id)), None)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user.get("password") or not verify_password(payload.password, user["password"]):
+        raise HTTPException(status_code=401, detail="Incorrect password.")
+
+    def mutate(db):
+        user = next((u for u in db.get("users", []) if str(u.get("user_id")) == str(user_id)), None)
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        projects = list(db.get("projects", {}).values())
+        blocking = membership_logic.sole_creator_projects(projects, user_id)
+        if blocking:
+            names = ", ".join(sorted(project.get("name", "Untitled project") for project in blocking))
+            noun = "project" if len(blocking) == 1 else "projects"
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"You are the only Project Creator of the following {noun}: {names}. "
+                    "Give that role to another member before deleting your account."
+                ),
+            )
+
+        for project in projects:
+            membership_logic.detach_member(project, user_id)
+            refresh_contributions(db, project)
+
+        username = user.get("username") or f"User {user_id}"
+        db["users"] = [u for u in db.get("users", []) if str(u.get("user_id")) != str(user_id)]
+
+        return {"status": "success", "message": f"Account '{username}' deleted."}
+
+    return db_manager.update(mutate)
