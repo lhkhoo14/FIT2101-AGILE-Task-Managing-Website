@@ -123,7 +123,14 @@ def ensure_member_fields(project: dict) -> None:
     if "contribute" not in project:
         project["contribute"] = list(members)
         
-    if "roles" not in project:
+    # CHANGE: a project cannot be permission-checked without a role map, and this is
+    # the only place one is built: the presets cannot be deleted and all five keys
+    # are always written, so an empty map can only mean the record predates roles.
+    # Stored projects carry "roles": {} rather than no key at all, which the old
+    # `"roles" not in project` test skipped over - leaving those projects
+    # role-less, so verify_project_permission() refused every user (the creator
+    # included) and permissions_for_user() hid every destructive control.
+    if not project.get("roles"):
         creators = [uid for uid in project.get("creator", []) if uid in members]
         project["roles"] = {
             "Project Creator": creators,
@@ -255,6 +262,43 @@ def create_project(payload: CreateProjectPayload):
     db_manager.write(db)
 
     return {"status": "success", "project": new_project}
+
+class DeleteProjectPayload(BaseModel):
+    user_id: int
+
+@router.delete("/projects/{project_id}", status_code=status.HTTP_200_OK)
+def delete_project(project_id: int, payload: DeleteProjectPayload):
+    """Delete a project and everything stored inside it.
+
+    Gated behind delete_project, which among the preset roles only the Project
+    Creator holds. Member accounts survive: they lose the project, not their user
+    record, so the same people can be brought together in another project. There
+    is nowhere left to record an audit entry once the project is gone, so this is
+    the one deletion that cannot be written to Change History.
+    """
+    def mutate(db):
+        project = db.get("projects", {}).get(str(project_id))
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        ensure_member_fields(project)
+        verify_project_permission(project, payload.user_id, "delete_project")
+
+        name = project.get("name", "Project")
+        db.get("projects", {}).pop(str(project_id), None)
+
+        # Leave no dangling project id behind on any account, so it cannot be
+        # reopened from a member's project list.
+        for user in db.get("users", []) or []:
+            owned = user.get("projects")
+            if isinstance(owned, list):
+                user["projects"] = [
+                    value for value in owned if str(value) != str(project_id)
+                ]
+
+        return {"status": "success", "message": f"Project '{name}' deleted."}
+
+    return db_manager.update(mutate)
 
 @router.get("/users/{user_id}/projects")
 def get_user_projects(user_id: int):
