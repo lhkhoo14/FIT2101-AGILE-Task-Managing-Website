@@ -6,7 +6,6 @@ if "." not in sys.path:
     sys.path.append(".")
 
 from pyscript import when, web, window, document  # type: ignore
-from pyodide.ffi import create_proxy  # type: ignore
 from auth import show_snackbar
 from dialog import confirm_action
 
@@ -73,9 +72,22 @@ async def guard_session(server_data: ServerData) -> dict | None:
 
     return user
 
+@when("click", "#profile-dropdown")
 async def handle_delete_account(event):
-    """Delete the signed-in account, once the owner confirms with its password."""
-    event.stopPropagation()
+    """Delete the signed-in account, once the owner confirms with its password.
+
+    The dropdown entry is created at run time, so it cannot carry the @when
+    binding itself: PyScript resolves a selector when the decorator runs, and
+    the button does not exist yet. The listener therefore sits on the dropdown,
+    which every page loading this module carries in its markup, and the click
+    is matched from event.target - which survives dispatch, unlike
+    event.currentTarget (the same reasoning as the members page's Remove
+    button).
+    """
+    target = event.target
+    button = target.closest("#delete-account-btn") if target is not None else None
+    if button is None:
+        return
 
     dropdown = web.page["#profile-dropdown"]
     if dropdown:
@@ -99,9 +111,6 @@ async def handle_delete_account(event):
         db.clear_session()
         window.location.replace("login.html")
 
-# Created once and kept, so the callback cannot be garbage collected.
-_delete_account_proxy = create_proxy(handle_delete_account)
-
 
 def add_delete_account_item():
     """Add the self-service account deletion entry to the profile dropdown.
@@ -118,7 +127,8 @@ def add_delete_account_item():
     button.type = "button"
     button.className = "dropdown-item"
     button.innerText = "Delete Account"
-    button.addEventListener("click", _delete_account_proxy)
+    # No listener here on purpose: handle_delete_account() listens on the
+    # dropdown itself, because a button added later cannot be bound by @when.
     dropdown.appendChild(button)
 
 

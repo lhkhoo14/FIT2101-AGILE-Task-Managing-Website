@@ -248,6 +248,9 @@ def save_kanban_state(project_id: int, sprint_id: str, payload: SaveKanbanStateP
     return {"status": "success"}
 
 
+# ---------------------------------------------------------------------------
+# Task deletion
+# ---------------------------------------------------------------------------
 @router.delete("/projects/{project_id}/sprints/{sprint_id}/tasks/{task_id}",
                status_code=status.HTTP_200_OK)
 def delete_task(project_id: int, sprint_id: str, task_id: str, payload: DeleteTaskPayload):
@@ -319,10 +322,9 @@ def delete_task(project_id: int, sprint_id: str, task_id: str, payload: DeleteTa
     return db_manager.update(mutate)
 
 
-
-
-
-
+# ---------------------------------------------------------------------------
+# Sprint deletion
+# ---------------------------------------------------------------------------
 @router.delete("/projects/{project_id}/sprints/{sprint_id}", status_code=status.HTTP_200_OK)
 def delete_sprint(project_id: int, sprint_id: str, payload: DeleteSprintPayload):
     """Delete a sprint together with everything on its board.

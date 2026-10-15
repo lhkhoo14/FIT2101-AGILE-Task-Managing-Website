@@ -47,9 +47,13 @@ _STYLES = """
 """
 
 _mounted = False
+# The confirmation that is on screen, if any. A second ask while one is open
+# would be answered by the same click, and both callers would act on it.
+_pending: asyncio.Future | None = None
 
 
 def _element(element_id: str):
+    """One of the dialog's own elements, which _mount() has put on the page."""
     return document.getElementById(element_id)
 
 
@@ -89,7 +93,16 @@ async def confirm_action(message: str = CANNOT_BE_REVERSED, *,
     Returns (confirmed, password). The password is only collected when
     require_password is set - used by account deletion, where typing it is what
     proves the person at the keyboard owns the account - and is empty otherwise.
+
+    One dialog at a time: while a confirmation is open, a further ask is refused
+    rather than queued, so a second click cannot be answered by the first one's
+    Yes and run its own action as well.
     """
+    global _pending
+    if _pending is not None and not _pending.done():
+        print("[Dialog] A confirmation is already open; ignoring this request.")
+        return False, ""
+
     _mount()
     overlay = _element("confirm-dialog-overlay")
     _element("confirm-dialog-title").textContent = title
@@ -102,16 +115,29 @@ async def confirm_action(message: str = CANNOT_BE_REVERSED, *,
     else:
         password_field.classList.add("hidden")
 
+    yes_button = _element("confirm-dialog-yes")
+    no_button = _element("confirm-dialog-no")
+    # Enabled per call: settle() disables them once the question is answered,
+    # which is what stops a double click answering it twice.
+    yes_button.disabled = False
+    no_button.disabled = False
+
     answer: asyncio.Future = asyncio.get_running_loop().create_future()
+    _pending = answer
 
     def settle(confirmed: bool) -> None:
+        """Answer the open dialog once, then stop the buttons taking a click."""
         if not answer.done():
+            yes_button.disabled = True
+            no_button.disabled = True
             answer.set_result(confirmed)
 
     def on_yes(event):
+        """The destructive answer."""
         settle(True)
 
     def on_no(event):
+        """The safe answer."""
         settle(False)
 
     def on_key(event):
@@ -119,8 +145,6 @@ async def confirm_action(message: str = CANNOT_BE_REVERSED, *,
         if event.key == "Escape":
             settle(False)
 
-    yes_button = _element("confirm-dialog-yes")
-    no_button = _element("confirm-dialog-no")
     proxies = [create_proxy(on_yes), create_proxy(on_no), create_proxy(on_key)]
     yes_button.addEventListener("click", proxies[0])
     no_button.addEventListener("click", proxies[1])
@@ -134,6 +158,7 @@ async def confirm_action(message: str = CANNOT_BE_REVERSED, *,
         confirmed = await answer
     finally:
         overlay.classList.add("hidden")
+        _pending = None
         yes_button.removeEventListener("click", proxies[0])
         no_button.removeEventListener("click", proxies[1])
         document.removeEventListener("keydown", proxies[2])

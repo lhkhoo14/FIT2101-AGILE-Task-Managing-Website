@@ -378,6 +378,35 @@ check("user record gone", all(u["user_id"] != 3 for u in db()["users"]))
 check("their work is kept, unassigned",
       db()["projects"]["1"]["sprints"][0]["kanban_state"]["active"][0]["assignee_id"] is None)
 
+# --- the preset table is shared, the presets are protected -------------------
+# Project 2 is the legacy record used above ("roles": {} and no role_definitions).
+# Repairing it used to hand the project the module-level PRESET_ROLES table
+# itself, so a custom role created here was written into that shared table and
+# leaked into every other project - and into the definitions handed to the next
+# project that needed repairing.
+response = post("/api/projects/2/roles",
+                {"user_id": 1, "name": "Auditor", "colour": "#123456",
+                 "description": "Reads the board.", "permissions": ["edit_sprints"]})
+check("a custom role can be created in the legacy project (201)",
+      response.status_code == 201, response.text)
+check("the shared preset table was not written to",
+      "Auditor" not in PRESET_ROLES, sorted(PRESET_ROLES))
+check("the other project's definitions are untouched",
+      "Auditor" not in project(1).get("role_definitions", {}),
+      sorted(project(1).get("role_definitions", {})))
+check("the role landed in its own project",
+      "Auditor" in project(2).get("role_definitions", {}),
+      sorted(project(2).get("role_definitions", {})))
+
+# The presets are what every permission is defined against, so the API refuses to
+# delete one - the same set the Roles page refuses in the browser.
+response = delete("/api/projects/2/roles/Employee", {"user_id": 1})
+check("a preset role cannot be deleted through the API (400)",
+      response.status_code == 400, response.text)
+response = delete("/api/projects/2/roles/Auditor", {"user_id": 1})
+check("a custom role still deletes (200)", response.status_code == 200, response.text)
+
+
 # --- project deletion --------------------------------------------------------
 response = delete("/api/projects/1", {"user_id": 2})
 check("delete_project holder required (403)", response.status_code == 403, response.text)

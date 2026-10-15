@@ -1,6 +1,7 @@
 import sys
 import asyncio
-import js  # type: ignore
+from html import escape
+
 from pyscript import window, web, when  # type: ignore
 
 if "." not in sys.path:
@@ -43,12 +44,15 @@ def _reveal_delete_control(permissions):
 
 def load_default_view(project: Project):
     content_el = web.page["#project-view-content"]
-    description = project.description or "There is no description for this project."
+    # Both values are project input, so they are escaped before they are placed
+    # into innerHTML, the same as every other value a page renders.
+    name = escape(project.name or "")
+    description = escape(project.description or "There is no description for this project.")
 
     if content_el:
         content_el.innerHTML = f"""
             <div class="content-header">
-                <h1 class="page-title">{project.name}</h1>
+                <h1 class="page-title">{name}</h1>
             </div>
             <div class="project-details-card" style="background:#fff; padding:24px; border-radius:8px; border:1px solid #e0e0e0;">
                 <h2 style="margin-bottom:12px; font-size:18px;">Project Description</h2>

@@ -1,3 +1,4 @@
+import copy
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, status
@@ -64,6 +65,11 @@ PRESET_ROLES = {
         "conflicting_roles": []
     }
 }
+
+# The presets cannot be deleted: the application's permissions are defined
+# against them, so removing one would silently strip every member holding it.
+# This is the same set the Roles page blocks in the browser.
+PROTECTED_PRESET_NAMES = frozenset(PRESET_ROLES)
 
 class CreateProjectPayload(BaseModel):
     user_id: int
@@ -148,7 +154,21 @@ def ensure_member_fields(project: dict) -> None:
             "Employee": [uid for uid in members if uid not in creators],
         }
 
-    definitions = project.setdefault("role_definitions", PRESET_ROLES )
+    # Every preset key exists in every role map, whatever the record looked like:
+    # assign_role_to_member() copes without one, but the removal rules and the
+    # Roles page read this map directly.
+    roles = project.get("roles")
+    if isinstance(roles, dict):
+        for preset_name in PRESET_ROLES:
+            roles.setdefault(preset_name, [])
+
+    # The presets are copied in, never aliased: PRESET_ROLES is one module-level
+    # table, and a project that borrowed it would write every custom role of its
+    # own straight into that shared table, leaking the role into every other
+    # project, and into the definitions a later repair hands out.
+    definitions = project.setdefault("role_definitions", {})
+    for preset_name, preset_meta in PRESET_ROLES.items():
+        definitions.setdefault(preset_name, copy.deepcopy(preset_meta))
 
     for r_name, meta in definitions.items():
         if isinstance(meta, dict):
@@ -188,10 +208,15 @@ def create_project(payload: CreateProjectPayload):
         "creator": [payload.user_id],
         "members": [payload.user_id],
         "contribute": [payload.user_id],
+        # The five preset keys the rest of the application reads, which is also
+        # the set ensure_member_fields() repairs - so a new project needs no
+        # repair and never carries role names that have no definition.
         "roles": {
             "Project Creator": [payload.user_id],
-            "Project Manager": [],
-            "Project Member": []
+            "Scrum Master": [],
+            "Product Owner": [],
+            "Manager": [],
+            "Employee": []
         },
         "role_definitions": {
             "Project Creator": {
@@ -534,8 +559,11 @@ def delete_project_role(project_id: int, role_name: str, payload: DeleteRolePayl
     ensure_member_fields(project)
     verify_project_permission(project, payload.user_id, "manage_roles")
 
-    # Prevent deletion of core default roles
-    protected_roles = {"Project Creator", "Project Manager", "Project Member"}
+    # Prevent deletion of the preset roles. This is the set the Roles page blocks
+    # in the browser; it used to name two roles (Project Manager, Project Member)
+    # that no longer exist, while leaving Employee and the other presets open to a
+    # direct API call that would strip their holders of every permission.
+    protected_roles = PROTECTED_PRESET_NAMES
     if role_name in protected_roles:
         raise HTTPException(status_code=400, detail="Cannot delete default system roles.")
 

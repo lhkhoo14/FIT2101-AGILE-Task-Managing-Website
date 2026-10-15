@@ -1,7 +1,6 @@
 import sys
 import asyncio
 import html
-import json
 import js  # type: ignore
 from pyscript import web, window, when  # type: ignore
 from urllib.parse import parse_qs, urlparse, unquote

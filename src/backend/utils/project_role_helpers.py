@@ -121,8 +121,13 @@ def build_permissions_checklist_html(role_permissions: dict, current_permissions
         """
     return html_content
 
-def permissions_for_user(project_payload: Optional[dict], user_id: Optional[int]) -> set[str]:
+def permissions_for_user(project_payload: Optional[dict],
+                         user_id: Optional[int] | str) -> set[str]:
     """The permissions a user holds in a project.
+
+    The id may arrive as an int (the signed-in user) or as a string, which is
+    how a roles map keys its holders (see member_permission_sets); it is
+    normalised with str() before anything is compared.
 
     Accepts either a `/projects/{id}/members` payload or a raw project record,
     which carry roles and role_definitions under the same keys. Used to decide
@@ -164,7 +169,8 @@ PRESET_RANK = {
 UNRANKED = 1
 
 
-def highest_preset_rank(project_payload: Optional[dict], user_id) -> int:
+def highest_preset_rank(project_payload: Optional[dict],
+                        user_id: Optional[int] | str) -> int:
     """The rank of the member's most senior preset role (UNRANKED if they hold none)."""
     roles = (project_payload or {}).get("roles") or {}
     wanted = str(user_id)
@@ -194,7 +200,9 @@ def member_permission_sets(project_payload: Optional[dict]) -> dict[str, set[str
     return {key: permissions_for_user(project_payload, key) for key in keys}
 
 
-def can_remove_member(project_payload: Optional[dict], actor_id, target_id) -> bool:
+def can_remove_member(project_payload: Optional[dict],
+                      actor_id: Optional[int] | str,
+                      target_id: Optional[int] | str) -> bool:
     """Whether actor_id outranks target_id enough to remove them from the project.
 
     Two tests, in this order:
