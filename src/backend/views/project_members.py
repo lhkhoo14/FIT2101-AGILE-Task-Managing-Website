@@ -345,7 +345,7 @@ async def handle_remove_member_click(event):
     """
     target = event.target
     button = target.closest(".member-remove-btn") if target is not None else None
-    if button is None:
+    if not button:  # closest() hands back a falsy proxy, never None, on no match
         return
 
     member_id = button.getAttribute("data-member-id")

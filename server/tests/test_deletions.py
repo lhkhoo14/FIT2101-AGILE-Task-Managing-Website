@@ -10,6 +10,7 @@ Every check is printed and the process exits non-zero if any failed. It is a
 plain script rather than a pytest module because the repository has no test
 runner configured.
 """
+import ast
 import json
 import os
 import sys
@@ -18,6 +19,11 @@ from datetime import date, timedelta
 
 os.environ.pop("DATABASE_URL", None)
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+# Repository root, for the static checks on the browser's own modules.
+PROJECT_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+)
 
 import database_manager  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -367,11 +373,13 @@ check("at equal rank the strictly larger permission set wins (200)",
 check("...and the usual cascade ran", 4 not in project(3)["members"], project(3)["members"])
 
 # --- account deletion --------------------------------------------------------
+# main's US-38 semantics: the account goes, its role assignments and card
+# assignments are cleared, and a project where the user was the last member is
+# cleaned up. A sole Project Creator is therefore no longer refused - that case
+# is asserted at the end of this file, because deleting user 1 hands the top
+# role on and later checks still need that account.
 response = post("/api/users/3/delete", {"password": "WrongPassword1"})
 check("wrong password refused (401)", response.status_code == 401, response.text)
-response = post("/api/users/1/delete", {"password": "Password123"})
-check("sole Project Creator cannot delete their account (409)", response.status_code == 409,
-      response.text)
 response = post("/api/users/3/delete", {"password": "Password123"})
 check("member deletes their own account (200)", response.status_code == 200, response.text)
 check("user record gone", all(u["user_id"] != 3 for u in db()["users"]))
@@ -417,6 +425,131 @@ check("project gone", "1" not in remaining["projects"])
 check("accounts survive, dangling project id pruned",
       all(1 not in (u.get("projects") or []) for u in remaining["users"]),
       [u["projects"] for u in remaining["users"]])
+
+# --- account deletion: the Project Creator's own account ---------------------
+# Handing ownership on instead of refusing: the account and its assignments go,
+# the project stays for everyone else, and the top role passes to a member.
+creator = next(u for u in db()["users"] if u["user_id"] == 1)
+creator_name = str(creator.get("username") or "").lower()
+response = post("/api/users/1/delete", {"password": "Password123"})
+check("a sole Project Creator may delete their account (200)", response.status_code == 200,
+      response.text)
+final = db()
+check("their user record is gone", all(u["user_id"] != 1 for u in final["users"]))
+check("no role still lists them",
+      all(str(holder) != "1"
+          for holders in project(3)["roles"].values() if isinstance(holders, list)
+          for holder in holders),
+      project(3)["roles"])
+check("the project survives for the others", 1 not in project(3)["members"],
+      project(3)["members"])
+check("the top role passed to a remaining member",
+      len(project(3)["roles"].get("Project Creator", [])) == 1
+      and str(project(3)["roles"]["Project Creator"][0]) in [str(m) for m in project(3)["members"]],
+      project(3)["roles"].get("Project Creator"))
+check("no card is still assigned to them",
+      all(str(task.get("assignee_id")) != "1"
+          and str(task.get("assignee") or "").lower() != creator_name
+          for project_ in final["projects"].values()
+          for sprint in (project_.get("sprints") or [])
+          for column in ("backlog", "active", "review", "completed")
+          for task in ((sprint.get("kanban_state") or {}).get(column) or [])),
+      "a card is still assigned to the deleted account")
+
+
+# ---------------------------------------------------------------------------
+# The browser's own data layer.
+#
+# PyScript runs src/backend/server_data.py, so every method the views call has
+# to be a member of ServerData *in that file*. A stray duplicate `class Project:`
+# once terminated ServerData halfway down, which left record_change,
+# create_project_role, get_role_members and the rest defined but unreachable -
+# py_compile was happy, the methods were plainly in the file by grep, and every
+# page that used them failed at run time with
+# "'ServerData' object has no attribute ...". These checks are static, so they
+# run here without a browser.
+# ---------------------------------------------------------------------------
+SERVER_DATA = os.path.join(PROJECT_ROOT, "src", "backend", "server_data.py")
+CLIENT_DIRS = (os.path.join(PROJECT_ROOT, "src", "backend"),)
+CLIENT_OWNERS = ("db", "server_data", "data", "store")
+DICT_METHODS = {"get", "items", "keys", "values", "pop", "update", "setdefault"}
+
+
+def client_module_audit():
+    """Returns (top-level class names, ServerData members, orphan defs, called)."""
+    with open(SERVER_DATA, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read())
+
+    class_names = [node.name for node in tree.body if isinstance(node, ast.ClassDef)]
+    orphans = [
+        node.name for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+    members = []
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == "ServerData":
+            members += [
+                child.name for child in node.body
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+            ]
+
+    called = set()
+    for root in CLIENT_DIRS:
+        for dirpath, _dirnames, filenames in os.walk(root):
+            for filename in filenames:
+                if not filename.endswith(".py"):
+                    continue
+                path = os.path.join(dirpath, filename)
+                if os.path.abspath(path) == os.path.abspath(SERVER_DATA):
+                    continue
+                with open(path, encoding="utf-8") as handle:
+                    try:
+                        module = ast.parse(handle.read())
+                    except SyntaxError:
+                        continue
+                for node in ast.walk(module):
+                    if not isinstance(node, ast.Call):
+                        continue
+                    func = node.func
+                    if not isinstance(func, ast.Attribute):
+                        continue
+                    owner = func.value
+                    if (
+                        isinstance(owner, ast.Name)
+                        and owner.id in CLIENT_OWNERS
+                        and func.attr not in DICT_METHODS
+                    ):
+                        called.add(func.attr)
+
+    return class_names, members, orphans, called
+
+
+CLASS_NAMES, SERVER_MEMBERS, ORPHAN_DEFS, CALLED_METHODS = client_module_audit()
+
+check("the browser's server_data.py defines Project exactly once",
+      CLASS_NAMES.count("Project") == 1,
+      f"classes found: {CLASS_NAMES}")
+check("the browser's server_data.py defines ServerData exactly once",
+      CLASS_NAMES.count("ServerData") == 1,
+      f"classes found: {CLASS_NAMES}")
+check("no method in server_data.py sits outside a class",
+      not ORPHAN_DEFS,
+      f"module-level defs: {ORPHAN_DEFS}")
+check("ServerData has no method defined twice",
+      len(SERVER_MEMBERS) == len(set(SERVER_MEMBERS)),
+      f"duplicates: {sorted({m for m in SERVER_MEMBERS if SERVER_MEMBERS.count(m) > 1})}")
+
+MISSING_ON_SERVER_DATA = sorted(CALLED_METHODS - set(SERVER_MEMBERS))
+check("every ServerData method the views call is a member of ServerData",
+      not MISSING_ON_SERVER_DATA,
+      f"called but not defined on ServerData: {MISSING_ON_SERVER_DATA}")
+
+for name in ("record_change", "get_change_history", "get_contributions",
+             "log_task_time", "get_project_member_users", "create_project_role",
+             "get_role_members", "remove_project_member", "delete_account"):
+    check(f"ServerData.{name} is reachable from the browser",
+          name in SERVER_MEMBERS)
+
 
 if __name__ == "__main__":
     print(f"\n{sum(results)}/{len(results)} checks passed")

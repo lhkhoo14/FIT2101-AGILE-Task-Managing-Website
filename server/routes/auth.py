@@ -4,8 +4,6 @@ from pydantic import BaseModel, EmailStr
 import time
 from database_manager import db_manager
 from security import hash_password, verify_password
-import logic.membership_logic as membership_logic
-from routes.activity import refresh_contributions
 
 router = APIRouter()
 
@@ -137,9 +135,13 @@ ALLOWED_PHOTO_PREFIXES = (
     "data:image/webp;base64,",
 )
 MAX_PHOTO_LENGTH = 300000
-ROLE_PRODUCT_OWNER = "Product Owner"
+# These two have to match the presets defined in routes/projects.py, because the
+# promotion below only helps if it lands in the role that actually carries the
+# project's permissions in this app: "Project Creator" is the top role here, and
+# the ordinary members' preset is "Employee" (there is no "Member" role).
+ROLE_PRODUCT_OWNER = "Project Creator"
 ROLE_SCRUM_MASTER = "Scrum Master"
-ROLE_MEMBER = "Member"
+ROLE_MEMBER = "Employee"
 KANBAN_COLUMNS = ("backlog", "active", "review", "completed")
 
 
@@ -323,56 +325,119 @@ def change_password(user_id: int, payload: PasswordChangePayload):
     return db_manager.update(mutate)
 
 
-@router.post("/users/{user_id}/delete", status_code=status.HTTP_200_OK)
-def delete_account(user_id: int, payload: DeleteAccountPayload):
-    """Delete the caller's own account and unlink them from every project.
+def _without(values, user_id):
+    """Return a copy of a list with every entry equal to user_id (int or str) removed."""
+    return [v for v in (values or []) if str(v) != str(user_id)]
 
-    Self-service, and confirmed with the account's own password: there is no
-    route that lets one user delete another user's account, however privileged
-    their role, because a password can only be supplied by the person holding it.
-    The cascade removes the user record and every reference to it - project
-    membership, role assignments, sprint membership and task assignments - while
-    keeping the projects, the tasks and the logged work, so nothing a team built
-    disappears because one person left.
 
-    Refused while the user is the sole Project Creator of a project they are
-    still a member of: removing them would leave that project with no owner and
-    nobody able to appoint one. That role has to be handed over first.
+def _ensure_roles(project):
+    """Backfill roles on old projects (same rule as routes/projects.ensure_member_fields)."""
+    members = project.get("members", [])
+    if "roles" not in project:
+        creators = project.get("creator", [])
+        if not isinstance(creators, list):
+            creators = [creators]
+        owners = [m for m in members if any(str(m) == str(c) for c in creators)]
+        project["roles"] = {
+            ROLE_PRODUCT_OWNER: owners,
+            ROLE_SCRUM_MASTER: [],
+            ROLE_MEMBER: [m for m in members if m not in owners],
+        }
+    return project["roles"]
+
+
+def _promote_if_no_owner(project):
+    """If the project has no Product Owner left, promote the highest-ranking member.
+
+    Ranking: Scrum Master, then Member, then anyone remaining in `members`.
     """
-    # The password is checked before the transaction opens, so bcrypt is not
-    # holding the application_state row lock while it runs.
-    db = db_manager.read()
-    user = next((u for u in db.get("users", []) if str(u.get("user_id")) == str(user_id)), None)
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    if not user.get("password") or not verify_password(payload.password, user["password"]):
-        raise HTTPException(status_code=401, detail="Incorrect password.")
+    roles = project["roles"]
+    roles.setdefault(ROLE_PRODUCT_OWNER, [])
+    roles.setdefault(ROLE_SCRUM_MASTER, [])
+    roles.setdefault(ROLE_MEMBER, [])
+    if roles[ROLE_PRODUCT_OWNER]:
+        return
 
+    if roles[ROLE_SCRUM_MASTER]:
+        promoted = roles[ROLE_SCRUM_MASTER][0]
+    elif roles[ROLE_MEMBER]:
+        promoted = roles[ROLE_MEMBER][0]
+    else:
+        promoted = project["members"][0]
+
+    for name, holders in roles.items():
+        if isinstance(holders, list):
+            roles[name] = _without(holders, promoted)
+    roles[ROLE_PRODUCT_OWNER].append(promoted)
+
+
+def _unassign_tasks(sprint, user):
+    state = sprint.get("kanban_state") or {}
+    names = {
+        str(user.get("username", "")).lower(),
+        str(user.get("email", "")).lower(),
+    } - {""}
+    for column in KANBAN_COLUMNS:
+        for task in state.get(column, []) or []:
+            assignee_id = task.get("assignee_id")
+            if assignee_id is not None:
+                matches = str(assignee_id) == str(user["user_id"])
+            else:
+                matches = str(task.get("assignee") or "").lower() in names
+            if matches:
+                task["assignee_id"] = None
+                task["assignee"] = None
+
+
+@router.post("/users/{user_id}/delete")
+def delete_account(user_id: int, payload: DeleteAccountPayload):
     def mutate(db):
-        user = next((u for u in db.get("users", []) if str(u.get("user_id")) == str(user_id)), None)
-        if user is None:
+        user = _find_user(db, user_id)
+        if not user:
             raise HTTPException(status_code=404, detail="User not found")
+        if not verify_password(payload.password, user["password"]):
+            raise HTTPException(status_code=401, detail="Password is incorrect.")
 
-        projects = list(db.get("projects", {}).values())
-        blocking = membership_logic.sole_creator_projects(projects, user_id)
-        if blocking:
-            names = ", ".join(sorted(project.get("name", "Untitled project") for project in blocking))
-            noun = "project" if len(blocking) == 1 else "projects"
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"You are the only Project Creator of the following {noun}: {names}. "
-                    "Give that role to another member before deleting your account."
-                ),
+        deleted_projects = []
+        for pid, project in list(db.get("projects", {}).items()):
+            if not any(str(m) == str(user_id) for m in project.get("members", [])):
+                continue
+
+            _ensure_roles(project)   # must run BEFORE the user is removed
+            project["members"] = _without(project.get("members"), user_id)
+            if "contribute" in project:
+                project["contribute"] = _without(project["contribute"], user_id)
+            creators = project.get("creator", [])
+            project["creator"] = (
+                _without(creators, user_id) if isinstance(creators, list)
+                else (None if str(creators) == str(user_id) else creators)
             )
+            for name, holders in project["roles"].items():
+                if isinstance(holders, list):
+                    project["roles"][name] = _without(holders, user_id)
+            if isinstance(project.get("contributions"), dict):
+                project["contributions"].pop(str(user_id), None)
 
-        for project in projects:
-            membership_logic.detach_member(project, user_id)
-            refresh_contributions(db, project)
+            if not project["members"]:
+                # The user was the sole remaining member: clean the project up.
+                deleted_projects.append(pid)
+                continue
 
-        username = user.get("username") or f"User {user_id}"
-        db["users"] = [u for u in db.get("users", []) if str(u.get("user_id")) != str(user_id)]
+            _promote_if_no_owner(project)
+            for sprint in project.get("sprints", []):
+                if sprint.get("members") is not None:
+                    sprint["members"] = _without(sprint["members"], user_id)
+                _unassign_tasks(sprint, user)
 
-        return {"status": "success", "message": f"Account '{username}' deleted."}
+        for pid in deleted_projects:
+            db["projects"].pop(pid, None)
+        removed = {str(d) for d in deleted_projects}
+        for other in db["users"]:
+            if "projects" in other:
+                other["projects"] = [p for p in other["projects"] if str(p) not in removed]
+
+        # Remove the user. next_user_id is deliberately left alone so ids are never reused.
+        db["users"] = [u for u in db["users"] if str(u.get("user_id")) != str(user_id)]
+        return {"status": "success"}
 
     return db_manager.update(mutate)
