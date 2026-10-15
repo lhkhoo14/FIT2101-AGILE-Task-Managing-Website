@@ -2,11 +2,37 @@ from fastapi import HTTPException
 from typing import Dict, Any
 from database_manager import db_manager
 
+# Preset roles a project may only ever have one holder of. The three leadership
+# posts are single-seat by definition: a second Project Creator would be a
+# second owner, and two Scrum Masters or Product Owners would both be steering
+# the same sprint cycle. Manager and Employee stay multi-seat.
+#
+# src/backend/utils/project_role_helpers.py mirrors this tuple, so the Add
+# Member list offers exactly the people this route will accept.
+SINGLETON_PRESET_ROLES = ("Project Creator", "Scrum Master", "Product Owner")
+
 def validate_role_assignment(project: dict, user_id: int, target_role: str) -> None:
     """Ensures assigning `target_role` does not violate role restriction rules from unified role_definitions."""
     roles = project.get("roles", {})
     role_definitions = project.get("role_definitions", {})
-    
+
+    # Single-seat presets: refuse a second holder instead of quietly sharing the
+    # post. Re-assigning it to whoever already holds it stays a no-op, which is
+    # what an idempotent retry looks like.
+    if target_role in SINGLETON_PRESET_ROLES:
+        other_holders = [
+            holder for holder in roles.get(target_role, []) or []
+            if str(holder) != str(user_id)
+        ]
+        if other_holders:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"'{target_role}' can only be held by one member. "
+                    f"Remove the current holder from the role first."
+                )
+            )
+
     # Get roles the user currently holds
     current_user_roles = [role for role, uids in roles.items() if user_id in uids]
     

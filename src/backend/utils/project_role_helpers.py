@@ -165,6 +165,13 @@ PRESET_RANK = {
     "Employee": 2,
 }
 
+# Preset roles only one member may hold at a time: the three leadership posts.
+# The Add Member list offers nobody while one of these is filled, because the
+# sitting holder always ranks at least as high as the role itself (see the rank
+# filter in project_role_details.py). server/dependencies.py enforces the same
+# rule, so the list and the route agree on who may be added.
+SINGLETON_PRESET_ROLES = ("Project Creator", "Scrum Master", "Product Owner")
+
 # A member holding only custom roles, or no role at all, ranks below every preset.
 UNRANKED = 1
 

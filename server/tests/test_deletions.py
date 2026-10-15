@@ -29,6 +29,7 @@ import database_manager  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from security import hash_password  # noqa: E402
 from routes.projects import PRESET_ROLES  # noqa: E402
+from dependencies import SINGLETON_PRESET_ROLES as SERVER_SINGLETONS  # noqa: E402
 from main import app  # noqa: E402
 
 TMP_DB = os.path.join(tempfile.mkdtemp(), "smoke_db.json")
@@ -549,6 +550,99 @@ for name in ("record_change", "get_change_history", "get_contributions",
              "get_role_members", "remove_project_member", "delete_account"):
     check(f"ServerData.{name} is reachable from the browser",
           name in SERVER_MEMBERS)
+
+
+# ---------------------------------------------------------------------------
+# Single-seat preset roles.
+#
+# Project Creator, Scrum Master and Product Owner are leadership posts, so a
+# project may only ever have one holder of each. Beta (project 3) starts with
+# all three empty and Alice (1) is its Project Creator, so she holds
+# manage_roles and can hand them out.
+# ---------------------------------------------------------------------------
+def assign_role(project_id, actor, target, role):
+    return post(f"/api/projects/{project_id}/roles/assign",
+                {"user_id": actor, "target_user_id": target, "role_name": role})
+
+
+# These checks build their own project: by the time this section runs the cases
+# above have deleted accounts and passed project 3 to another owner, so nothing
+# in the seed can be relied on. Bob (2) and whichever account follows him are
+# the survivors of that sequence.
+owner_id = 2
+other_user = next(user for user in db()["users"] if user["user_id"] != owner_id)
+other_id = other_user["user_id"]
+other_name = other_user["username"]
+
+created = post("/api/projects", {"user_id": owner_id, "name": "Single seat",
+                                 "description": "single-seat role checks"})
+fixture = created.json().get("project", {})
+fixture_id = fixture.get("project_id")
+check("the single-seat fixture project was created (201)",
+      created.status_code == 201 and bool(fixture_id), created.text)
+
+joined = post(f"/api/projects/{fixture_id}/members",
+              {"user_id": owner_id, "username": other_name})
+check("a second member joins the fixture (200)", joined.status_code == 200, joined.text)
+
+
+def fixture_roles(role):
+    return [str(uid) for uid in project(fixture_id)["roles"].get(role, [])]
+
+
+response = assign_role(fixture_id, owner_id, other_id, "Product Owner")
+check("Product Owner can be assigned (200)", response.status_code == 200, response.text)
+check("the Product Owner holds it alone", fixture_roles("Product Owner") == [str(other_id)],
+      fixture_roles("Product Owner"))
+
+response = assign_role(fixture_id, owner_id, owner_id, "Product Owner")
+check("a second Product Owner is refused (422)", response.status_code == 422, response.text)
+check("the refusal explains the rule",
+      "one member" in str(response.json().get("detail", "")).lower(), response.text)
+check("the existing Product Owner is untouched", fixture_roles("Product Owner") == [str(other_id)],
+      fixture_roles("Product Owner"))
+
+response = assign_role(fixture_id, owner_id, other_id, "Product Owner")
+check("re-assigning to the sitting holder stays a no-op (200)",
+      response.status_code == 200, response.text)
+check("still exactly one Product Owner", fixture_roles("Product Owner") == [str(other_id)],
+      fixture_roles("Product Owner"))
+
+response = assign_role(fixture_id, owner_id, other_id, "Scrum Master")
+check("Scrum Master can be assigned (200)", response.status_code == 200, response.text)
+response = assign_role(fixture_id, owner_id, owner_id, "Scrum Master")
+check("a second Scrum Master is refused (422)", response.status_code == 422, response.text)
+
+response = assign_role(fixture_id, owner_id, other_id, "Project Creator")
+check("a second Project Creator is refused (422)", response.status_code == 422, response.text)
+check("the original Project Creator keeps the role",
+      fixture_roles("Project Creator") == [str(owner_id)], fixture_roles("Project Creator"))
+
+# Manager and Employee stay multi-seat, so a second holder is fine.
+response = assign_role(fixture_id, owner_id, other_id, "Manager")
+check("Manager can be assigned (200)", response.status_code == 200, response.text)
+response = assign_role(fixture_id, owner_id, owner_id, "Manager")
+check("two Managers are allowed (200)", response.status_code == 200, response.text)
+
+# The Add Member list hides exactly the members the route above would refuse.
+CLIENT_HELPERS = os.path.join(PROJECT_ROOT, "src", "backend", "utils",
+                              "project_role_helpers.py")
+with open(CLIENT_HELPERS, encoding="utf-8") as handle:
+    client_helpers_src = handle.read()
+client_singleton_text = client_helpers_src.split("SINGLETON_PRESET_ROLES = (", 1)[-1].split(")", 1)[0]
+client_singletons = [name.strip().strip("\"'") for name in client_singleton_text.split(",") if name.strip()]
+check("the client and the server agree on the single-seat roles",
+      client_singletons == list(SERVER_SINGLETONS),
+      f"client={client_singletons} server={list(SERVER_SINGLETONS)}")
+
+ROLE_DETAILS = os.path.join(PROJECT_ROOT, "src", "backend", "views",
+                            "project_role_details.py")
+with open(ROLE_DETAILS, encoding="utf-8") as handle:
+    role_details_src = handle.read()
+check("the Add Member list drops members who rank at least as high",
+      "highest_preset_rank(project_data, uid) >= target_rank" in role_details_src)
+check("a filled single-seat post says who holds it",
+      "already holds" in role_details_src)
 
 
 if __name__ == "__main__":

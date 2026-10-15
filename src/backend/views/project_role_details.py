@@ -13,10 +13,14 @@ from auth import show_snackbar  # type: ignore
 from dialog import confirm_action  # type: ignore
 from project_helpers import get_project_id_from_url  # type: ignore
 from project_role_helpers import ( # type: ignore
-    close_all_modals, 
-    ROLE_PERMISSIONS, 
-    PRESET_ROLES, 
-    PROTECTED_PRESET_NAMES  
+    close_all_modals,
+    ROLE_PERMISSIONS,
+    PRESET_ROLES,
+    PRESET_RANK,
+    UNRANKED,
+    SINGLETON_PRESET_ROLES,
+    highest_preset_rank,
+    PROTECTED_PRESET_NAMES
 )
 
 _current_role_meta = {}
@@ -342,8 +346,19 @@ async def open_add_member_modal(event):
         return
 
     html_content = ""
+
+    # Only members who rank below the role being handed out are offered. A
+    # member whose most senior preset role already matches or outranks it stays
+    # off the list, which stops an Employee post being offered to a Manager and
+    # is also what leaves a filled single-seat post (Project Creator, Scrum
+    # Master, Product Owner) with no candidates: the sitting holder always
+    # ranks at least as high as the role itself.
+    target_rank = PRESET_RANK.get(role_name, UNRANKED)
+
     for uid in member_ids:
         if uid in current_ids:
+            continue
+        if highest_preset_rank(project_data, uid) >= target_rank:
             continue
         u_obj = next((u for u in users_db if u.get("user_id") == uid), {"username": f"User {uid}", "email": ""})
         uname = html.escape(u_obj.get("username", ""))
@@ -353,7 +368,23 @@ async def open_add_member_modal(event):
             <button type="button" onclick="assignRoleToMember({uid}, '{uname}', '{role_name}')" style="background: #e0e7ff; color: #4338ca; border: none; padding: 4px 10px; border-radius: 4px; font-size: 12px; cursor: pointer;">Add</button>
         </div>
         """
-    container.innerHTML = html_content or '<p style="text-align: center; color: #64748b; font-size: 13px;">No available members to add.</p>'
+
+    if not html_content:
+        holders = (project_data.get("roles") or {}).get(role_name) or []
+        if role_name in SINGLETON_PRESET_ROLES and holders:
+            holder_name = next(
+                (html.escape(u.get("username", "")) for u in users_db if u.get("user_id") == holders[0]),
+                f"User {holders[0]}",
+            )
+            html_content = (
+                '<p style="text-align: center; color: #64748b; font-size: 13px;">'
+                f'{holder_name} already holds {html.escape(role_name)}. '
+                'Remove them from the role first - only one member can hold it.</p>'
+            )
+        else:
+            html_content = '<p style="text-align: center; color: #64748b; font-size: 13px;">No available members to add.</p>'
+
+    container.innerHTML = html_content
     
     modal = web.page["#add-role-member-modal"]
     if modal:
