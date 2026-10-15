@@ -11,8 +11,13 @@ if "." not in sys.path:
 
 from server_data import ServerData
 from auth import show_snackbar  # type: ignore
-from project_helpers import get_project_id_from_url # type: ignore
-from project_role_helpers import close_all_modals, ROLE_PERMISSIONS # type: ignore
+from project_helpers import get_project_id_from_url  # type: ignore
+from project_role_helpers import ( # type: ignore
+    close_all_modals, 
+    ROLE_PERMISSIONS, 
+    PRESET_ROLES, 
+    PROTECTED_PRESET_NAMES  
+)
 
 _current_role_meta = {}
 _all_project_roles = []
@@ -40,11 +45,7 @@ async def init_role_detail():
 
     role_defs = project_data.get("role_definitions", {})
     if not role_defs:
-        role_defs = {
-            "Project Creator": {"colour": "#4747D4", "description": "Full administrative access to the project."},
-            "Project Manager": {"colour": "#f59e0b", "description": "Manages sprints, tasks, and team coordination."},
-            "Project Member": {"colour": "#10b981", "description": "Standard contributing member access."}
-        }
+        role_defs = PRESET_ROLES
 
     _all_project_roles = []
     for r_name, meta in role_defs.items():
@@ -80,13 +81,19 @@ async def init_role_detail():
     render_role_permissions_view(_current_role_meta.get("permissions", []))
     render_role_conflicts_view(_current_role_meta.get("conflicting_roles", []))
 
-    protected_roles = {"Project Creator", "Project Manager", "Project Member"}
     actions_el = web.page["#role-action-buttons-container"]
-    if actions_el and role_name not in protected_roles:
-        actions_el.innerHTML = f"""
-        <button type="button" class="create-role-btn" onclick="triggerEditRole('{role_name}')">Edit Role</button>
-        <button type="button" class="create-role-btn" style="background-color: #dc2626;" onclick="triggerDeleteRole('{role_name}')">Delete Role</button>
-        """
+    if actions_el:
+        if role_name in PROTECTED_PRESET_NAMES:
+            # Preset roles can be edited (colour/description) but NOT deleted
+            actions_el.innerHTML = f"""
+            <button type="button" class="create-role-btn" onclick="triggerEditRole('{role_name}')">Edit Role Colour & Description</button>
+            """
+        else:
+            # Custom roles can be fully edited and deleted
+            actions_el.innerHTML = f"""
+            <button type="button" class="create-role-btn" onclick="triggerEditRole('{role_name}')">Edit Role</button>
+            <button type="button" class="create-role-btn" style="background-color: #dc2626;" onclick="triggerDeleteRole('{role_name}')">Delete Role</button>
+            """
 
     await load_role_members(project_id, role_name)
 
@@ -158,13 +165,34 @@ def handle_member_search(event):
 def trigger_edit_role_flow(role_name):
     if not _current_role_meta:
         return
+    is_preset = role_name in PROTECTED_PRESET_NAMES
+
     js.document.getElementById("edit-role-original-name").value = role_name
     js.document.getElementById("edit-role-name-display").value = role_name
     js.document.getElementById("edit-role-colour-input").value = _current_role_meta.get("colour", "#4F46E5")
     js.document.getElementById("edit-role-desc-input").value = _current_role_meta.get("description", "")
 
+    # Lock permissions and conflicts container if it's a preset role
+    perms_container = js.document.getElementById("edit-role-permissions-list")
+    conflicts_container = js.document.getElementById("edit-role-conflicts-list")
+
     populate_edit_permissions_checklist(_current_role_meta.get("permissions", []))
     populate_edit_conflict_checkboxes(_all_project_roles, role_name, _current_role_meta.get("conflicting_roles", []))
+
+    if is_preset:
+        if perms_container:
+            for cb in perms_container.querySelectorAll("input"):
+                cb.disabled = True
+        if conflicts_container:
+            for cb in conflicts_container.querySelectorAll("input"):
+                cb.disabled = True
+    else:
+        if perms_container:
+            for cb in perms_container.querySelectorAll("input"):
+                cb.disabled = False
+        if conflicts_container:
+            for cb in conflicts_container.querySelectorAll("input"):
+                cb.disabled = False
 
     modal = web.page["#edit-role-modal"]
     if modal:
@@ -212,8 +240,14 @@ async def handle_edit_role_submit(event):
     colour = js.document.getElementById("edit-role-colour-input").value
     description = js.document.getElementById("edit-role-desc-input").value.strip()
 
-    perms = [b.value for b in js.document.querySelectorAll(".edit-role-permission-checkbox:checked")]
-    conflicts = [b.value for b in js.document.querySelectorAll(".edit-role-conflict-checkbox:checked")]
+    is_preset = role_name in PROTECTED_PRESET_NAMES
+    if is_preset and _current_role_meta:
+        # Preserve original permissions and conflicts for preset roles
+        perms = _current_role_meta.get("permissions", [])
+        conflicts = _current_role_meta.get("conflicting_roles", [])
+    else:
+        perms = [b.value for b in js.document.querySelectorAll(".edit-role-permission-checkbox:checked")]
+        conflicts = [b.value for b in js.document.querySelectorAll(".edit-role-conflict-checkbox:checked")]
 
     modal = web.page["#edit-role-modal"]
     if modal:
@@ -228,6 +262,9 @@ async def handle_edit_role_submit(event):
         await show_snackbar(message)
 
 def trigger_delete_role_flow(role_name):
+    if role_name in PROTECTED_PRESET_NAMES:
+        asyncio.ensure_future(show_snackbar("Cannot delete preset system roles."))
+        return
     global _role_to_delete
     _role_to_delete = role_name
     text_el = web.page["#delete-role-confirmation-text"]
@@ -242,7 +279,7 @@ window.triggerDeleteRole = lambda r_name: trigger_delete_role_flow(r_name)
 @when("click", "#confirm-delete-role-btn")
 async def confirm_delete_role(event):
     global _role_to_delete
-    if not _role_to_delete:
+    if not _role_to_delete or _role_to_delete in PROTECTED_PRESET_NAMES:
         return
     project_id = get_project_id_from_url()
     modal = web.page["#delete-role-modal"]

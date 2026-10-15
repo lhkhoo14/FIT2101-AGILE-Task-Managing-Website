@@ -17,67 +17,66 @@ ROLE_PERMISSIONS = {
 }
 
 PRESET_ROLES = {
-    "Creator": {
+    "Project Creator": {
         "colour": "#44E",
-        "description": "Highest ranking role with full permissions.",
+        "description": "Highest ranking role with full project permissions.",
         "permissions": [
+            "edit_project",
+            "delete_project",
             "manage_members",
             "manage_roles",
             "assign_roles",
             "manage_sprints",
             "edit_sprints",
             "manage_tasks",
-            "review_tasks",
-            "edit_project",
-            "delete_project"
+            "review_tasks"
         ],
         "conflicting_roles": []
     },
     "Scrum Master": {
-        "colour": "#EE4",
-        "description": "Highest ranking role with full permissions.",
+        "colour": "#E44",
+        "description": "Manages sprints, team membership, tasks, and reviews.",
         "permissions": [
+            "edit_project",
             "manage_members",
             "manage_roles",
             "assign_roles",
             "manage_sprints",
             "edit_sprints",
             "manage_tasks",
-            "review_tasks",
-            "edit_project",
+            "review_tasks"
         ],
         "conflicting_roles": []
     },
     "Product Owner": {
-        "colour": "#44E",
-        "description": "Highest ranking role with full permissions.",
+        "colour": "#4E4",
+        "description": "Manages product backlog, sprints, and team collaboration.",
         "permissions": [
+            "edit_project",
             "manage_members",
             "manage_roles",
             "assign_roles",
             "manage_sprints",
             "edit_sprints",
             "manage_tasks",
-            "review_tasks",
-            "edit_project",
-            "manage_sprints"
+            "review_tasks"
         ],
         "conflicting_roles": []
     },
     "Manager": {
-        "colour": "#44E",
-        "description": "Highest ranking role with full permissions.",
+        "colour": "#E4E",
+        "description": "Manages sprint cycles and tasks.",
         "permissions": [
             "manage_sprints",
             "edit_sprints",
             "manage_tasks",
-            "review_tasks",
+            "review_tasks"
         ],
         "conflicting_roles": []
     },
     "Employee": {
-        "colour": "#44E",
-        "description": "Highest ranking role with full permissions.",
+        "colour": "#4EE",
+        "description": "Standard contributor handling tasks and forwarding sprint items.",
         "permissions": [
             "edit_sprints",
             "manage_tasks",
@@ -85,6 +84,8 @@ PRESET_ROLES = {
         "conflicting_roles": []
     }
 }
+
+PROTECTED_PRESET_NAMES = set(PRESET_ROLES.keys())
 
 def get_role_name_from_url() -> str | None:
     """Extracts and unquotes the role_name parameter from the current URL query string."""

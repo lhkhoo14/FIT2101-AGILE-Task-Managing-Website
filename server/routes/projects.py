@@ -12,6 +12,51 @@ from dependencies import (
 
 router = APIRouter()
 
+PRESET_ROLES = {
+    "Project Creator": {
+        "colour": "#44E",
+        "description": "Highest ranking role with full project permissions.",
+        "permissions": [
+            "edit_project", "delete_project", "manage_members", 
+            "manage_roles", "assign_roles", "manage_sprints", 
+            "edit_sprints", "manage_tasks", "review_tasks"
+        ],
+        "conflicting_roles": []
+    },
+    "Scrum Master": {
+        "colour": "#E44",
+        "description": "Manages sprints, team membership, tasks, and reviews.",
+        "permissions": [
+            "edit_project", "manage_members", "manage_roles", 
+            "assign_roles", "manage_sprints", "edit_sprints", 
+            "manage_tasks", "review_tasks"
+        ],
+        "conflicting_roles": []
+    },
+    "Product Owner": {
+        "colour": "#4E4",
+        "description": "Manages product backlog, sprints, and team collaboration.",
+        "permissions": [
+            "edit_project", "manage_members", "manage_roles", 
+            "assign_roles", "manage_sprints", "edit_sprints", 
+            "manage_tasks", "review_tasks"
+        ],
+        "conflicting_roles": []
+    },
+    "Manager": {
+        "colour": "#E4E",
+        "description": "Manages sprint cycles and tasks.",
+        "permissions": ["manage_sprints", "edit_sprints", "manage_tasks", "review_tasks"],
+        "conflicting_roles": []
+    },
+    "Employee": {
+        "colour": "#4EE",
+        "description": "Standard contributor handling tasks and forwarding sprint items.",
+        "permissions": ["edit_sprints", "manage_tasks"],
+        "conflicting_roles": []
+    }
+}
+
 class CreateProjectPayload(BaseModel):
     user_id: int
     name: str
@@ -69,33 +114,14 @@ def ensure_member_fields(project: dict) -> None:
         creators = [uid for uid in project.get("creator", []) if uid in members]
         project["roles"] = {
             "Project Creator": creators,
-            "Project Manager": [],
-            "Project Member": [uid for uid in members if uid not in creators],
+            "Scrum Master": [],
+            "Product Owner": [],
+            "Manager": [],
+            "Employee": [uid for uid in members if uid not in creators],
         }
 
-    # Standardize unified role_definitions
-    definitions = project.setdefault("role_definitions", {
-        "Project Creator": {
-            "colour": "#44E", 
-            "description": "Highest ranking role with full permissions.",
-            "permissions": ["add_members", "manage_sprints", "delete_project", "manage_roles"],
-            "conflicting_roles": []
-        },
-        "Project Manager": {
-            "colour": "#0ae", 
-            "description": "Can manage members and sprints.",
-            "permissions": ["add_members", "manage_sprints", "manage_roles"],
-            "conflicting_roles": []
-        },
-        "Project Member": {
-            "colour": "#678", 
-            "description": "Standard contributor role.",
-            "permissions": [],
-            "conflicting_roles": []
-        }
-    })
+    definitions = project.setdefault("role_definitions", PRESET_ROLES )
 
-    # Migrate any legacy separate structures or backfill missing attributes
     for r_name, meta in definitions.items():
         if isinstance(meta, dict):
             meta.setdefault("permissions", [])
@@ -142,18 +168,69 @@ def create_project(payload: CreateProjectPayload):
         "role_definitions": {
             "Project Creator": {
                 "colour": "#44E",
-                "description": "Highest ranking role with full permissions.",
-                "permissions": ["add_members", "manage_sprints", "delete_project", "manage_roles"]
+                "description": "Highest ranking role with full project permissions.",
+                "permissions": [
+                    "edit_project",
+                    "delete_project",
+                    "manage_members",
+                    "manage_roles",
+                    "assign_roles",
+                    "manage_sprints",
+                    "edit_sprints",
+                    "manage_tasks",
+                    "review_tasks"
+                ],
+                "conflicting_roles": []
             },
-            "Project Manager": {
-                "colour": "#0ae",
-                "description": "Can manage members and sprints.",
-                "permissions": ["add_members", "manage_sprints", "manage_roles"]
+            "Scrum Master": {
+                "colour": "#E44",
+                "description": "Manages sprints, team membership, tasks, and reviews.",
+                "permissions": [
+                    "edit_project",
+                    "manage_members",
+                    "manage_roles",
+                    "assign_roles",
+                    "manage_sprints",
+                    "edit_sprints",
+                    "manage_tasks",
+                    "review_tasks"
+                ],
+                "conflicting_roles": []
             },
-            "Project Member": {
-                "colour": "#678",
-                "description": "Standard contributor role.",
-                "permissions": []
+            "Product Owner": {
+                "colour": "#4E4",
+                "description": "Manages product backlog, sprints, and team collaboration.",
+                "permissions": [
+                    "edit_project",
+                    "manage_members",
+                    "manage_roles",
+                    "assign_roles",
+                    "manage_sprints",
+                    "edit_sprints",
+                    "manage_tasks",
+                    "review_tasks"
+                ],
+                "conflicting_roles": []
+            },
+            "Manager": {
+                "colour": "#E4E",
+                "description": "Manages sprint cycles and tasks.",
+                "permissions": [
+                    "manage_sprints",
+                    "edit_sprints",
+                    "manage_tasks",
+                    "review_tasks"
+                ],
+                "conflicting_roles": []
+            },
+            "Employee": {
+                "colour": "#4EE",
+                "description": "Standard contributor handling tasks and forwarding sprint items.",
+                "permissions": [
+                    "edit_sprints",
+                    "manage_tasks",
+                ],
+                "conflicting_roles": []
             }
         },
         "backlog": [],
@@ -230,8 +307,8 @@ def add_project_member(project_id: int, payload: AddMemberPayload):
 
     ensure_member_fields(project)
     
-    # Check if the user has the 'add_members' permission, regardless of their role name
-    verify_project_permission(project, payload.user_id, "add_members")
+    # Check if the user has the 'manage_members' permission, regardless of their role name
+    verify_project_permission(project, payload.user_id, "manage_members")
 
     member = next(
         (user for user in db.get("users", []) if user.get("username") == payload.username),
@@ -387,3 +464,60 @@ def update_project_role(project_id: int, role_name: str, payload: UpdateRolePayl
             "conflicting_roles": payload.conflicting_roles
         }
     }
+
+@router.get("/projects/{project_id}/roles/{role_name}/members")
+def get_role_members(project_id: int, role_name: str, user_id: int):
+    db = db_manager.read()
+    project = db.get("projects", {}).get(str(project_id))
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    ensure_member_fields(project)
+    verify_project_access(project, user_id)
+
+    roles_map = project.get("roles", {})
+    if role_name not in roles_map and role_name not in project.get("role_definitions", {}):
+        raise HTTPException(status_code=404, detail="Role not found.")
+
+    member_ids = roles_map.get(role_name, [])
+    
+    # Map user IDs to full user info (username, email)
+    users_db = db.get("users", [])
+    role_members = []
+    for uid in member_ids:
+        u_obj = next((u for u in users_db if u["user_id"] == uid), None)
+        if u_obj:
+            role_members.append({
+                "user_id": u_obj["user_id"],
+                "username": u_obj["username"],
+                "email": u_obj.get("email", "")
+            })
+
+    return {"status": "success", "role_name": role_name, "members": role_members}
+
+class RemoveRoleMemberPayload(BaseModel):
+    user_id: int        # Acting user
+    target_user_id: int # User losing the role
+
+@router.post("/projects/{project_id}/roles/{role_name}/remove")
+def remove_role_from_member(project_id: int, role_name: str, payload: RemoveRoleMemberPayload):
+    db = db_manager.read()
+    project = db.get("projects", {}).get(str(project_id))
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    ensure_member_fields(project)
+    verify_project_permission(project, payload.user_id, "manage_roles")
+
+    # Prevent removing the last Creator if applicable
+    if role_name == "Project Creator":
+        creators = project.get("roles", {}).get("Project Creator", [])
+        if len(creators) <= 1 and payload.target_user_id in creators:
+            raise HTTPException(status_code=400, detail="Cannot remove the sole Project Creator.")
+
+    roles_map = project.get("roles", {})
+    if role_name in roles_map and payload.target_user_id in roles_map[role_name]:
+        roles_map[role_name].remove(payload.target_user_id)
+
+    db_manager.write(db)
+    return {"status": "success", "message": f"Successfully removed role '{role_name}' from member."}

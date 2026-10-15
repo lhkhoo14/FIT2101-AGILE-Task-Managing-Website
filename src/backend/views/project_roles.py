@@ -223,11 +223,13 @@ async def handle_create_role(event):
     colour = colour_el.value if colour_el else "#4F46E5"
     description = desc_el.value.strip() if desc_el else ""
 
+    
+    # Hide modal first if validation fails
+    modal = web.page["#create-role-modal"]
+    if not modal:
+        return
     if not name:
-        # Hide modal first if validation fails
-        modal = web.page["#create-role-modal"]
-        if modal:
-            modal.classList.add("hidden")
+        modal.classList.add("hidden")
         await show_snackbar("Role name is required.")
         return
 
@@ -238,9 +240,7 @@ async def handle_create_role(event):
     conflicting_roles = [box.value for box in conflict_boxes]
 
     # Hide modal before making the API call / showing snackbar
-    modal = web.page["#create-role-modal"]
-    if modal:
-        modal.classList.add("hidden")
+    modal.classList.add("hidden")
 
     db = ServerData()
     success, message = await db.create_project_role(
