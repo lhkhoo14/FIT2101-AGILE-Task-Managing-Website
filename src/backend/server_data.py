@@ -5,16 +5,22 @@ import json
 from urllib.parse import quote
 
 from constants import ACTIVE_SESSION_KEY, API_URL
+from project_role_helpers import permissions_for_user  # type: ignore
 
 
 class Project:
     """A project record returned by the FastAPI projects endpoints."""
 
-    def __init__(self, id: int, name: str, description: str, status: str) -> None:
+    def __init__(self, id: int, name: str, description: str, status: str,
+                 permissions: set[str] | None = None) -> None:
         self.id = id
         self.name = name
         self.description = description
         self.status = status
+        # Permissions the signed-in user holds in this project, used only to
+        # decide which destructive controls to show. The server re-checks every
+        # request, so hiding a button is never what protects the data.
+        self.permissions = permissions or set()
 
 
 class ServerData:
@@ -170,7 +176,8 @@ class ServerData:
                         id=p.get("project_id", p.get("id", "")),
                         name=p.get("name", "Untitled Project"),
                         description=p.get("description", "No description provided."),
-                        status=p.get("status", "todo")
+                        status=p.get("status", "todo"),
+                        permissions=permissions_for_user(p, user_id)
                     )
                     for p in data
                 ]
@@ -812,3 +819,125 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to fetch users: {e}")
             return []
+
+    async def delete_project(self, project_id: int) -> tuple[bool, str]:
+        """Deletes a project and everything stored inside it (delete_project)."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}",
+                method="DELETE",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data.get("message", "Project deleted.")
+            return False, data.get("detail", "Failed to delete project.")
+        except Exception as e:
+            print(f"[API Error] Failed to delete project: {e}")
+            return False, "Unable to connect to the server."
+
+    async def delete_sprint(self, project_id: int, sprint_id: str | int) -> tuple[bool, str]:
+        """Deletes one sprint, with everything on its board.
+
+        Refused by the server for a completed sprint, which is kept as the record
+        of what the team finished.
+        """
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/sprints/{sprint_id}",
+                method="DELETE",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data.get("message", "Sprint deleted.")
+            return False, data.get("detail", "Failed to delete sprint.")
+        except Exception as e:
+            print(f"[API Error] Failed to delete sprint: {e}")
+            return False, "Unable to connect to the server."
+
+    async def delete_task(self, project_id: int, sprint_id: str | int,
+                          task_id: str) -> tuple[bool, str]:
+        """Deletes one task from a sprint board.
+
+        Needs manage_tasks (every preset role holds it), and is refused by the
+        server for a task sitting in Completed.
+        """
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/sprints/{sprint_id}"
+                f"/tasks/{quote(str(task_id))}",
+                method="DELETE",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data.get("message", "Task deleted.")
+            return False, data.get("detail", "Failed to delete task.")
+        except Exception as e:
+            print(f"[API Error] Failed to delete task: {e}")
+            return False, "Unable to connect to the server."
+
+    async def remove_project_member(self, project_id: int, member_id: int) -> tuple[bool, str]:
+        """Removes a member from a project (manage_members).
+
+        The member's account is untouched: they lose this project, not their
+        user record.
+        """
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/members/{member_id}/remove",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data.get("message", "Member removed.")
+            return False, data.get("detail", "Failed to remove member.")
+        except Exception as e:
+            print(f"[API Error] Failed to remove member: {e}")
+            return False, "Unable to connect to the server."
+
+    async def delete_account(self, password: str) -> tuple[bool, str]:
+        """Deletes the signed-in account and unlinks it from every project.
+
+        Self-service: the password is what proves the account is the caller's.
+        """
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/users/{user_id}/delete",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"password": password})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data.get("message", "Account deleted.")
+            return False, data.get("detail", "Failed to delete account.")
+        except Exception as e:
+            print(f"[API Error] Failed to delete account: {e}")
+            return False, "Unable to connect to the server."
