@@ -272,7 +272,8 @@ class ServerData:
             return []
 
     async def create_backlog_item(
-        self, project_id: int, title: str, tag: str, priority: str
+        self, project_id: int, title: str, tags: list[str], priority: str,
+        description: str = ""
     ) -> tuple[bool, str, dict | None]:
         """Creates a new backlog task item in server database."""
         user_id = self.get_active_session()
@@ -284,7 +285,10 @@ class ServerData:
                 f"{self.api_url}/projects/{project_id}/backlog",
                 method="POST",
                 headers={"Content-Type": "application/json"},
-                body=json.dumps({"user_id": user_id, "title": title, "tag": tag, "priority": priority})
+                body=json.dumps({
+                    "user_id": user_id, "title": title, "tags": tags or [],
+                    "priority": priority, "description": description or ""
+                })
             )
             if response.status in (200, 201):
                 item = await response.json()
@@ -445,6 +449,33 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to move backlog item: {e}")
             return False, "Unable to connect to the server."
+
+    async def return_task_to_backlog(
+        self, project_id: int, sprint_id: str | int, task_id: str | int
+    ) -> tuple[bool, str, dict | None]:
+        """Moves a task still in a sprint's backlog column back to the product backlog."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired", None
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/sprints/{sprint_id}/tasks/{task_id}/return-to-backlog",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id})
+            )
+            if response.status in (200, 201):
+                data = await response.json()
+                return True, "", data.get("backlog_item")
+            err_data = await response.json()
+            detail = err_data.get("detail", "Failed to return task to the product backlog.")
+            if isinstance(detail, list):
+                detail = "; ".join(str(err.get("msg", "Invalid input")) for err in detail)
+            return False, str(detail), None
+        except Exception as e:
+            print(f"[API Error] Failed to return task to backlog: {e}")
+            return False, "Unable to connect to the server.", None
 
     async def update_kanban_state(
         self, project_id: int, sprint_id: str | int, kanban_state: dict

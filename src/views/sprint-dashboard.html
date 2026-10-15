@@ -63,8 +63,8 @@
   <!-- CHANGE: added the ?v=20261005 cache-buster. Without it the browser kept
        serving a stale cached sprint-dashboard.css, so the layout fixes below had
        no visible effect. Matches the existing pattern on sprint-page.css. -->
-  <link rel="stylesheet" href="../styles/sprint-dashboard.css?v=20261011">
-  <link rel="stylesheet" href="../styles/sprint-page.css">
+  <link rel="stylesheet" href="../styles/sprint-dashboard.css?v=20261013">
+  <link rel="stylesheet" href="../styles/sprint-page.css?v=20261014">
   <!-- Snackbar Stylesheet -->
   <link rel="stylesheet" href="../styles/snackbar.css">
   <!-- US-20: no longer the store of record. Loaded only so the one-time import of
@@ -111,6 +111,10 @@
         if (activeSprintId) {
           frame.contentWindow.postMessage({ type: "activate-sprint-page", sprintId: activeSprintId }, location.origin);
         }
+      } else if (event.data?.type === "sprint-backlog-changed") {
+        // A task went back to the product backlog from the open board: the
+        // sidebar list and the sprint cards' task counts behind it are stale.
+        document.body.dispatchEvent(new CustomEvent("app:sprint-backlog-changed"));
       } else if (event.data?.type === "sprint-dashboard-navigation") {
         // "Create Sprint" opens its modal on top of the open board, so the user is
         // not thrown back to the sprint list; every other link leaves the board.
@@ -463,11 +467,16 @@
         <label class="modal-label" for="task-title-input">Task Title</label>
         <input type="text" id="task-title-input" class="modal-input" required>
 
-        <label class="modal-label" for="task-tag-input">Tag</label>
-        <select id="task-tag-input" class="modal-input">
-          <option value="frontend">Frontend</option>
-          <option value="backend">Backend</option>
-        </select>
+        <label class="modal-label" for="task-tags-input">Tags</label>
+        <input type="text" id="task-tags-input" class="modal-input" placeholder="e.g. frontend, api, urgent"
+          autocomplete="off">
+        <p class="members-hint">Separate tags with commas. Once a task is in a sprint, you can search that sprint's
+          board by tag from the top bar.</p>
+
+        <label class="modal-label" for="task-description-input">Description (optional)</label>
+        <textarea id="task-description-input" class="modal-input task-description-input" rows="3"
+          maxlength="1000" placeholder="What needs to be done?"></textarea>
+        <p class="members-hint">Sprint members can add to or edit this from the task's details on the sprint page.</p>
 
         <label class="modal-label" for="task-priority-input">Priority</label>
         <select id="task-priority-input" class="modal-input">
