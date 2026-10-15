@@ -611,9 +611,6 @@
   overflow-y: auto;
 }
 
-/* The modal box is a flex column. Without this, scrollable sections (the checklist list,
-   feedback messages) are allowed to shrink to 0px when the modal is height-limited, which
-   made the checklist disappear. Sections keep their size and the whole modal scrolls instead. */
 #task-detail-modal .modal-box > * {
   flex-shrink: 0;
 }
@@ -678,4 +675,33 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
   overflow-wrap: anywhere;
+}
+
+/* --- SECTION: Task Stopwatch Styles --- */
+.stopwatch-display {
+  font-family: monospace;
+  font-size: 1.6rem;
+  font-weight: bold;
+  color: #4747D4;
+  background-color: #f4f5f9;
+  padding: 10px;
+  border-radius: 6px;
+  text-align: center;
+  margin: 10px 0;
+}
+
+.stopwatch-total {
+  font-size: 0.85rem;
+  color: #555;
+  margin-bottom: 10px;
+}
+
+/* --- Stopwatch button row --- */
+#task-detail-modal .time-log-buttons {
+  flex-wrap: wrap;
+}
+
+.modal-btn-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

@@ -123,6 +123,7 @@ def _make_task_card(task, column_key):
     else:
         avatar_html = '<div class="assignee-avatar" title="Unassigned">?</div>'
 
+
     priority = task.get("priority", "medium")
     title = task.get("title", "Untitled Task")
 
@@ -402,6 +403,7 @@ async def _init_page(sprint_id=None):
     _assignees = await _load_assignees(sprint)
 
     _apply_header_and_lock_state(sprint)
+
 
     state = await server_data.get_kanban_state(_project_id, _sprint_id)
     if state is None:
@@ -889,6 +891,8 @@ def _render_task_detail_modal():
             line_div.textContent = line
             status_el.appendChild(line_div)
 
+    _render_stopwatch_ui(task)
+
 
 def _render_task_assignee_and_dates(task):
     """Fill the assignee picker and the start/end date inputs for the open task."""
@@ -1223,6 +1227,7 @@ async def handle_delete_feedback(event):
     target_task["feedback"] = [m for m in feedback_list if str(m.get("id")) != feedback_id]
     await _persist_kanban_state(_kanban_state)
     _render_task_detail_modal()
+
 
 
 # --- SECTION: Task Time Logging ---

@@ -19,6 +19,7 @@
     "./src/backend/charts.py": "./charts.py",
     "./src/backend/utils/project_helpers.py": "./project_helpers.py",
     "./src/backend/utils/project_role_helpers.py": "./project_role_helpers.py",
-    "./src/backend/utils/dialog.py": "./dialog.py"
+    "./src/backend/utils/dialog.py": "./dialog.py",
+    "./src/backend/settings.py": "./settings.py"
   }
 }

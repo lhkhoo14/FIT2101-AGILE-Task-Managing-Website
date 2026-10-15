@@ -53,6 +53,14 @@ def render_user_profile(user: dict):
         name_elem.innerText = user.get("username", "Username")
     if email_elem:
         email_elem.innerText = user.get("email", "Email")
+    if user.get("profile_photo") and not str(user.get("profile_photo")).endswith("default-profile.svg"):
+        profile_btn = document.querySelector("#profile-menu-btn .profile-avatar")
+        if profile_btn:
+            img = document.createElement("img")
+            img.className = "profile-avatar-img"
+            img.src = user.get("profile_photo")
+            profile_btn.innerHTML = ""
+            profile_btn.appendChild(img)
 
 async def guard_session(server_data: ServerData) -> dict | None:
     """Validates session asynchronously against FastAPI backend."""
@@ -147,3 +155,11 @@ def handle_brand_home_click(event):
     window.location.href = "dashboard.html"
 
 asyncio.ensure_future(init_topbar())
+
+# --- 4. OPEN SETTINGS PAGE ---
+@when("click", "#settings-btn")
+def handle_open_settings(event):
+    try:
+        window.top.location.href = "settings.html"
+    except Exception:
+        window.location.href = "settings.html"

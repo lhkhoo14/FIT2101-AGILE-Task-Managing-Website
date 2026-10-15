@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Settings - John Monash</title>
+    <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
+    <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
+    <link rel="preconnect" href="https://pyscript.net" crossorigin>
+    <link rel="dns-prefetch" href="https://fit2101-api.onrender.com">
+    <link rel="stylesheet" href="../styles/base.css">
+    <link rel="stylesheet" href="../styles/topbar.css">
+    <link rel="stylesheet" href="../styles/settings.css">
+    <link rel="stylesheet" href="../styles/snackbar.css">
+</head>
+<body class="settings-page">
+        <header class="top-app-bar">
+      <div class="app-bar-left">
+        <span class="brand-title brand" title="Go to dashboard">
+          <img class="brand-logo" src="../assets/logo.png" alt="John Monash" onerror="this.parentNode.classList.add('brand-text-only'); this.remove();">
+          <span class="brand-wordmark">John Monash</span>
+        </span>
+      </div>
+
+      <div class="profile-menu-container">
+        <button type="button" id="profile-menu-btn" class="profile-btn" aria-label="User Profile">
+          <div class="profile-avatar">
+            <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+          </div>
+        </button>
+
+        <div id="profile-dropdown" class="dropdown-menu hidden">
+          <div class="dropdown-header">
+            <p id="user-display-name" class="user-name"></p>
+            <p id="user-display-email" class="user-email"></p>
+          </div>
+          <hr>
+          <button type="button" id="signout-btn" class="dropdown-item">Sign Out</button>
+        </div>
+      </div>
+    </header>
+    <!-- topbar.py registers a click handler on #settings-btn and errors if it is missing. This page has no sidebar, so keep an inert hidden stub. -->
+    <button type="button" id="settings-btn" class="hidden" aria-hidden="true" tabindex="-1"></button>
+
+    <main class="settings-main">
+        <div class="settings-container">
+            <div class="settings-nav-back">
+                <a href="dashboard.html">&larr; Back to dashboard</a>
+            </div>
+            <h2>Account Settings</h2>
+
+            <!-- Profile Card -->
+            <section class="settings-card">
+                <h3>Profile Information</h3>
+                <div class="profile-avatar-section">
+                    <img id="settings-avatar-preview" src="../assets/default-profile.svg" alt="Avatar Preview" class="settings-avatar-img">
+                    <div class="avatar-actions">
+                        <button id="change-photo-btn" class="btn btn-secondary">Change photo</button>
+                        <input type="file" id="avatar-file-input" accept="image/png, image/jpeg, image/webp" style="display: none;">
+                        <button id="remove-photo-btn" class="btn btn-text">Remove photo</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="display-name">Display Name</label>
+                    <input type="text" id="display-name" class="form-input" placeholder="Your display name">
+                    <span id="display-name-error" class="error-msg"></span>
+                </div>
+                <button id="save-profile-btn" class="btn btn-primary">Save profile</button>
+            </section>
+
+            <!-- Email Card -->
+            <section class="settings-card">
+                <h3>Email Address</h3>
+                <p>Current email: <strong id="current-email-display">-</strong></p>
+                <p id="pending-email-info" class="pending-email-text" style="display: none;"></p>
+                <div class="form-group">
+                    <label for="new-email">New Email</label>
+                    <input type="email" id="new-email" class="form-input" placeholder="New email address">
+                    <span id="new-email-error" class="error-msg"></span>
+                </div>
+                <button id="change-email-btn" class="btn btn-primary">Send verification email</button>
+            </section>
+
+            <!-- Password Card -->
+            <section class="settings-card">
+                <h3>Change Password</h3>
+                <div class="form-group">
+                    <label for="current-password">Current Password</label>
+                    <div class="password-input-wrapper">
+                        <input type="password" id="current-password" class="form-input">
+                        <button type="button" id="toggle-current-password" class="password-toggle-btn" aria-label="Toggle password visibility">👁️</button>
+                    </div>
+                    <span id="current-password-error" class="error-msg"></span>
+                </div>
+                <div class="form-group">
+                    <label for="new-password">New Password</label>
+                    <div class="password-input-wrapper">
+                        <input type="password" id="new-password" class="form-input">
+                        <button type="button" id="toggle-new-password" class="password-toggle-btn" aria-label="Toggle password visibility">👁️</button>
+                    </div>
+                    <span id="new-password-error" class="error-msg"></span>
+                </div>
+                <div class="form-group">
+                    <label for="confirm-new-password">Confirm New Password</label>
+                    <div class="password-input-wrapper">
+                        <input type="password" id="confirm-new-password" class="form-input">
+                        <button type="button" id="toggle-confirm-password" class="password-toggle-btn" aria-label="Toggle password visibility">👁️</button>
+                    </div>
+                    <span id="confirm-new-password-error" class="error-msg"></span>
+                </div>
+                <button id="change-password-btn" class="btn btn-primary">Update password</button>
+            </section>
+
+            <!-- Danger Zone Card -->
+            <section class="settings-card danger-zone-card">
+                <h3>Danger Zone</h3>
+                <p>Permanently delete your account and personal data.</p>
+                <button id="delete-account-btn" class="btn btn-danger-outline">Delete Account</button>
+            </section>
+        </div>
+    </main>
+
+    <!-- Delete Account Modal -->
+    <div id="delete-account-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-box">
+            <h3 class="modal-title">Delete Account</h3>
+            <p class="modal-warning">This will permanently delete your account and cannot be undone. You will be removed from all projects and sprints, and any project where you are the only member will be deleted.</p>
+            <div class="form-group">
+                <label class="modal-label" for="delete-password">Current Password</label>
+                <input type="password" id="delete-password" class="modal-input form-input">
+                <span id="delete-password-error" class="error-msg"></span>
+            </div>
+            <div class="form-group">
+                <label class="modal-label" for="delete-confirm-phrase">Type <strong>DELETE</strong> to confirm</label>
+                <input type="text" id="delete-confirm-phrase" class="modal-input form-input" placeholder="DELETE">
+            </div>
+            <div class="modal-actions">
+                <button id="cancel-delete-btn" class="modal-btn-cancel btn btn-secondary">Cancel</button>
+                <button id="confirm-delete-btn" class="modal-btn-danger btn" disabled>Confirm Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="snackbar"></div>
+
+    <script>
+        const fileInput = document.getElementById('avatar-file-input');
+        const changePhotoBtn = document.getElementById('change-photo-btn');
+        const removePhotoBtn = document.getElementById('remove-photo-btn');
+        const previewImg = document.getElementById('settings-avatar-preview');
+
+        changePhotoBtn.addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+                alert('Please select a valid PNG, JPEG, or WebP image under 5MB.');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 128;
+                    canvas.height = 128;
+                    const ctx = canvas.getContext('2d');
+                    let size = Math.min(img.width, img.height);
+                    let sx = (img.width - size) / 2;
+                    let sy = (img.height - size) / 2;
+                    ctx.drawImage(img, sx, sy, size, size, 0, 0, 128, 128);
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                    previewImg.src = dataUrl;
+                    document.body.dispatchEvent(new CustomEvent('app:avatar-selected', { detail: dataUrl }));
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        removePhotoBtn.addEventListener('click', () => {
+            previewImg.src = '../assets/default-profile.svg';
+            document.body.dispatchEvent(new CustomEvent('app:avatar-selected', { detail: '' }));
+        });
+    </script>
+
+    <script type="py" src="../backend/utils/topbar.py" config="../../settings.json"></script>
+    <script type="py" src="../backend/settings.py" config="../../settings.json"></script>
+</body>
+</html>

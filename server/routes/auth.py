@@ -1,9 +1,9 @@
+import os
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, EmailStr
 import time
 from database_manager import db_manager
 from security import hash_password, verify_password
-
 import logic.membership_logic as membership_logic
 from routes.activity import refresh_contributions
 
@@ -108,8 +108,220 @@ def get_users(user_id: int):
         for user in db["users"]
     ]
 
+# --- SECTION: Account Settings (US-24) & Account Deletion (US-38) ---
+import secrets
+import hashlib
+import hmac
+import mailer
+
+class UpdateProfilePayload(BaseModel):
+    username: str | None = None
+    profile_photo: str | None = None
+
+class EmailChangePayload(BaseModel):
+    new_email: EmailStr
+
+class EmailVerifyPayload(BaseModel):
+    token: str
+
+class PasswordChangePayload(BaseModel):
+    current_password: str
+    new_password: str
+
 class DeleteAccountPayload(BaseModel):
     password: str
+
+ALLOWED_PHOTO_PREFIXES = (
+    "data:image/png;base64,",
+    "data:image/jpeg;base64,",
+    "data:image/webp;base64,",
+)
+MAX_PHOTO_LENGTH = 300000
+ROLE_PRODUCT_OWNER = "Product Owner"
+ROLE_SCRUM_MASTER = "Scrum Master"
+ROLE_MEMBER = "Member"
+KANBAN_COLUMNS = ("backlog", "active", "review", "completed")
+
+
+def _find_user(db, user_id):
+    """Users are stored as a list of dicts keyed by `user_id`."""
+    return next(
+        (u for u in db.get("users", []) if str(u.get("user_id")) == str(user_id)),
+        None
+    )
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _clear_pending_email(user):
+    user.pop("pending_email", None)
+    user.pop("pending_email_token_hash", None)
+    user.pop("pending_email_expires", None)
+
+
+@router.get("/users/{user_id}/settings")
+def get_user_settings(user_id: int):
+    db = db_manager.read()
+    user = _find_user(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "user_id": user["user_id"],
+        "username": user["username"],
+        "email": user["email"],
+        "pending_email": user.get("pending_email"),
+        "profile_photo": user.get("profile_photo", DEFAULT_PROFILE_PHOTO)
+    }
+
+
+@router.patch("/users/{user_id}/profile")
+def update_user_profile(user_id: int, payload: UpdateProfilePayload):
+    def mutate(db):
+        user = _find_user(db, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if payload.username is not None:
+            name = payload.username.strip()
+            if not name or len(name) > 50:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Display name must be between 1 and 50 characters."
+                )
+            # Members are looked up by username, so it has to stay unique.
+            if any(
+                str(u.get("user_id")) != str(user_id)
+                and str(u.get("username", "")).lower() == name.lower()
+                for u in db["users"]
+            ):
+                raise HTTPException(status_code=409, detail="That display name is already taken.")
+            user["username"] = name
+
+        if payload.profile_photo is not None:
+            photo = payload.profile_photo
+            if photo == "":
+                user.pop("profile_photo", None)
+            elif not photo.startswith(ALLOWED_PHOTO_PREFIXES) or len(photo) > MAX_PHOTO_LENGTH:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Image is too large or not a supported type."
+                )
+            else:
+                user["profile_photo"] = photo
+
+        return {
+            "status": "success",
+            "username": user["username"],
+            "profile_photo": user.get("profile_photo", DEFAULT_PROFILE_PHOTO)
+        }
+
+    return db_manager.update(mutate)
+
+
+@router.post("/users/{user_id}/email-change")
+def request_email_change(user_id: int, payload: EmailChangePayload):
+    new_email = payload.new_email.strip()
+    token = secrets.token_urlsafe(32)
+
+    def mutate(db):
+        user = _find_user(db, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if new_email.lower() == str(user.get("email", "")).lower():
+            raise HTTPException(status_code=400, detail="That is already your current email address.")
+        if any(
+            str(u.get("user_id")) != str(user_id)
+            and str(u.get("email", "")).lower() == new_email.lower()
+            for u in db["users"]
+        ):
+            raise HTTPException(status_code=409, detail="Email is already registered.")
+
+        # The current email is NOT changed until the link is confirmed.
+        # A new request overwrites any earlier pending one.
+        user["pending_email"] = new_email
+        user["pending_email_token_hash"] = _hash_token(token)
+        user["pending_email_expires"] = time.time() + 24 * 3600
+
+    db_manager.update(mutate)
+
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5500").rstrip("/")
+    link = f"{frontend_url}/src/views/settings.html?verify_email={token}"
+    email_sent = mailer.send_verification_email(new_email, link)
+    return {"status": "success", "email_sent": email_sent}
+
+
+@router.post("/users/email-verify")
+def verify_email_change(payload: EmailVerifyPayload):
+    token_hash = _hash_token(payload.token)
+    invalid = HTTPException(
+        status_code=400,
+        detail="This verification link is invalid or has expired."
+    )
+    result = {}
+
+    def mutate(db):
+        user = next(
+            (
+                u for u in db.get("users", [])
+                if u.get("pending_email_token_hash")
+                and hmac.compare_digest(u["pending_email_token_hash"], token_hash)
+            ),
+            None
+        )
+        if user is None:
+            return "invalid"
+
+        if time.time() > user.get("pending_email_expires", 0):
+            _clear_pending_email(user)
+            return "invalid"
+
+        pending = user.get("pending_email")
+        if not pending:
+            return "invalid"
+        if any(
+            u is not user and str(u.get("email", "")).lower() == pending.lower()
+            for u in db["users"]
+        ):
+            return "taken"
+
+        user["email"] = pending
+        _clear_pending_email(user)
+        result["email"] = pending
+        return "ok"
+
+    outcome = db_manager.update(mutate)
+    if outcome == "taken":
+        raise HTTPException(status_code=409, detail="Email is already registered.")
+    if outcome != "ok":
+        raise invalid
+    return {"status": "success", "email": result["email"]}
+
+
+@router.post("/users/{user_id}/password")
+def change_password(user_id: int, payload: PasswordChangePayload):
+    def mutate(db):
+        user = _find_user(db, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if not verify_password(payload.current_password, user["password"]):
+            raise HTTPException(status_code=401, detail="Current password is incorrect.")
+        if len(payload.new_password) < 8:
+            raise HTTPException(
+                status_code=422,
+                detail="New password must be at least 8 characters long."
+            )
+        if payload.current_password == payload.new_password:
+            raise HTTPException(
+                status_code=400,
+                detail="New password must be different from the current password."
+            )
+        user["password"] = hash_password(payload.new_password)
+        return {"status": "success"}
+
+    return db_manager.update(mutate)
+
 
 @router.post("/users/{user_id}/delete", status_code=status.HTTP_200_OK)
 def delete_account(user_id: int, payload: DeleteAccountPayload):
