@@ -748,10 +748,14 @@ class ServerData:
             return False, "Session expired."
         try:
             response = await pyfetch(
-                f"{self.api_url}/projects/{project_id}/roles/{quote(role_name)}/assign",
+                f"{self.api_url}/projects/{project_id}/roles/assign",
                 method="POST",
                 headers={"Content-Type": "application/json"},
-                body=json.dumps({"user_id": user_id, "target_user_id": target_user_id})
+                body=json.dumps({
+                    "user_id": user_id, 
+                    "target_user_id": target_user_id, 
+                    "role_name": role_name
+                })
             )
             if response.status == 200:
                 return True, "Role assigned successfully."

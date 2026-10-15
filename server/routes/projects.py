@@ -84,20 +84,30 @@ def assign_role_to_member(project_id: int, payload: AssignRolePayload):
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    ensure_member_fields(project)
+
     # Verify acting user has permission to manage roles
     verify_project_permission(project, payload.user_id, "manage_roles")
 
     if payload.target_user_id not in project.get("members", []):
         raise HTTPException(status_code=404, detail="Target user is not a project member")
 
-    if payload.role_name not in project.get("roles", []):
+    # Allow assignment if the role exists in roles map or is defined in role_definitions
+    roles_map = project.setdefault("roles", {})
+    role_defs = project.get("role_definitions", {})
+    
+    if payload.role_name not in roles_map and payload.role_name not in role_defs:
         raise HTTPException(status_code=422, detail="Invalid role specified")
+
+    # Ensure role list exists in project roles mapping
+    if payload.role_name not in roles_map:
+        roles_map[payload.role_name] = []
 
     # Validate that adding this role doesn't break restriction rules
     validate_role_assignment(project, payload.target_user_id, payload.role_name)
 
     # Add user to the role list if not already present (allowing multiple roles)
-    role_list = project["roles"][payload.role_name]
+    role_list = roles_map[payload.role_name]
     if payload.target_user_id not in role_list:
         role_list.append(payload.target_user_id)
 
