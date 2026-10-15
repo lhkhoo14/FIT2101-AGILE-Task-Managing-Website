@@ -56,8 +56,11 @@ COLUMN_ORDER = ["backlog", "active", "review", "completed"]
 # value moves the gate (e.g. "backlog" gates every forward move).
 CHECKLIST_GATE_COLUMN = "active"
 
-_sprint_id = None
-_project_id = None
+# The board this page is showing. Both stay None until _init_page() has read
+# them out of the URL, and _board_ids() below is how every handler turns them
+# into the ints the server routes want.
+_sprint_id: int | None = None
+_project_id: int | None = None
 _sprint_ended = False
 _has_access = False
 _permissions = set()     # what the signed-in user may do in this project (manage_tasks, ...)
@@ -71,14 +74,20 @@ _search_query = ""
 # URL HELPERS
 # ==========================================
 
-def _get_url_params():
-    params = js.URLSearchParams.new(window.location.search)
-    sprint_id = params.get("sprint_id")
-    project_id = params.get("project_id")
+def _as_id(value) -> int | None:
+    """A URL parameter as an int, or None when it is missing or not a number.
 
-    sprint_id = int(sprint_id) if sprint_id and sprint_id.isdigit() else sprint_id
-    project_id = int(project_id) if project_id and project_id.isdigit() else project_id
-    return sprint_id, project_id
+    The FastAPI routes take ints, so a parameter that is not a run of digits can
+    only ever fail the request; treating it as absent lets the caller redirect.
+    """
+    text = str(value or "")
+    return int(text) if text.isdigit() else None
+
+
+def _get_url_params() -> tuple[int | None, int | None]:
+    """The sprint and project ids in the URL, as (sprint_id, project_id)."""
+    params = js.URLSearchParams.new(window.location.search)
+    return _as_id(params.get("sprint_id")), _as_id(params.get("project_id"))
 
 
 def _find_sprint(sprints, sprint_id):
@@ -87,9 +96,25 @@ def _find_sprint(sprints, sprint_id):
         None,
     )
 
+def _board_ids() -> tuple[int, int] | None:
+    """The project and sprint this board is showing, or None when the URL lacked them.
+
+    _init_page() sends the browser back to the dashboard in that case, so a
+    handler that finds None here has nothing to act on - and the server routes
+    take ints, never a maybe-None value.
+    """
+    if _project_id is None or _sprint_id is None:
+        return None
+    return _project_id, _sprint_id
+
+
 async def _persist_kanban_state(state):
     """Persist the current in-memory board through the FastAPI client."""
-    success, err = await server_data.update_kanban_state(_project_id, _sprint_id, state)
+    ids = _board_ids()
+    if ids is None:
+        return False
+    project_id, sprint_id = ids
+    success, err = await server_data.update_kanban_state(project_id, sprint_id, state)
     if not success:
         await show_snackbar(f"Failed to update board: {err}")
     return success
@@ -591,8 +616,12 @@ async def handle_end_sprint(event):
     global _sprint_ended, _active_sprint
     if _sprint_ended:
         return
+    ids = _board_ids()
+    if ids is None:
+        return
+    project_id, sprint_id = ids
     success, err, sprint = await server_data.update_sprint_status(
-        _project_id, _sprint_id, "ended"
+        project_id, sprint_id, "ended"
     )
     if not success:
         await show_snackbar(f"Failed to end sprint: {err}")
@@ -891,7 +920,10 @@ def _render_task_detail_modal():
             line_div.textContent = line
             status_el.appendChild(line_div)
 
-    _render_stopwatch_ui(task)
+    # No stopwatch here: this branch tracks work with the Time Log buttons above
+    # (Start Task / End Task, both recorded through log_task_time). The merged
+    # file used to call _render_stopwatch_ui() at this point, a helper only main
+    # ever had, so opening any task raised NameError and the click looked dead.
 
 
 def _render_task_assignee_and_dates(task):
@@ -922,8 +954,9 @@ def _render_task_assignee_and_dates(task):
     hint = web.page["task-date-hint"]
     s_start = charts.parse_iso((_active_sprint or {}).get("start_date"))
     s_end = charts.parse_iso((_active_sprint or {}).get("end_date"))
-    has_range = s_start is not None and s_end is not None
-    if has_range:
+    # Tested directly rather than through a has_range flag: the flag does not
+    # narrow the two values for a type checker, and this reads the same.
+    if s_start is not None and s_end is not None:
         start_input.min = end_input.min = s_start.isoformat()
         start_input.max = end_input.max = s_end.isoformat()
         hint.textContent = f"Dates must fall within the sprint: {charts.format_day(s_start)} \u2013 {charts.format_day(s_end, True)}."
@@ -931,7 +964,8 @@ def _render_task_assignee_and_dates(task):
         hint.textContent = "Task dates are unavailable because this sprint was created without a date range."
     start_input.value = task.get("start_date") or ""
     end_input.value = task.get("end_date") or ""
-    start_input.disabled = end_input.disabled = _sprint_ended or not has_range
+    # Unusable without a sprint range to bound them, and once the sprint has ended.
+    start_input.disabled = end_input.disabled = _sprint_ended or s_start is None or s_end is None
     web.page["task-details-save-btn"].disabled = _sprint_ended
 
 
@@ -982,7 +1016,11 @@ async def handle_save_task_details(event):
     task["start_date"] = start_text or None
     task["end_date"] = end_text or None
 
-    success, err = await server_data.update_kanban_state(_project_id, _sprint_id, _kanban_state)
+    ids = _board_ids()
+    if ids is None:
+        return
+    project_id, sprint_id = ids
+    success, err = await server_data.update_kanban_state(project_id, sprint_id, _kanban_state)
     if not success:
         task.update(previous)  # roll back the in-memory change so the UI matches the server
         await show_snackbar(f"Could not save task details: {err}")
@@ -1021,7 +1059,11 @@ async def handle_save_task_description(event):
         return
 
     task["description"] = text
-    success, err = await server_data.update_kanban_state(_project_id, _sprint_id, _kanban_state)
+    ids = _board_ids()
+    if ids is None:
+        return
+    project_id, sprint_id = ids
+    success, err = await server_data.update_kanban_state(project_id, sprint_id, _kanban_state)
     if not success:
         # Roll back the in-memory change so the UI matches the server (the text stays in the box).
         if previous is None:
@@ -1318,8 +1360,12 @@ async def _submit_time_log(action, verb):
     if target_task is None:
         return
 
+    ids = _board_ids()
+    if ids is None:
+        return
+    project_id, sprint_id = ids
     success, err, payload = await server_data.log_task_time(
-        _project_id, _sprint_id, target_task.get("id"), action
+        project_id, sprint_id, target_task.get("id"), action
     )
     if not success or not payload:
         await show_snackbar(f"Could not {verb} the timer: {err}")
@@ -1378,7 +1424,13 @@ async def handle_return_to_backlog(event):
     ):
         return
 
-    success, err, _item = await server_data.return_task_to_backlog(_project_id, _sprint_id, task.get("id"))
+    ids = _board_ids()
+    if ids is None:
+        return
+    project_id, sprint_id = ids
+    success, err, _item = await server_data.return_task_to_backlog(
+        project_id, sprint_id, task.get("id")
+    )
     if not success:
         await show_snackbar(f"Could not return the task: {err}")
         return
@@ -1407,7 +1459,7 @@ async def handle_delete_task(event):
         return
 
     task, column = _find_task_and_column(_open_task_id)
-    if task is None:
+    if task is None or column is None:
         return
     if column == "completed":
         await show_snackbar("A completed task cannot be deleted.")
@@ -1419,7 +1471,11 @@ async def handle_delete_task(event):
     if not confirmed:
         return
 
-    success, message = await server_data.delete_task(_project_id, _sprint_id, task.get("id"))
+    ids = _board_ids()
+    if ids is None:
+        return
+    project_id, sprint_id = ids
+    success, message = await server_data.delete_task(project_id, sprint_id, task.get("id"))
     if not success:
         await show_snackbar(message)
         return

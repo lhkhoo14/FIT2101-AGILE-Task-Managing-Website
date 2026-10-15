@@ -239,6 +239,9 @@ async def handle_edit_role_submit(event):
     if event:
         event.preventDefault()
     project_id = get_project_id_from_url()
+    # Nothing to save without a project id in the URL.
+    if project_id is None:
+        return
     role_name = js.document.getElementById("edit-role-original-name").value
     colour = js.document.getElementById("edit-role-colour-input").value
     description = js.document.getElementById("edit-role-desc-input").value.strip()
@@ -284,6 +287,8 @@ async def _confirm_and_delete_role(role_name):
         return
 
     project_id = get_project_id_from_url()
+    if project_id is None:
+        return
     db = ServerData()
     success, message = await db.delete_project_role(project_id, role_name)
     if success:
@@ -313,6 +318,8 @@ async def confirm_remove_role_member(event):
         return
     project_id = get_project_id_from_url()
     role_name = get_role_name_from_url()
+    if project_id is None:
+        return
     modal = web.page["#confirm-remove-role-member-modal"]
     if modal:
         modal.classes.add("hidden")
@@ -332,6 +339,10 @@ async def confirm_remove_role_member(event):
 async def open_add_member_modal(event):
     project_id = get_project_id_from_url()
     role_name = get_role_name_from_url()
+    # Both are needed to work out who could take the role, and the role name is
+    # also a key into the preset tables below.
+    if project_id is None or not role_name:
+        return
     db = ServerData()
     project_data = await db.get_project_members(project_id)
     if not project_data:
@@ -392,6 +403,8 @@ async def open_add_member_modal(event):
 
 async def assign_role_to_member_flow(user_id, username, role_name):
     project_id = get_project_id_from_url()
+    if project_id is None:
+        return
     db = ServerData()
     success, message = await db.assign_project_role(project_id, role_name, user_id)
     if success:

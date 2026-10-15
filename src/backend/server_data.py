@@ -2,6 +2,7 @@ from pyodide.http import pyfetch # type: ignore
 from pyscript import window       # type: ignore
 import asyncio
 import json
+from typing import Any
 from urllib.parse import quote
 
 from constants import ACTIVE_SESSION_KEY, API_URL
@@ -564,7 +565,13 @@ class ServerData:
             print(f"[API Error] Failed to update sprint status: {e}")
             return False, "Unable to connect to the server.", None
 
-    async def get_account_settings(self):
+    async def get_account_settings(self) -> tuple[bool, Any]:
+        """The signed-in user's settings payload, or a message explaining why not.
+
+        The second value is the payload (a dict) when the first is True, and a
+        human-readable message when it is False - the shape every account method
+        in this class returns, which is why the caller checks `success` first.
+        """
         user_id = self.get_active_session()
         if not user_id:
             return False, "Session has expired."
@@ -577,7 +584,7 @@ class ServerData:
         except Exception as e:
             return False, str(e)
 
-    async def update_profile(self, username=None, profile_photo=None):
+    async def update_profile(self, username=None, profile_photo=None) -> tuple[bool, Any]:
         user_id = self.get_active_session()
         if not user_id:
             return False, "Session has expired."
@@ -603,7 +610,7 @@ class ServerData:
         except Exception as e:
             return False, str(e)
 
-    async def request_email_change(self, new_email):
+    async def request_email_change(self, new_email) -> tuple[bool, Any]:
         user_id = self.get_active_session()
         if not user_id:
             return False, "Session has expired."
@@ -624,7 +631,7 @@ class ServerData:
         except Exception as e:
             return False, str(e)
 
-    async def verify_email_change(self, token):
+    async def verify_email_change(self, token) -> tuple[bool, Any]:
         try:
             response = await pyfetch(
                 f"{self.api_url}/users/email-verify",
@@ -642,7 +649,7 @@ class ServerData:
         except Exception as e:
             return False, str(e)
 
-    async def change_password(self, current_password, new_password):
+    async def change_password(self, current_password, new_password) -> tuple[bool, Any]:
         user_id = self.get_active_session()
         if not user_id:
             return False, "Session has expired."

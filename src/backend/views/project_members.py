@@ -357,8 +357,12 @@ async def handle_remove_member_click(event):
     if not confirmed:
         return
 
+    project_id = get_project_id_from_url()
+    if project_id is None:
+        return
+
     success, message = await ServerData().remove_project_member(
-        get_project_id_from_url(),
+        project_id,
         member_id
     )
 

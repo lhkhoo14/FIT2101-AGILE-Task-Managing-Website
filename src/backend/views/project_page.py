@@ -2,22 +2,25 @@ import sys
 import asyncio
 from html import escape
 
-import js
-from pyodide.ffi import create_proxy
+import js  # type: ignore
+from pyodide.ffi import create_proxy  # type: ignore
 from pyscript import window, web, when, document  # type: ignore
 
 if "." not in sys.path:
     sys.path.append(".")
 
-# `auth` and `dialog` are loaded by their flat names via settings.json's file
-# map (src/backend/utils/auth.py -> ./auth.py), so Pylance cannot resolve them
-# from this folder; the ignores keep those runtime-correct imports quiet.
+# PyScript loads these by their flat names through settings.json's file map
+# (src/backend/utils/auth.py -> ./auth.py), which is also why pyrightconfig.json
+# lists these two folders under extraPaths: it lets the editor resolve the same
+# names. The ignores stay because they are what the browser actually does.
 from auth import show_snackbar  # type: ignore
 from dialog import confirm_action  # type: ignore
 from project_role_helpers import permissions_for_user  # type: ignore
-from server_data import ServerData, Project
-from project_helpers import get_project_id_from_url # type: ignore
-from auth import show_snackbar
+from server_data import ServerData, Project  # type: ignore
+
+# get_project_id_from_url() is defined in this module below: it reads the id out
+# of window.location.search, which project_helpers' copy does not. The import of
+# that copy was shadowed by the local definition and has been dropped.
 
 # Set once the project has loaded; used by the End Project button.
 _db = None

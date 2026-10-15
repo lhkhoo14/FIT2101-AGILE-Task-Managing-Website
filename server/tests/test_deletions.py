@@ -11,6 +11,7 @@ plain script rather than a pytest module because the repository has no test
 runner configured.
 """
 import ast
+import builtins
 import json
 import os
 import sys
@@ -152,7 +153,7 @@ client = TestClient(app)
 results = []
 
 
-def check(label, condition, detail=""):
+def check(label, condition, detail: object = ""):
     results.append(bool(condition))
     print(f"{'PASS' if condition else 'FAIL'}  {label}" + ("" if condition else f"  <- {detail}"))
 
@@ -643,6 +644,126 @@ check("the Add Member list drops members who rank at least as high",
       "highest_preset_rank(project_data, uid) >= target_rank" in role_details_src)
 check("a filled single-seat post says who holds it",
       "already holds" in role_details_src)
+
+
+# ---------------------------------------------------------------------------
+# The client's import graph.
+#
+# PyScript hands the browser these modules under their bare names - auth.py,
+# server_data.py and friends sit in these two folders and settings.json maps them
+# to ./auth.py and ./server_data.py - so a view imports `auth`, not
+# `utils.auth`, and an editor cannot follow that without being told where to
+# look (pyrightconfig.json's extraPaths). These checks keep both sides honest.
+# ---------------------------------------------------------------------------
+CLIENT_BARE_NAMES = (
+    "auth", "dialog", "constants", "server_data", "project_helpers",
+    "project_role_helpers", "project_layout", "layout", "sidebar_state",
+    "charts", "settings", "sprint_access",
+)
+CLIENT_SOURCES = set()
+for import_root in (os.path.join(PROJECT_ROOT, "src", "backend"),
+                    os.path.join(PROJECT_ROOT, "src", "backend", "utils")):
+    for dirpath, _dirnames, filenames in os.walk(import_root):
+        CLIENT_SOURCES.update(name[:-3] for name in filenames if name.endswith(".py"))
+
+unresolved_imports = []
+repeated_imports = []
+for dirpath, _dirnames, filenames in os.walk(os.path.join(PROJECT_ROOT, "src", "backend")):
+    for filename in sorted(filenames):
+        if not filename.endswith(".py"):
+            continue
+        seen = set()
+        with open(os.path.join(dirpath, filename), encoding="utf-8") as handle:
+            for number, line in enumerate(handle, 1):
+                parts = line.strip().split()
+                if len(parts) < 4 or parts[0] != "from" or parts[2] != "import":
+                    continue
+                name = parts[1]
+                if name not in CLIENT_BARE_NAMES:
+                    continue
+                if name not in CLIENT_SOURCES:
+                    unresolved_imports.append(f"{filename}:{number} -> {name}")
+                if name in seen:
+                    repeated_imports.append(f"{filename}:{number} -> {name}")
+                seen.add(name)
+
+check("every bare-name client import resolves to a module file",
+      not unresolved_imports, f"unresolved: {unresolved_imports}")
+check("no client module imports the same name twice",
+      not repeated_imports, f"repeated: {repeated_imports}")
+
+# A module that exists only in the browser (js, pyodide, pyscript) can never be
+# resolved by an editor, so its import line carries '# type: ignore'. Without it
+# every page module reports a warning that hides the real ones. The module name
+# is compared exactly - a prefix test would match "import json".
+BROWSER_ONLY_MODULES = {"js", "pyodide", "pyscript"}
+browser_imports_without_ignore = []
+for dirpath, _dirnames, filenames in os.walk(os.path.join(PROJECT_ROOT, "src", "backend")):
+    for filename in sorted(filenames):
+        if not filename.endswith(".py"):
+            continue
+        with open(os.path.join(dirpath, filename), encoding="utf-8") as handle:
+            for number, line in enumerate(handle, 1):
+                parts = line.strip().split()
+                if len(parts) < 2 or parts[0] not in ("import", "from"):
+                    continue
+                if parts[1].split(".")[0] not in BROWSER_ONLY_MODULES:
+                    continue
+                if "type: ignore" not in line:
+                    browser_imports_without_ignore.append(f"{filename}:{number}: {line.strip()}")
+
+check("every browser-only import is marked '# type: ignore'",
+      not browser_imports_without_ignore,
+      f"missing ignore: {browser_imports_without_ignore}")
+
+
+# ---------------------------------------------------------------------------
+# Names the client calls but never defines.
+#
+# A merged module can end up calling a helper that the merge dropped, and
+# nothing else notices: the file still compiles, no test imports it, and the
+# fault only appears when that line runs - sprint-page.py calling
+# _render_stopwatch_ui(), a helper only main ever had, which made every task
+# click raise NameError and look like a dead card. Nested definitions count as
+# defined here, so this errs towards silence; anything it does report cannot
+# resolve.
+# ---------------------------------------------------------------------------
+CLIENT_DEFINED_NAMES = set(dir(builtins))
+unresolved_calls = {}
+for dirpath, _dirnames, filenames in os.walk(os.path.join(PROJECT_ROOT, "src", "backend")):
+    for filename in sorted(filenames):
+        if not filename.endswith(".py"):
+            continue
+        with open(os.path.join(dirpath, filename), encoding="utf-8") as handle:
+            try:
+                module = ast.parse(handle.read())
+            except SyntaxError:
+                continue
+
+        defined = set(CLIENT_DEFINED_NAMES)
+        for node in ast.walk(module):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                defined.add(node.name)
+            elif isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+                defined.add(node.id)
+            elif isinstance(node, ast.arg):
+                defined.add(node.arg)
+            elif isinstance(node, ast.alias):
+                defined.add((node.asname or node.name).split(".")[0])
+            elif isinstance(node, ast.ExceptHandler) and node.name:
+                defined.add(node.name)
+            elif isinstance(node, ast.Global):
+                defined.update(node.names)
+
+        for node in ast.walk(module):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                if node.func.id not in defined:
+                    unresolved_calls.setdefault(filename, []).append(
+                        f"line {node.lineno}: {node.func.id}()"
+                    )
+
+check("every name the client calls is defined in its own module",
+      not unresolved_calls, f"unresolved calls: {unresolved_calls}")
 
 
 if __name__ == "__main__":

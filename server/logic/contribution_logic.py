@@ -283,7 +283,10 @@ def compute_contributions(
                 owner = resolve_owner(task, ids, mapping)
                 for entry in log_entries(task):
                     logged_by = as_id(entry.get("user_id")) or owner
-                    owner_record = stats.get(owner)
+                    # The owner is only a fallback for a session that records no
+                    # logger of its own, and an unassigned card has no owner to
+                    # fall back to.
+                    owner_record = stats.get(owner) if owner is not None else None
                     # Hours are credited to whoever logged them; a session with no
                     # explicit logger falls back to the task's owner.
                     target = stats.get(logged_by) if logged_by is not None else owner_record

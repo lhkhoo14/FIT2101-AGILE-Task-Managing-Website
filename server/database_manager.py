@@ -56,6 +56,11 @@ class DatabaseManager:
         a slow /users request (~1s) alongside fast ones. A shared bounded pool
         opens a small number of connections once and reuses them.
         """
+        if not self.database_url:
+            # Unreachable from read()/write()/update(), which take the JSON path
+            # when no URL is configured. Raising keeps the pool from being handed
+            # None, and says what is actually wrong if a caller ever gets here.
+            raise RuntimeError("The PostgreSQL connection pool needs DATABASE_URL to be set.")
         if self._pool is None:
             # Imported lazily so the JSON fallback never needs the pool package.
             from psycopg_pool import ConnectionPool
@@ -206,6 +211,11 @@ class DatabaseManager:
         # Runs once at start-up, so it uses a throwaway connection rather than
         # the reused one. Imports the legacy JSON database only when the
         # PostgreSQL row is empty.
+        if not self.database_url:
+            # __init__ only calls this with a URL set; returning here keeps the
+            # method safe to call directly and makes it obvious to a reader (and
+            # a type checker) that psycopg.connect is never handed None.
+            return
         legacy_data = self._read_json()
         with psycopg.connect(self.database_url, prepare_threshold=None) as connection:
             connection.execute(
