@@ -2,6 +2,7 @@ from pyodide.http import pyfetch # type: ignore
 from pyscript import window       # type: ignore
 import asyncio
 import json
+from urllib.parse import quote
 
 from constants import ACTIVE_SESSION_KEY, API_URL
 
@@ -649,3 +650,165 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to log task time: {e}")
             return False, "Unable to connect to the server.", None
+
+    async def create_project_role(
+        self,
+        project_id: int,
+        name: str,
+        colour: str,
+        description: str,
+        permissions: list[str],
+        conflicting_roles: list[str],
+    ) -> tuple[bool, str]:
+        """Sends a request to create a custom project role."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/roles",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({
+                    "user_id": user_id,
+                    "name": name,
+                    "colour": colour,
+                    "description": description,
+                    "permissions": permissions,
+                    "conflicting_roles": conflicting_roles
+                })
+            )
+            if response.status in (200, 201):
+                return True, "Role created successfully."
+            
+            data = await response.json()
+            return False, data.get("detail", "Failed to create role.")
+        except Exception as e:
+            print(f"[API Error] Failed to create role: {e}")
+            return False, "Unable to connect to the server."
+
+    async def delete_project_role(self, project_id: int, role_name: str) -> tuple[bool, str]:
+        """Deletes a custom project role."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/roles/{role_name}",
+                method="DELETE",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id})
+            )
+            if response.status == 200:
+                return True, "Role deleted successfully."
+            
+            data = await response.json()
+            return False, data.get("detail", "Failed to delete role.")
+        except Exception as e:
+            print(f"[API Error] Failed to delete role: {e}")
+            return False, "Unable to connect to the server."
+
+    async def update_project_role(self, project_id: int, role_name: str, colour: str, description: str, permissions: list, conflicting_roles: list) -> tuple[bool, str]:
+        """Updates an existing custom project role."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/roles/{role_name}",
+                method="PUT",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({
+                    "user_id": user_id,
+                    "colour": colour,
+                    "description": description,
+                    "permissions": permissions,
+                    "conflicting_roles": conflicting_roles
+                })
+            )
+            if response.status == 200:
+                return True, "Role updated successfully."
+            
+            data = await response.json()
+            return False, data.get("detail", "Failed to update role.")
+        except Exception as e:
+            print(f"[API Error] Failed to update role: {e}")
+            return False, "Unable to connect to the server."
+
+    async def get_role_members(self, project_id: int, role_name: str) -> list:
+        user_id = self.get_active_session()
+        if user_id is None:
+            return []
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/roles/{role_name}/members?user_id={user_id}",
+                method="GET"
+            )
+            if response.status == 200:
+                data = await response.json()
+                return data.get("members", [])
+        except Exception as e:
+            print(f"[API Error] Failed to fetch role members: {e}")
+        return []
+
+    async def remove_role_member(self, project_id: int, role_name: str, target_user_id: int) -> tuple[bool, str]:
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/roles/{role_name}/remove",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id, "target_user_id": target_user_id})
+            )
+            if response.status == 200:
+                return True, "Member removed from role successfully."
+            data = await response.json()
+            return False, data.get("detail", "Failed to remove member.")
+        except Exception as e:
+            return False, "Unable to connect to server."
+
+    async def assign_project_role(self, project_id: int, role_name: str, target_user_id: int) -> tuple[bool, str]:
+        """Assigns a project role to a member."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/roles/assign",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({
+                    "user_id": user_id, 
+                    "target_user_id": target_user_id, 
+                    "role_name": role_name
+                })
+            )
+            if response.status == 200:
+                return True, "Role assigned successfully."
+            data = await response.json()
+            return False, data.get("detail", "Failed to assign role.")
+        except Exception as e:
+            return False, "Unable to connect to server."
+
+    async def get_all_users(self) -> list[dict]:
+        """Fetches all registered users."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return []
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/users?user_id={user_id}",
+                method="GET",
+                headers={"Content-Type": "application/json"}
+            )
+            if response.status == 200:
+                return await response.json()
+            return []
+        except Exception as e:
+            print(f"[API Error] Failed to fetch users: {e}")
+            return []

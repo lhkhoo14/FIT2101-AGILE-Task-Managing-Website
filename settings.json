@@ -1,21 +1,23 @@
 {
   "files": {
     "./src/backend/constants.py": "./constants.py",
-    "./src/backend/topbar.py": "./topbar.py",
-    "./src/backend/sidebar_state.py": "./sidebar_state.py",
-    "./src/backend/layout.py": "./layout.py",
-    "./src/backend/auth.py": "./auth.py",
-    "./src/backend/login.py": "./login.py",
-    "./src/backend/signup.py": "./signup.py",
-    "./src/backend/project_layout.py": "./project_layout.py",
-    "./src/backend/project_page.py": "./project_page.py",
-    "./src/backend/project_members.py": "./project_members.py",
-    "./src/backend/sprint_access.py": "./sprint_access.py",
-    "./src/backend/sprint-dashboard.py": "./sprint-dashboard.py",
-    "./src/backend/sprint-page.py": "./sprint-page.py",
-    "./src/backend/dashboard.py": "./dashboard.py",
-    "./src/backend/create_project.py": "./create_project.py",
+    "./src/backend/utils/topbar.py": "./topbar.py",
+    "./src/backend/utils/sidebar_state.py": "./sidebar_state.py",
+    "./src/backend/utils/layout.py": "./layout.py",
+    "./src/backend/utils/auth.py": "./auth.py",
+    "./src/backend/views/login.py": "./login.py",
+    "./src/backend/views/signup.py": "./signup.py",
+    "./src/backend/utils/project_layout.py": "./project_layout.py",
+    "./src/backend/views/project_page.py": "./project_page.py",
+    "./src/backend/views/project_members.py": "./project_members.py",
+    "./src/backend/utils/sprint_access.py": "./sprint_access.py",
+    "./src/backend/views/sprint-dashboard.py": "./sprint-dashboard.py",
+    "./src/backend/views/sprint-page.py": "./sprint-page.py",
+    "./src/backend/views/dashboard.py": "./dashboard.py",
+    "./src/backend/views/create_project.py": "./create_project.py",
     "./src/backend/server_data.py": "./server_data.py",
-    "./src/backend/charts.py": "./charts.py"
+    "./src/backend/charts.py": "./charts.py",
+    "./src/backend/utils/project_helpers.py": "./project_helpers.py",
+    "./src/backend/utils/project_role_helpers.py": "./project_role_helpers.py"
   }
 }
