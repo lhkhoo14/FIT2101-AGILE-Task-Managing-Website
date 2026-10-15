@@ -19,8 +19,9 @@ import charts
 # The dashboard never owns sprint data; it asks FastAPI for the current project
 # state and re-renders the affected UI after successful mutations.
 server_data = ServerData()
-from sprint_access import (
+from sprint_access import (  # type: ignore[reportMissingImports]
     is_sprint_member, sort_sprints, normalize_tags, filter_sprints_by_tag, task_tags,
+    leadership_role_for,
     PRIORITY_ORDER, DEFAULT_PRIORITY, MAX_DESCRIPTION_LENGTH,
 )
 
@@ -722,17 +723,27 @@ async def _render_member_options():
     line of defence.
     """
     users = await server_data.get_project_member_users(PROJECT_ID) if PROJECT_ID else []
+    # The project's role map says which of these members are on EVERY sprint: the
+    # server adds its leadership (Project Creator, Scrum Master, Product Owner) to
+    # each sprint it saves. They are shown ticked and disabled so the dialog says
+    # who the sprint really has, matching how the creator's own row works.
+    payload = await server_data.get_project_members(PROJECT_ID) if PROJECT_ID else None
     container = web.page["sprint-members-list"]
     container.innerHTML = ""
 
     for user in users:
         uid = user["user_id"]
         is_self = uid == current_user_id
-        name = _display_name(user) + (" (you)" if is_self else "")
+        leadership_role = leadership_role_for(payload, uid)
+        locked = is_self or leadership_role is not None
+        suffix = " (you)" if is_self else (f" ({leadership_role})" if leadership_role else "")
+        name = _display_name(user) + suffix
         label = document.createElement("label")
         label.className = "member-option"
+        if leadership_role is not None:
+            label.title = f"{leadership_role} is part of every sprint in this project."
         label.innerHTML = (
-            f'<input type="checkbox" value="{uid}"{" checked disabled" if is_self else ""}>'
+            f'<input type="checkbox" value="{uid}"{" checked disabled" if locked else ""}>'
             f'<span class="member-option-avatar">{escape(_initials(_display_name(user)))}</span>'
             f'<span class="member-option-name">{escape(name)}</span>'
         )
@@ -755,6 +766,9 @@ def _selected_member_ids():
     # accepts this list unchanged.
     if current_user_id is not None and current_user_id not in ids:
         ids.insert(0, current_user_id)
+    # The project's leadership rows are rendered pre-checked and disabled, so the
+    # loop above already collected them; the server adds them to every sprint
+    # regardless, which is what keeps them able to open the boards they own.
     return ids
 
 

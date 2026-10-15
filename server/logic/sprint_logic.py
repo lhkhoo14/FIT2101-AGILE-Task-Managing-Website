@@ -256,6 +256,70 @@ def is_sprint_member(sprint: Dict[str, Any], user_id: Any) -> bool:
         return False
 
 
+# ---------------------------------------------------------------------------
+# Project leadership is part of every sprint
+# ---------------------------------------------------------------------------
+# CHANGE: the three roles that own the sprint cycle are now members of every
+# sprint in their project. "Only assigned members can open this sprint" makes
+# that necessary: a Project Creator, Scrum Master or Product Owner who was not
+# ticked in the create-sprint dialog could not open the boards they are
+# responsible for, and so could not manage the sprint (or delete it) at all.
+# Manager is deliberately not here - it manages sprints but is staffed in like
+# anyone else - so this list is exactly "who owns the project's sprints".
+LEADERSHIP_ROLES = ("Project Creator", "Scrum Master", "Product Owner")
+
+
+def leadership_member_ids(project: Dict[str, Any]) -> list:
+    """Member ids holding a project-leadership role, in role order, de-duplicated.
+
+    Read from the project's role map, so it follows whatever the Roles page has
+    assigned and is empty for a project with no role map yet.
+    """
+    roles = project.get("roles") or {}
+    leaders = []
+    for role_name in LEADERSHIP_ROLES:
+        for holder in roles.get(role_name) or []:
+            try:
+                value = int(str(holder).strip())
+            except (TypeError, ValueError):
+                continue
+            if value not in leaders:
+                leaders.append(value)
+    return leaders
+
+
+def ensure_leadership_membership(project: Dict[str, Any]) -> bool:
+    """Add the project's leadership to every sprint's member list.
+
+    Returns True if anything changed, so callers can persist the repair. A
+    legacy sprint whose "members" is None is left alone: None already means
+    "the whole project", which includes the leadership. Idempotent, and it only
+    ever adds project members, so US-19 (sprint members must belong to the
+    project) still holds afterwards.
+    """
+    leaders = leadership_member_ids(project)
+    if not leaders:
+        return False
+    changed = False
+    for sprint in project.get("sprints", []) or []:
+        members = sprint.get("members")
+        if members is None:
+            continue
+        current = []
+        for raw in members:
+            try:
+                value = int(str(raw).strip())
+            except (TypeError, ValueError):
+                continue
+            if value not in current:
+                current.append(value)
+        missing = [leader for leader in leaders if leader not in current]
+        if missing:
+            sprint["members"] = current + missing
+            changed = True
+    return changed
+
+
 def normalized_task_id(task_id: Any) -> str:
     """Board cards are named "task-<backlog id>"; strip the prefix for comparisons."""
     text = str(task_id or "")

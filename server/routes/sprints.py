@@ -1,8 +1,13 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from database_manager import db_manager
-from dependencies import verify_project_access
-from routes.activity import refresh_contributions
+from dependencies import verify_project_access, verify_project_permission
+from routes.activity import actor_label, append_history, refresh_contributions
+# ensure_member_fields() is the one place a project's role map is built, and it is
+# what guarantees role_definitions exists before a permission is checked. Sprint
+# routes can be the first request to touch a project, so they need it too.
+from routes.projects import ensure_member_fields
+import logic.contribution_logic as contribution_logic
 import logic.sprint_logic as sprint_logic
 
 router = APIRouter()
@@ -13,14 +18,28 @@ EMPTY_KANBAN = {"backlog": [], "active": [], "review": [], "completed": []}
 def _load_project(project_id: int, user_id: int):
     """
     Verify membership, then load the DB with overdue sprints automatically completed.
-    Returns (db, project). The DB is written back only if a sprint was auto-completed.
+    Returns (db, project). The DB is written back only if something in the project
+    had to be repaired (an auto-completed sprint, or a sprint the project's
+    leadership was missing from).
     """
     # CHANGE: read the database exactly once. This used to call
     # get_verified_project() (which reads) and then read again, costing two
     # connections per sprint request.
     db = db_manager.read()
     project = verify_project_access(db.get("projects", {}).get(str(project_id)), user_id)
-    if sprint_logic.auto_complete_sprints(project):
+    # A project stored before roles existed has no usable role map, and this is the
+    # first place a sprint request touches it. Normalising here means the
+    # verify_project_permission() calls that follow (here and in the board save)
+    # see roles instead of refusing every user. A read-only request only repairs
+    # the copy it returns; the next write to this project persists the repair.
+    ensure_member_fields(project)
+    # CHANGE: a sprint stored before its project's leadership was assigned is
+    # repaired here as well, and this time written back. Otherwise a Project
+    # Creator / Scrum Master / Product Owner opening such a sprint would be
+    # turned away by the "members only" check that every sprint view and every
+    # sprint route applies, with no way to fix it from the UI.
+    stale_leadership = sprint_logic.ensure_leadership_membership(project)
+    if sprint_logic.auto_complete_sprints(project) or stale_leadership:
         db_manager.write(db)
     return db, project
 
@@ -78,6 +97,16 @@ def create_sprint(project_id: int, payload: CreateSprintPayload):
         members = sprint_logic.validate_sprint_members(payload.members, project)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+
+    # CHANGE: the project's leadership (Project Creator, Scrum Master, Product
+    # Owner) is added to every sprint, whether or not the dialog ticked them.
+    # They are the roles that own the sprint cycle, and sprint access is
+    # members-only, so a leader left out here could not open the board they are
+    # responsible for. Added after validation, so they are still project
+    # members, and in role order so the list reads predictably.
+    for leader in sprint_logic.leadership_member_ids(project):
+        if leader not in members:
+            members.append(leader)
 
     sprint_id = db.get("next_sprint_id", 1)
     db["next_sprint_id"] = sprint_id + 1
