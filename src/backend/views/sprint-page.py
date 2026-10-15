@@ -33,17 +33,11 @@ import topbar
 server_data = ServerData()
 _current_user_id = server_data.get_active_session()
 
-# --- TEMP DEMO ROLE (stand-in until the user model has a real role field) ---
-_DEMO_ROLE_KEY = "demo_role"
-
-
-def _get_current_role():
-    role = window.localStorage.getItem(_DEMO_ROLE_KEY)
-    return role if role in ("manager", "employee") else "employee"
-
-
-def _is_manager():
-    return _get_current_role() == "manager"
+# The board's direction rules follow the signed-in user's real project
+# permissions (_permissions, loaded in _init_page): edit_sprints covers the
+# forward moves, and review_tasks adds the In Review -> Completed step and the
+# backwards moves. The demo "view as manager/employee" switch that used to stand
+# in for those roles has been removed.
 
 # ==========================================
 # CONSTANTS & GLOBAL STATE
@@ -402,10 +396,6 @@ async def _init_page(sprint_id=None):
 
     _apply_header_and_lock_state(sprint)
 
-    role_select = web.page["demo-role-select"]
-    if role_select is not None:
-        role_select.value = _get_current_role()
-
     state = await server_data.get_kanban_state(_project_id, _sprint_id)
     if state is None:
         state = {column: [] for column in COLUMN_ORDER}
@@ -535,14 +525,16 @@ async def handle_card_drop(event):
     if source_column == target_column:
         return
 
-    if not _is_manager():
-        # Employees: forward-only, and cannot self-move into Completed
+    if "review_tasks" not in _permissions:
+        # Without review_tasks: forward-only, and no self-moving into Completed.
         if _column_index(target_column) < _column_index(source_column):
             await show_snackbar("Tasks can only be pushed forward on the board.")
             return
 
         if target_column == "completed":
-            await show_snackbar("Only a manager can move a task to Completed.")
+            await show_snackbar(
+                "Moving a task to Completed needs the review_tasks permission in this project."
+            )
             return
 
         # CHANGE: only moves PAST the gate column need a finished checklist, so a
@@ -554,9 +546,9 @@ async def handle_card_drop(event):
                     f"Complete all checklist items before moving this task to {target_column}."
                 )
                 return
-    # Managers may otherwise move tasks in any direction, to any column...
+    # A review_tasks holder may otherwise move tasks in any direction, to any column...
 
-    # ...but NOBODY (manager included) may complete a task with unchecked checklist items.
+    # ...but NOBODY may complete a task with unchecked checklist items.
     if target_column == "completed":
         pending = _unchecked_count(task)
         if pending:
@@ -671,7 +663,7 @@ def _render_task_detail_modal():
         _close_task_detail_modal()
         return
 
-    is_manager = _is_manager()
+    can_review = "review_tasks" in _permissions
 
     # Title
     web.page["task-detail-title"].textContent = task.get("title", "Task Details")
@@ -809,7 +801,7 @@ def _render_task_detail_modal():
         add_btn.disabled = False
         input_el.placeholder = "Add a sub-item..."
 
-    # --- Manager Feedback (Review tab only) ---
+    # --- Review feedback (Review column only) ---
     feedback_section = web.page["review-feedback-section"]
     if task_column == "review":
         feedback_section.classList.remove("hidden")
@@ -830,14 +822,14 @@ def _render_task_detail_modal():
                 text_span = document.createElement("span")
                 author_span = document.createElement("span")
                 author_span.className = "feedback-author"
-                author_span.textContent = f"{msg.get('author', 'Manager')}:"
+                author_span.textContent = f"{msg.get('author', 'Reviewer')}:"
                 text_span.appendChild(author_span)
                 text_span.appendChild(document.createTextNode(f" {msg.get('text', '')}"))
                 msg_div.appendChild(text_span)
 
-                # Only the manager who posted it can delete their own feedback
+                # Only the reviewer who posted it can delete their own feedback
                 is_own_feedback = (
-                    is_manager
+                    can_review
                     and _current_user_id is not None
                     and msg.get("author_id") == _current_user_id
                 )
@@ -854,7 +846,7 @@ def _render_task_detail_modal():
 
         feedback_input = web.page["feedback-input"]
         feedback_btn = web.page["feedback-add-btn"]
-        can_post = is_manager and not _sprint_ended
+        can_post = can_review and not _sprint_ended
         feedback_input.disabled = not can_post
         feedback_btn.disabled = not can_post
     else:
@@ -1167,7 +1159,7 @@ async def handle_checklist_delete(event):
 @when("submit", "#feedback-add-form")
 async def handle_add_feedback(event):
     event.preventDefault()
-    if _sprint_ended or not _open_task_id or not _is_manager():
+    if _sprint_ended or not _open_task_id or "review_tasks" not in _permissions:
         return
 
     input_el = web.page["feedback-input"]
@@ -1196,7 +1188,7 @@ async def handle_add_feedback(event):
 
 @when("click", "#feedback-messages")
 async def handle_delete_feedback(event):
-    if _sprint_ended or not _open_task_id or not _is_manager():
+    if _sprint_ended or not _open_task_id or "review_tasks" not in _permissions:
         return
 
     target = event.target
@@ -1212,7 +1204,7 @@ async def handle_delete_feedback(event):
     feedback_list = target_task.get("feedback") or []
     msg_to_delete = next((m for m in feedback_list if str(m.get("id")) == feedback_id), None)
 
-    # Guard: only the manager who posted it may delete it
+    # Guard: only the reviewer who posted it may delete it
     if msg_to_delete is None:
         return
     if _current_user_id is None or msg_to_delete.get("author_id") != _current_user_id:
@@ -1224,14 +1216,6 @@ async def handle_delete_feedback(event):
     target_task["feedback"] = [m for m in feedback_list if str(m.get("id")) != feedback_id]
     await _persist_kanban_state(_kanban_state)
     _render_task_detail_modal()
-
-
-@when("change", "#demo-role-select")
-def handle_role_change(event):
-    window.localStorage.setItem(_DEMO_ROLE_KEY, event.target.value)
-    _render_board(_kanban_state)
-    if _open_task_id:
-        _render_task_detail_modal()
 
 
 # --- SECTION: Task Time Logging ---

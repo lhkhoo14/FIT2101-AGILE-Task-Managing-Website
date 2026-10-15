@@ -39,7 +39,7 @@
   <!-- Layout Stylesheet -->
   <link rel="stylesheet" href="../styles/project-layout.css">
   <!-- Page Stylesheet -->
-  <link rel="stylesheet" href="../styles/sprint-page.css?v=20261014">
+  <link rel="stylesheet" href="../styles/sprint-page.css?v=20261017">
   <!-- Snackbar Stylesheet -->
   <link rel="stylesheet" href="../styles/snackbar.css">
   <!--
@@ -93,12 +93,6 @@
       </svg>
       <input type="text" id="global-search" class="search-input" placeholder="Search tasks by tag...">
     </div>
-
-    <!-- TEMP demo-only role switch — remove once real User.role exists -->
-    <select id="demo-role-select" class="demo-role-select" title="Demo: view board as this role">
-      <option value="employee">View as: Employee</option>
-      <option value="manager">View as: Manager</option>
-    </select>
 
     <!-- Profile Picture & Dropdown Menu -->
     <div class="profile-menu-container">
@@ -350,9 +344,10 @@
       </div>
       <div id="time-log-status" class="time-log-status"></div>
 
-      <!-- Manager Feedback / Review Chat -->
+      <!-- Review feedback: written by a holder of review_tasks while the card sits
+           in the Review column. sprint-page.py disables the box for everyone else. -->
       <div id="review-feedback-section" class="review-feedback-section hidden">
-        <div class="modal-label" style="margin-top: 15px;">Manager Feedback</div>
+        <div class="modal-label" style="margin-top: 15px;">Review Feedback</div>
         <div id="feedback-messages" class="feedback-messages"></div>
         <form id="feedback-add-form" class="checklist-add-form">
           <input type="text" id="feedback-input" class="modal-input" placeholder="Post feedback..." />
@@ -373,7 +368,7 @@
 
   <!-- Link settings.json for PyScript backend -->
   <script type="py" config="../../settings.json" src="../backend/utils/layout.py?v=20261011"></script>
-  <script type="py" config="../../settings.json" src="../backend/views/sprint-page.py?v=20261011"></script>
+  <script type="py" config="../../settings.json" src="../backend/views/sprint-page.py?v=20261017"></script>
 </body>
 
 </html>
