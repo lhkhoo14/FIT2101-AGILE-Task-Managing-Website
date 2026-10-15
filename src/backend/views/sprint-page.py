@@ -10,13 +10,21 @@ if "." not in sys.path:
     sys.path.append(".")
 
 from pyscript import when, web, window, document  # type: ignore
-from auth import show_snackbar
-from sprint_access import is_sprint_member, task_tags, task_matches_tag_query, MAX_DESCRIPTION_LENGTH
+
+# `auth`, `dialog`, `sprint_access` and `project_role_helpers` are loaded by their
+# flat names via settings.json's file map (src/backend/utils/auth.py -> ./auth.py),
+# so Pylance cannot resolve them from this folder; the ignores keep those
+# runtime-correct imports quiet.
+from auth import show_snackbar  # type: ignore[reportMissingImports]
+from dialog import confirm_action  # type: ignore[reportMissingImports]
+from sprint_access import is_sprint_member, task_tags, task_matches_tag_query, MAX_DESCRIPTION_LENGTH  # type: ignore[reportMissingImports]
+from project_role_helpers import permissions_for_user  # type: ignore[reportMissingImports]
 from html import escape
 import charts
 import js  # type: ignore
 
 from server_data import ServerData
+
 import topbar
 
 # ServerData owns the FastAPI session and provides the sprint/project API.
@@ -51,6 +59,7 @@ _sprint_id = None
 _project_id = None
 _sprint_ended = False
 _has_access = False
+_permissions = set()     # what the signed-in user may do in this project (manage_tasks, ...)
 _active_sprint = None
 _kanban_state = {}
 _assignees = []          # [(user_id, display name)] who can be assigned tasks in this sprint
@@ -327,10 +336,12 @@ async def _watch_for_sprint_end():
 async def _init_page(sprint_id=None):
     """Load the selected sprint, verify membership, and render its board."""
     global _sprint_id, _sprint_ended, _has_access, _project_id, _active_sprint, _kanban_state, _assignees
+    global _permissions
     url_sprint_id, _project_id = _get_url_params()
     _sprint_id = sprint_id or url_sprint_id
     _sprint_ended = False
     _has_access = False
+    _permissions = set()
 
     if not _sprint_id or not _project_id:
         window.location.href = "dashboard.html"
@@ -351,6 +362,12 @@ async def _init_page(sprint_id=None):
         )
         return
     _has_access = True
+    # One extra read decides whether the task modal offers Delete at all. It mirrors
+    # the dashboard's "can this user delete a sprint?" read and only drives what the
+    # UI shows: the delete endpoint checks manage_tasks again on every request.
+    _permissions = permissions_for_user(
+        await server_data.get_project_members(_project_id), _current_user_id
+    )
     _active_sprint = sprint
     _assignees = await _load_assignees(sprint)
 
@@ -627,6 +644,26 @@ def _render_task_detail_modal():
         "This task has logged work time, so it can't go back to the product backlog."
         if has_work else "Move this task back to the product backlog"
     )
+
+    # Delete: deleting a task needs manage_tasks, and a task that reached Completed
+    # is never offered for deletion because that column is the record of what the
+    # team finished. Every preset role holds manage_tasks, so in practice this only
+    # restricts a custom role that was left without it.
+    delete_btn = web.page["delete-task-btn"]
+    can_delete = (
+        "manage_tasks" in _permissions
+        and task_column != "completed"
+        and not _sprint_ended
+    )
+    delete_btn.classList.toggle("hidden", not can_delete)
+    if task_column == "completed":
+        delete_btn.title = "A completed task cannot be deleted."
+    elif _sprint_ended:
+        delete_btn.title = "This sprint has ended, so its tasks can no longer be changed."
+    elif "manage_tasks" not in _permissions:
+        delete_btn.title = "You need the manage_tasks permission in this project to delete a task."
+    else:
+        delete_btn.title = "Delete this task permanently"
 
     # Progress Bar
     done, total, percent = _checklist_progress(task)
@@ -1291,6 +1328,48 @@ async def handle_return_to_backlog(event):
     _notify_dashboard_backlog_changed()
     await _record_change("returned", _active_sprint or {"name": "Sprint"}, task)
     await show_snackbar("Task returned to the product backlog.")
+
+
+@when("click", "#delete-task-btn")
+async def handle_delete_task(event):
+    """Delete the open task from the sprint board, once the user confirms.
+
+    The button is only offered to a holder of manage_tasks, and this re-checks the
+    permission so a stale page cannot submit anyway; the endpoint enforces it too.
+    No change-history entry is written from here: the delete endpoint records the
+    deletion server-side, so calling _record_change as well would log it twice.
+    """
+    if _sprint_ended or not _open_task_id:
+        return
+    if "manage_tasks" not in _permissions:
+        await show_snackbar("You need the manage_tasks permission in this project to delete a task.")
+        return
+
+    task, column = _find_task_and_column(_open_task_id)
+    if task is None:
+        return
+    if column == "completed":
+        await show_snackbar("A completed task cannot be deleted.")
+        return
+
+    confirmed, _password = await confirm_action(
+        title=f"Delete task {task.get('title', 'this task')}"
+    )
+    if not confirmed:
+        return
+
+    success, message = await server_data.delete_task(_project_id, _sprint_id, task.get("id"))
+    if not success:
+        await show_snackbar(message)
+        return
+
+    _kanban_state[column] = [t for t in _kanban_state.get(column, []) if t is not task]
+    _close_task_detail_modal()
+    _render_board(_kanban_state)
+    _refresh_all_counts()
+    # The sprint card on the dashboard counts tasks, so it has to re-read too.
+    _notify_dashboard_backlog_changed()
+    await show_snackbar(message)
 
 
 def _close_task_detail_modal():

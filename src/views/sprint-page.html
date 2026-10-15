@@ -348,6 +348,10 @@
 
       <div class="modal-actions" style="margin-top: 20px;">
         <button type="button" id="return-to-backlog-btn" class="modal-btn-cancel return-backlog-btn hidden">Return to product backlog</button>
+        <!-- Deletion entry point for the open task. sprint-page.py reveals it only when
+             the user holds manage_tasks here and the task has not reached Completed;
+             the delete endpoint enforces the same rule. -->
+        <button type="button" id="delete-task-btn" class="modal-btn-cancel hidden" style="background-color: #dc2626; color: #ffffff;">Delete task</button>
         <button type="button" id="task-detail-close-btn" class="modal-btn-cancel">Close</button>
       </div>
     </div>
