@@ -25,7 +25,14 @@ import js  # type: ignore
 
 from server_data import ServerData
 
-import topbar
+# `topbar` (src/backend/utils/topbar.py -> ./topbar.py) is imported for its side
+# effects rather than for a name in it: loading it registers the top bar's
+# profile-dropdown, outside-click and sign-out handlers for this page and boots
+# its session guard. Pylance greys out a module imported only for its side effects
+# and no ignore comment silences that hint, so the `as topbar` re-export form marks
+# the import as deliberate; the rule ignore covers the flat name it cannot resolve
+# from this folder (see the flat-name comment above).
+import topbar as topbar  # type: ignore[reportMissingImports]
 
 # ServerData owns the FastAPI session and provides the sprint/project API.
 # The page keeps only the currently displayed board in memory; every mutation

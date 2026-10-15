@@ -1,10 +1,6 @@
-import sys
-import os
 import asyncio
 import html
-import js # type: ignore
 
-from pyodide.ffi import create_proxy # type: ignore
 from pyscript import web, window, when # type: ignore
 
 # `auth` and `dialog` are loaded by their flat names via settings.json's file
@@ -183,11 +179,8 @@ def render_members(members, contribute_ids, roles, removable_ids=None):
         """
 
     container.innerHTML = cards_html
-
-    # The cards are built as markup, so their buttons are wired up afterwards.
-    if removable_ids:
-        for button in js.document.querySelectorAll(".member-remove-btn"):
-            button.addEventListener("click", _remove_member_proxy)
+    # The Remove buttons are handled by the @when listener on #member-cards below,
+    # so the markup only has to be drawn: nothing is attached to the cards.
 
 @when("click", "#add-member-btn")
 def show_add_member_form(event):
@@ -333,10 +326,27 @@ def populate_member_dropdown(users, existing_member_ids):
 
     dropdown.innerHTML = options_html
 
+@when("click", "#member-cards")
 async def handle_remove_member_click(event):
-    """Take the member out of the project, once the user confirms."""
-    event.stopPropagation()
-    button = event.currentTarget
+    """Take the member out of the project, once the user confirms.
+
+    The listener sits on the roster container rather than on the button: the
+    cards, and with them the Remove buttons, are drawn again after every change,
+    while #member-cards is in the page's own markup - which matters because
+    PyScript resolves a @when selector when the decorator runs, and raises if
+    nothing matches yet.
+
+    The clicked button is read from event.target, not event.currentTarget: an
+    async handler's body runs after the click has finished dispatching, and the
+    browser has cleared currentTarget by then, which is what made the old
+    create_proxy wiring on the button itself do nothing at all. event.target
+    keeps pointing at what was clicked (the sprint page's checklist delete
+    handler relies on the same thing).
+    """
+    target = event.target
+    button = target.closest(".member-remove-btn") if target is not None else None
+    if button is None:
+        return
 
     member_id = button.getAttribute("data-member-id")
     name = button.getAttribute("data-member-name") or "this member"
@@ -347,10 +357,8 @@ async def handle_remove_member_click(event):
     if not confirmed:
         return
 
-    project_id = get_project_id_from_url()
-
     success, message = await ServerData().remove_project_member(
-        project_id,
+        get_project_id_from_url(),
         member_id
     )
 
@@ -360,10 +368,6 @@ async def handle_remove_member_click(event):
         # Draw the roster again from the server so the card and the role lists
         # match, without reloading away the remove switch.
         await refresh_member_view()
-
-# Created once and kept, so the callback cannot be garbage collected while the
-# cards that use it are still on the page.
-_remove_member_proxy = create_proxy(handle_remove_member_click)
 
 async def init_members_page():
     project_id = get_project_id_from_url()
