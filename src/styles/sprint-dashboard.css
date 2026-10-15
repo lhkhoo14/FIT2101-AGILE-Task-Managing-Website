@@ -330,6 +330,13 @@
   width: 360px;
   max-width: 90vw;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  max-height: calc(100vh - 80px);
+  max-height: calc(100dvh - 80px);
+  overflow-y: auto;
+}
+
+.modal-box > * {
+  flex-shrink: 0;
 }
 
 .modal-title {
