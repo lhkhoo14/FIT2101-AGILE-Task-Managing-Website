@@ -11,6 +11,7 @@ if "." not in sys.path:
 
 from server_data import ServerData
 from auth import show_snackbar  # type: ignore
+from dialog import confirm_action  # type: ignore
 from project_helpers import get_project_id_from_url  # type: ignore
 from project_role_helpers import ( # type: ignore
     close_all_modals, 
@@ -22,7 +23,6 @@ from project_role_helpers import ( # type: ignore
 _current_role_meta = {}
 _all_project_roles = []
 _current_role_members = []
-_role_to_delete = None
 
 def get_role_name_from_url():
     parsed_url = urlparse(str(window.location.href))
@@ -262,38 +262,32 @@ async def handle_edit_role_submit(event):
         await show_snackbar(message)
 
 def trigger_delete_role_flow(role_name):
+    """Confirm through the shared dialog, then delete the role.
+
+    The roles list calls this through window.triggerDeleteRole, so it stays a
+    plain function and hands the actual work to an async helper.
+    """
     if role_name in PROTECTED_PRESET_NAMES:
         asyncio.ensure_future(show_snackbar("Cannot delete preset system roles."))
         return
-    global _role_to_delete
-    _role_to_delete = role_name
-    text_el = web.page["#delete-role-confirmation-text"]
-    if text_el:
-        text_el.innerHTML = f"Are you sure you want to delete the role <b>{html.escape(role_name)}</b>? This action cannot be undone."
-    modal = web.page["#delete-role-modal"]
-    if modal:
-        modal.classes.remove("hidden")
+    asyncio.ensure_future(_confirm_and_delete_role(role_name))
 
 window.triggerDeleteRole = lambda r_name: trigger_delete_role_flow(r_name)
 
-@when("click", "#confirm-delete-role-btn")
-async def confirm_delete_role(event):
-    global _role_to_delete
-    if not _role_to_delete or _role_to_delete in PROTECTED_PRESET_NAMES:
+async def _confirm_and_delete_role(role_name):
+    """Ask the shared dialog to confirm, then delete the role and reload the list."""
+    confirmed, _password = await confirm_action(title=f"Delete role {role_name}")
+    if not confirmed:
         return
-    project_id = get_project_id_from_url()
-    modal = web.page["#delete-role-modal"]
-    if modal:
-        modal.classes.add("hidden")
 
+    project_id = get_project_id_from_url()
     db = ServerData()
-    success, message = await db.delete_project_role(project_id, _role_to_delete)
+    success, message = await db.delete_project_role(project_id, role_name)
     if success:
-        await show_snackbar(f"Role '{_role_to_delete}' deleted successfully.")
+        await show_snackbar(f"Role '{role_name}' deleted successfully.")
         window.location.href = f"project-roles.html?project_id={project_id}"
     else:
         await show_snackbar(message)
-    _role_to_delete = None
 
 _member_to_remove_id = None
 
@@ -380,6 +374,6 @@ window.assignRoleToMember = lambda uid, uname, rname: asyncio.ensure_future(assi
 
 @when("click", ".modal-btn-cancel")
 def close_modals(event):
-    close_all_modals(["#edit-role-modal", "#delete-role-modal", "#add-role-member-modal", "#confirm-remove-role-member-modal"])
+    close_all_modals(["#edit-role-modal", "#add-role-member-modal", "#confirm-remove-role-member-modal"])
 
 asyncio.ensure_future(init_role_detail())

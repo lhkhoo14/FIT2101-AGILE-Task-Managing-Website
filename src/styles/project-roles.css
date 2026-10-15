@@ -277,10 +277,6 @@
   font-size: 13px;
 }
 
-.confirm-delete-btn:hover {
-  background-color: #b91c1c !important;
-}
-
 .role-dropdown-menu button:hover {
   background-color: #f1f5f9 !important;
 }
