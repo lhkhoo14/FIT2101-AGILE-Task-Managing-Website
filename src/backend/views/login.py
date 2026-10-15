@@ -1,14 +1,13 @@
 import sys
 import asyncio
 import re
-from auth import show_snackbar
 from server_data import ServerData
 
 if "." not in sys.path:
     sys.path.append(".")
 
 from pyscript import when, web, window  # type: ignore
-from auth import show_feedback, clear_errors, toggle_password_mask # type: ignore
+from auth import show_snackbar, show_feedback, clear_errors, toggle_password_mask  # type: ignore
 
 # Global lockout task reference to prevent overlapping timers
 lockout_task = None

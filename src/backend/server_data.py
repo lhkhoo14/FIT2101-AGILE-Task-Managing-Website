@@ -2,19 +2,33 @@ from pyodide.http import pyfetch # type: ignore
 from pyscript import window       # type: ignore
 import asyncio
 import json
+from typing import Any
 from urllib.parse import quote
 
 from constants import ACTIVE_SESSION_KEY, API_URL
+from project_role_helpers import permissions_for_user  # type: ignore
 
 
 class Project:
     """A project record returned by the FastAPI projects endpoints."""
 
-    def __init__(self, id: int, name: str, description: str, status: str) -> None:
+    def __init__(self, id: int, name: str, description: str, status: str,
+                 created_at: int | None = None,
+                 permissions: set[str] | None = None) -> None:
         self.id = id
         self.name = name
         self.description = description
         self.status = status
+        # Epoch milliseconds, exactly as the server stores it, and None for a
+        # project that predates the field - the dashboard renders that as
+        # "Unknown". Both call sites in this module pass it, so it has to be
+        # accepted here or constructing a Project raises and every fetch
+        # appears to return nothing.
+        self.created_at = created_at
+        # Permissions the signed-in user holds in this project, used only to
+        # decide which destructive controls to show. The server re-checks every
+        # request, so hiding a button is never what protects the data.
+        self.permissions = permissions or set()
 
 
 class ServerData:
@@ -171,7 +185,8 @@ class ServerData:
                         name=p.get("name", "Untitled Project"),
                         description=p.get("description", "No description provided."),
                         status=p.get("status") or "active",
-                        created_at=p.get("created_at")
+                        created_at=p.get("created_at"),
+                        permissions=permissions_for_user(p, user_id)
                     )
                     for p in data
                 ]
@@ -550,7 +565,13 @@ class ServerData:
             print(f"[API Error] Failed to update sprint status: {e}")
             return False, "Unable to connect to the server.", None
 
-    async def get_account_settings(self):
+    async def get_account_settings(self) -> tuple[bool, Any]:
+        """The signed-in user's settings payload, or a message explaining why not.
+
+        The second value is the payload (a dict) when the first is True, and a
+        human-readable message when it is False - the shape every account method
+        in this class returns, which is why the caller checks `success` first.
+        """
         user_id = self.get_active_session()
         if not user_id:
             return False, "Session has expired."
@@ -563,7 +584,7 @@ class ServerData:
         except Exception as e:
             return False, str(e)
 
-    async def update_profile(self, username=None, profile_photo=None):
+    async def update_profile(self, username=None, profile_photo=None) -> tuple[bool, Any]:
         user_id = self.get_active_session()
         if not user_id:
             return False, "Session has expired."
@@ -589,7 +610,7 @@ class ServerData:
         except Exception as e:
             return False, str(e)
 
-    async def request_email_change(self, new_email):
+    async def request_email_change(self, new_email) -> tuple[bool, Any]:
         user_id = self.get_active_session()
         if not user_id:
             return False, "Session has expired."
@@ -610,7 +631,7 @@ class ServerData:
         except Exception as e:
             return False, str(e)
 
-    async def verify_email_change(self, token):
+    async def verify_email_change(self, token) -> tuple[bool, Any]:
         try:
             response = await pyfetch(
                 f"{self.api_url}/users/email-verify",
@@ -628,7 +649,7 @@ class ServerData:
         except Exception as e:
             return False, str(e)
 
-    async def change_password(self, current_password, new_password):
+    async def change_password(self, current_password, new_password) -> tuple[bool, Any]:
         user_id = self.get_active_session()
         if not user_id:
             return False, "Session has expired."
@@ -649,39 +670,130 @@ class ServerData:
         except Exception as e:
             return False, str(e)
 
-    async def delete_account(self, password):
+    async def get_project_member_users(self, project_id: int) -> list[dict]:
+        """Registered users who belong to this project, and only those.
+
+        US-19: the sprint create/edit dialog must not offer accounts that are not
+        part of the parent project. Members and users are independent requests, so
+        they are fetched concurrently and then intersected here.
+        """
+        payload, users = await asyncio.gather(
+            self.get_project_members(project_id),
+            self.get_users(),
+        )
+        member_ids = {
+            int(member_id)
+            for member_id in (payload or {}).get("members", []) or []
+            if str(member_id).isdigit()
+        }
+        return [user for user in users or [] if int(user["user_id"]) in member_ids]
+
+    async def get_change_history(self, project_id: int) -> list[dict]:
+        """US-20: the project's change history, newest first, from the server."""
         user_id = self.get_active_session()
-        if not user_id:
-            return False, "Session has expired."
+        if user_id is None:
+            return []
+
         try:
             response = await pyfetch(
-                f"{self.api_url}/users/{user_id}/delete",
+                f"{self.api_url}/projects/{project_id}/history?user_id={user_id}",
+                method="GET",
+                headers={"Content-Type": "application/json"}
+            )
+            if response.status == 200:
+                return await response.json()
+            return []
+        except Exception as e:
+            print(f"[API Error] Failed to fetch change history: {e}")
+            return []
+
+    async def record_change(self, project_id: int, message: str, action: str = "project_change",
+                            sprint_id=None, sprint_name=None, task_id=None, task_title=None,
+                            from_status=None, to_status=None, timestamp=None) -> tuple[bool, str]:
+        """US-20: append one event to the project's audit trail on the server.
+
+        The server stamps the time and actor, so the feed reads the same on every
+        device. `timestamp` is only used by the one-time browser-data migration.
+        """
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired"
+
+        body = {
+            "user_id": user_id,
+            "action": action,
+            "message": message,
+            "sprint_id": str(sprint_id) if sprint_id is not None else None,
+            "sprint_name": sprint_name,
+            "task_id": str(task_id) if task_id is not None else None,
+            "task_title": task_title,
+            "from_status": from_status,
+            "to_status": to_status,
+        }
+        if timestamp:
+            body["timestamp"] = timestamp
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/history",
                 method="POST",
                 headers={"Content-Type": "application/json"},
-                body=json.dumps({"password": password})
+                body=json.dumps(body)
             )
-            data = await response.json()
+            if response.status in (200, 201):
+                return True, ""
+            err_data = await response.json()
+            return False, err_data.get("detail", "Failed to save change history.")
+        except Exception as e:
+            print(f"[API Error] Failed to save change history: {e}")
+            return False, "Unable to connect to the server."
+
+    async def get_contributions(self, project_id: int) -> dict:
+        """US-20: member contribution statistics calculated and stored server-side."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return {}
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/contributions?user_id={user_id}",
+                method="GET",
+                headers={"Content-Type": "application/json"}
+            )
             if response.status == 200:
-                self.clear_session()
-                return True, data
-            detail = data.get("detail", "Failed to delete account.")
-            if isinstance(detail, list):
-                detail = "; ".join([err.get("msg", str(err)) for err in detail])
-            return False, detail
+                return await response.json()
+            return {}
+        except Exception as e:
+            print(f"[API Error] Failed to fetch contributions: {e}")
+            return {}
+
+    async def log_task_time(self, project_id: int, sprint_id, task_id, action: str
+                            ) -> tuple[bool, str, dict | None]:
+        """US-21: start/stop a work session on a task.
+
+        The server owns the timestamps and stamps the record with the acting User
+        ID and the Task ID, then returns the updated time log for the task.
+        """
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired", None
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/sprints/{sprint_id}/tasks/{task_id}/time-log",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id, "action": action})
+            )
+            if response.status == 200:
+                return True, "", await response.json()
+            err_data = await response.json()
+            return False, err_data.get("detail", "Failed to update the task time log."), None
         except Exception as e:
             print(f"[API Error] Failed to log task time: {e}")
             return False, "Unable to connect to the server.", None
-            return False, str(e)
 
-class Project:
-    def __init__(self, id: int, name: str, description: str, status: str,
-                 created_at: int | None = None) -> None:
-        self.id = id
-        self.name = name
-        self.description = description
-        self.status = status
-        self.created_at = created_at  # epoch milliseconds, None for legacy projects
-            
+
     async def create_project_role(
         self,
         project_id: int,
@@ -843,3 +955,125 @@ class Project:
         except Exception as e:
             print(f"[API Error] Failed to fetch users: {e}")
             return []
+
+    async def delete_project(self, project_id: int) -> tuple[bool, str]:
+        """Deletes a project and everything stored inside it (delete_project)."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}",
+                method="DELETE",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data.get("message", "Project deleted.")
+            return False, data.get("detail", "Failed to delete project.")
+        except Exception as e:
+            print(f"[API Error] Failed to delete project: {e}")
+            return False, "Unable to connect to the server."
+
+    async def delete_sprint(self, project_id: int, sprint_id: str | int) -> tuple[bool, str]:
+        """Deletes one sprint, with everything on its board.
+
+        Refused by the server for a completed sprint, which is kept as the record
+        of what the team finished.
+        """
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/sprints/{sprint_id}",
+                method="DELETE",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data.get("message", "Sprint deleted.")
+            return False, data.get("detail", "Failed to delete sprint.")
+        except Exception as e:
+            print(f"[API Error] Failed to delete sprint: {e}")
+            return False, "Unable to connect to the server."
+
+    async def delete_task(self, project_id: int, sprint_id: str | int,
+                          task_id: str) -> tuple[bool, str]:
+        """Deletes one task from a sprint board.
+
+        Needs manage_tasks (every preset role holds it), and is refused by the
+        server for a task sitting in Completed.
+        """
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/sprints/{sprint_id}"
+                f"/tasks/{quote(str(task_id))}",
+                method="DELETE",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data.get("message", "Task deleted.")
+            return False, data.get("detail", "Failed to delete task.")
+        except Exception as e:
+            print(f"[API Error] Failed to delete task: {e}")
+            return False, "Unable to connect to the server."
+
+    async def remove_project_member(self, project_id: int, member_id: int) -> tuple[bool, str]:
+        """Removes a member from a project (manage_members).
+
+        The member's account is untouched: they lose this project, not their
+        user record.
+        """
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/members/{member_id}/remove",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"user_id": user_id})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data.get("message", "Member removed.")
+            return False, data.get("detail", "Failed to remove member.")
+        except Exception as e:
+            print(f"[API Error] Failed to remove member: {e}")
+            return False, "Unable to connect to the server."
+
+    async def delete_account(self, password: str) -> tuple[bool, str]:
+        """Deletes the signed-in account and unlinks it from every project.
+
+        Self-service: the password is what proves the account is the caller's.
+        """
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired."
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/users/{user_id}/delete",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"password": password})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data.get("message", "Account deleted.")
+            return False, data.get("detail", "Failed to delete account.")
+        except Exception as e:
+            print(f"[API Error] Failed to delete account: {e}")
+            return False, "Unable to connect to the server."

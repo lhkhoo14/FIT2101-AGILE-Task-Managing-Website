@@ -256,6 +256,70 @@ def is_sprint_member(sprint: Dict[str, Any], user_id: Any) -> bool:
         return False
 
 
+# ---------------------------------------------------------------------------
+# Project leadership is part of every sprint
+# ---------------------------------------------------------------------------
+# CHANGE: the three roles that own the sprint cycle are now members of every
+# sprint in their project. "Only assigned members can open this sprint" makes
+# that necessary: a Project Creator, Scrum Master or Product Owner who was not
+# ticked in the create-sprint dialog could not open the boards they are
+# responsible for, and so could not manage the sprint (or delete it) at all.
+# Manager is deliberately not here - it manages sprints but is staffed in like
+# anyone else - so this list is exactly "who owns the project's sprints".
+LEADERSHIP_ROLES = ("Project Creator", "Scrum Master", "Product Owner")
+
+
+def leadership_member_ids(project: Dict[str, Any]) -> list:
+    """Member ids holding a project-leadership role, in role order, de-duplicated.
+
+    Read from the project's role map, so it follows whatever the Roles page has
+    assigned and is empty for a project with no role map yet.
+    """
+    roles = project.get("roles") or {}
+    leaders = []
+    for role_name in LEADERSHIP_ROLES:
+        for holder in roles.get(role_name) or []:
+            try:
+                value = int(str(holder).strip())
+            except (TypeError, ValueError):
+                continue
+            if value not in leaders:
+                leaders.append(value)
+    return leaders
+
+
+def ensure_leadership_membership(project: Dict[str, Any]) -> bool:
+    """Add the project's leadership to every sprint's member list.
+
+    Returns True if anything changed, so callers can persist the repair. A
+    legacy sprint whose "members" is None is left alone: None already means
+    "the whole project", which includes the leadership. Idempotent, and it only
+    ever adds project members, so US-19 (sprint members must belong to the
+    project) still holds afterwards.
+    """
+    leaders = leadership_member_ids(project)
+    if not leaders:
+        return False
+    changed = False
+    for sprint in project.get("sprints", []) or []:
+        members = sprint.get("members")
+        if members is None:
+            continue
+        current = []
+        for raw in members:
+            try:
+                value = int(str(raw).strip())
+            except (TypeError, ValueError):
+                continue
+            if value not in current:
+                current.append(value)
+        missing = [leader for leader in leaders if leader not in current]
+        if missing:
+            sprint["members"] = current + missing
+            changed = True
+    return changed
+
+
 def normalized_task_id(task_id: Any) -> str:
     """Board cards are named "task-<backlog id>"; strip the prefix for comparisons."""
     text = str(task_id or "")
@@ -319,3 +383,54 @@ def descriptions_changed(old_state: Dict[str, Any], new_state: Dict[str, Any]) -
         }
     old, new = by_id(old_state), by_id(new_state)
     return any(text != old.get(task_id, "") for task_id, text in new.items())
+
+
+# ---------------------------------------------------------------------------
+# Task deletion
+# ---------------------------------------------------------------------------
+def find_board_task(state: Dict[str, Any], task_id: Any):
+    """(column, card) for a task on a board, or (None, None) when it is absent."""
+    wanted = normalized_task_id(task_id)
+    for column in COLUMNS:
+        for task in (state or {}).get(column, []) or []:
+            if normalized_task_id(task.get("id")) == wanted:
+                return column, task
+    return None, None
+
+
+def task_delete_blocker(state: Dict[str, Any], task_id: Any) -> Optional[str]:
+    """Why this task may not be deleted, or None when it may be.
+
+    A task that reached Completed is the record of finished work, so it is kept;
+    every other task can go. save_kanban_state() applies the same rule to a board
+    save by diffing the incoming board against the stored one, so the rule cannot
+    be sidestepped by leaving a card out of a payload.
+    """
+    column, _ = find_board_task(state, task_id)
+    if column is None:
+        return "Task not found on this sprint's board."
+    if column == "completed":
+        return "A completed task cannot be deleted."
+    return None
+
+
+def removed_tasks(old_state: Dict[str, Any], new_state: Dict[str, Any]) -> list:
+    """(task_id, title, column) for every card a new board leaves out.
+
+    Saving a board replaces the sprint's whole kanban_state, so a card disappears
+    simply by being absent from the payload. Deletion is therefore detected by
+    diffing the stored board against the incoming one, the same way
+    descriptions_changed detects an edit.
+    """
+    remaining = {
+        normalized_task_id(task.get("id"))
+        for column in COLUMNS
+        for task in (new_state or {}).get(column, []) or []
+    }
+    gone = []
+    for column in COLUMNS:
+        for task in (old_state or {}).get(column, []) or []:
+            task_id = normalized_task_id(task.get("id"))
+            if task_id not in remaining:
+                gone.append((task_id, task.get("title", "Task"), column))
+    return gone

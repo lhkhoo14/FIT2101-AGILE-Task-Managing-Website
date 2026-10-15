@@ -39,7 +39,7 @@
   <!-- Layout Stylesheet -->
   <link rel="stylesheet" href="../styles/project-layout.css">
   <!-- Page Stylesheet -->
-  <link rel="stylesheet" href="../styles/sprint-page.css?v=20261014">
+  <link rel="stylesheet" href="../styles/sprint-page.css?v=20261017">
   <!-- Snackbar Stylesheet -->
   <link rel="stylesheet" href="../styles/snackbar.css">
   <!--
@@ -93,12 +93,6 @@
       </svg>
       <input type="text" id="global-search" class="search-input" placeholder="Search tasks by tag...">
     </div>
-
-    <!-- TEMP demo-only role switch — remove once real User.role exists -->
-    <select id="demo-role-select" class="demo-role-select" title="Demo: view board as this role">
-      <option value="employee">View as: Employee</option>
-      <option value="manager">View as: Manager</option>
-    </select>
 
     <!-- Profile Picture & Dropdown Menu -->
     <div class="profile-menu-container">
@@ -160,6 +154,20 @@
       </nav>
 
       <div class="sidebar-footer">
+        <!-- CHANGE: Delete Sprint lives here, on the sprint it deletes, rather than
+             on the sprint's card in the list. The card opens the sprint when
+             clicked, so a button inside it was always racing the card's own click
+             handler. Revealed to a manage_sprints holder only, and never for a
+             completed sprint, which is the record its burndown and contribution
+             figures were built from; the DELETE endpoint enforces both rules. -->
+        <button type="button" id="delete-sprint-btn" class="nav-item nav-item-danger hidden"
+          title="Delete this sprint and everything on its board">
+          <svg viewBox="0 0 24 24" class="icon">
+            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+          </svg>
+          <span>Delete Sprint</span>
+        </button>
+
         <button type="button" id="settings-btn" class="nav-item">
           <svg viewBox="0 0 24 24" class="icon">
             <path
@@ -328,20 +336,10 @@
       </div>
       <div id="time-log-status" class="time-log-status"></div>
 
-      <!-- Stopwatch Section -->
-      <div class="modal-label">Stopwatch</div>
-      <div id="stopwatch-display" class="stopwatch-display">00:00:00</div>
-      <div id="stopwatch-total" class="stopwatch-total">Total time spent: 0m</div>
-      <div class="time-log-buttons">
-        <button id="stopwatch-start-btn" class="modal-btn modal-btn-submit">Start Stopwatch</button>
-        <button id="stopwatch-pause-btn" class="modal-btn modal-btn-secondary">Pause Task</button>
-        <button id="stopwatch-resume-btn" class="modal-btn modal-btn-secondary">Resume Task</button>
-        <button id="stopwatch-log-btn" class="modal-btn modal-btn-primary">Log Time</button>
-      </div>
-
-      <!-- Manager Feedback / Review Chat -->
+      <!-- Review feedback: written by a holder of review_tasks while the card sits
+           in the Review column. sprint-page.py disables the box for everyone else. -->
       <div id="review-feedback-section" class="review-feedback-section hidden">
-        <div class="modal-label" style="margin-top: 15px;">Manager Feedback</div>
+        <div class="modal-label" style="margin-top: 15px;">Review Feedback</div>
         <div id="feedback-messages" class="feedback-messages"></div>
         <form id="feedback-add-form" class="checklist-add-form">
           <input type="text" id="feedback-input" class="modal-input" placeholder="Post feedback..." />
@@ -351,6 +349,10 @@
 
       <div class="modal-actions" style="margin-top: 20px;">
         <button type="button" id="return-to-backlog-btn" class="modal-btn-cancel return-backlog-btn hidden">Return to product backlog</button>
+        <!-- Deletion entry point for the open task. sprint-page.py reveals it only when
+             the user holds manage_tasks here and the task has not reached Completed;
+             the delete endpoint enforces the same rule. -->
+        <button type="button" id="delete-task-btn" class="modal-btn-cancel hidden" style="background-color: #dc2626; color: #ffffff;">Delete task</button>
         <button type="button" id="task-detail-close-btn" class="modal-btn-cancel">Close</button>
       </div>
     </div>
@@ -358,7 +360,7 @@
 
   <!-- Link settings.json for PyScript backend -->
   <script type="py" config="../../settings.json" src="../backend/utils/layout.py?v=20261011"></script>
-  <script type="py" config="../../settings.json" src="../backend/views/sprint-page.py?v=20261011"></script>
+  <script type="py" config="../../settings.json" src="../backend/views/sprint-page.py?v=20261017"></script>
 </body>
 
 </html>

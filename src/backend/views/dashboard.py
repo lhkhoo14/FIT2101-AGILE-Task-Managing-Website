@@ -24,6 +24,16 @@ def handle_project_click(event):
 # Create a persistent proxy wrapper for the callback
 click_proxy = create_proxy(handle_project_click)
 
+# CHANGE: the Delete button that used to sit on each project card was removed.
+# It was wired with create_proxy(handle_project_delete_click) where the handler
+# is an async def, so the click scheduled a coroutine and returned a promise:
+# the coroutine body - whose first line stops the click bubbling - only ran
+# after the click had already reached the card's own listener, which navigates
+# into the project. The navigation always won, so Delete just opened the
+# project. Deleting now lives on the project page's own sidebar, behind the
+# same delete_project permission, and this card is a plain "open the project"
+# target again.
+
 # --- Sorting (US-28) ---
 SORT_DATE_DESC = "date-desc"
 SORT_DATE_ASC = "date-asc"

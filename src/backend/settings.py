@@ -1,5 +1,5 @@
 import asyncio
-from pyscript import document, window, when
+from pyscript import document, window, when  # type: ignore
 from server_data import ServerData
 from auth import show_feedback, clear_errors, show_snackbar, validate_email, validate_password
 
@@ -24,8 +24,10 @@ def _init_settings():
 
 async def _load_settings():
     success, data = await server.get_account_settings()
-    if not success:
-        asyncio.ensure_future(show_snackbar(data, 3))
+    # The payload is a dict on success and a message on failure, so the
+    # isinstance check keeps a malformed body away from the .get() calls below.
+    if not success or not isinstance(data, dict):
+        asyncio.ensure_future(show_snackbar(str(data), 3))
         return
     
     document.querySelector("#user-display-name").textContent = data.get("username", "User")
@@ -44,10 +46,10 @@ async def _load_settings():
 
 async def _handle_verification(token):
     success, data = await server.verify_email_change(token)
-    if success:
+    if success and isinstance(data, dict):
         asyncio.ensure_future(show_snackbar(f"Email successfully verified to {data.get('email')}!", 4))
     else:
-        asyncio.ensure_future(show_snackbar(data, 4))
+        asyncio.ensure_future(show_snackbar(str(data), 4))
     try:
         url = window.location.pathname
         window.history.replaceState({}, "", url)
@@ -82,7 +84,8 @@ async def handle_save_profile(event):
         from topbar import render_user_profile
         # re-fetch settings or call render_user_profile with updated data
         _, sdata = await server.get_account_settings()
-        render_user_profile(sdata)
+        if isinstance(sdata, dict):
+            render_user_profile(sdata)
     else:
         show_feedback("#display-name", "#display-name-error", data)
 

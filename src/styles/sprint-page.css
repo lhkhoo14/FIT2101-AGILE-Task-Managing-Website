@@ -557,16 +557,6 @@
   margin: 4px 0;
 }
 
-.demo-role-select {
-  margin-left: 12px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid #d9d9e3;
-  background-color: #fff;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-
 .feedback-messages {
   display: flex;
   flex-direction: column;

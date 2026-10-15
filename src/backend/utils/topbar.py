@@ -95,8 +95,35 @@ def handle_brand_home_click(event):
 asyncio.ensure_future(init_topbar())
 
 # --- 4. OPEN SETTINGS PAGE ---
-@when("click", "#settings-btn")
+@when("click", "body")
 def handle_open_settings(event):
+    """Open the settings page from the top bar's gear button.
+
+    Deliberately not bound to "#settings-btn" itself: PyScript resolves a
+    selector when the decorator runs and raises when it matches nothing, and
+    a page without a gear button would abort this whole module - profile
+    dropdown, sign out and session guard included. The listener therefore
+    sits on body, which every page has, and the click is matched from
+    event.target, which survives dispatch.
+    """
+    target = event.target if event is not None else None
+    if target is None:
+        return
+
+    # `if not button`, not `if button is None`: closest() hands back a proxy
+    # for the null it returns when nothing matches, and that proxy is not
+    # None, so an identity check fell through to the navigation below and
+    # every click anywhere on the page opened the settings page. The falsy
+    # check is the guard sprint-dashboard.py already uses for the same call.
+    button = target.closest("#settings-btn")
+    if not button:
+        return
+
+    # Belt and braces: only the real gear button may navigate, so a proxy
+    # that is not falsy cannot slip through either.
+    if button.getAttribute("id") != "settings-btn":
+        return
+
     try:
         window.top.location.href = "settings.html"
     except Exception:
