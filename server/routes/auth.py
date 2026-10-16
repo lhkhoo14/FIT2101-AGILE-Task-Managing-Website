@@ -1,8 +1,11 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, EmailStr
 import time
+import secrets
+
 from database_manager import db_manager
 from security import hash_password, verify_password
+from email import send_verification_email # type: ignore
 
 router = APIRouter()
 
@@ -12,6 +15,9 @@ DEFAULT_PROFILE_PHOTO = "../assets/default-profile.svg"
 class LoginPayload(BaseModel):
     email: EmailStr
     password: str
+
+class CheckEmailPayload(BaseModel):
+    email: EmailStr
 
 class RegisterPayload(BaseModel):
     email: EmailStr
@@ -58,20 +64,48 @@ def login(payload: LoginPayload):
 
     return db_manager.update(mutate)
 
+@router.post("/register/check-email")
+def check_email(payload: CheckEmailPayload):
+    db = db_manager.read()
+    if any(u["email"] == payload.email for u in db["users"]):
+        raise HTTPException(status_code=400, detail="Email is already registered.")
+    return {"status": "success", "message": "Email is available. Proceed to details."}
+
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterPayload):
     def mutate(db):
-        if any(u["email"] == payload.email for u in db["users"]):
-            raise HTTPException(status_code=400, detail="Email is already registered.")
+        # Check if email already exists
+        existing_user = next((u for u in db["users"] if u["email"] == payload.email), None)
+        
+        if existing_user:
+            if existing_user["is_verified"]:
+                raise HTTPException(status_code=400, detail="Email is already registered and verified.")
+            else:
+                # If the account exists but is UNVERIFIED, update details and resend token!
+                verify_token = secrets.token_urlsafe(32)
+                existing_user["username"] = payload.username
+                existing_user["password"] = hash_password(payload.password)
+                existing_user["verify_token"] = verify_token
+                
+                send_verification_email(payload.email, verify_token)
+                return {"status": "success", "user_id": existing_user["user_id"], "message": "Verification email resent."}
+
+        # Otherwise, create a new unverified user
         user_id = db.get("next_user_id", 1)
         db["next_user_id"] = user_id + 1
+        
+        verify_token = secrets.token_urlsafe(32)
         db["users"].append({
             "user_id": user_id,
             "username": payload.username,
             "email": payload.email,
             "password": hash_password(payload.password),
+            "is_verified": False,
+            "verify_token": verify_token,
             "projects": []
         })
+        
+        send_verification_email(payload.email, verify_token)
         return {"status": "success", "user_id": user_id}
 
     return db_manager.update(mutate)
