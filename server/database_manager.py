@@ -1,7 +1,8 @@
+import base64
 import json
 import os
 import threading
-from typing import Any, Callable, Dict, Optional, TypeVar
+from typing import Any, Callable, Dict, Optional, Tuple, TypeVar
 
 import psycopg
 
@@ -207,6 +208,103 @@ class DatabaseManager:
             else:
                 self._return_connection(connection)
 
+    # --- Profile pictures -----------------------------------------------
+    # Stored apart from the state document (see _initialize_postgres). The JSON
+    # fallback keeps the same bytes base64-encoded under "avatars", so local runs
+    # and the test suites behave the way PostgreSQL does.
+    def save_user_avatar(self, user_id: int, content_type: str, data: bytes) -> None:
+        """Store one user's profile picture, replacing any previous one."""
+        if not self.database_url:
+            encoded = base64.b64encode(data).decode("ascii")
+
+            def mutate(db: Dict[str, Any]) -> None:
+                db.setdefault("avatars", {})[str(user_id)] = {
+                    "content_type": content_type,
+                    "data": encoded,
+                }
+
+            self.update(mutate)
+            return
+
+        connection = self._connection()
+        broken = False
+        try:
+            connection.execute(
+                """
+                INSERT INTO user_avatars (user_id, content_type, bytes, updated_at)
+                VALUES (%s, %s, %s, now())
+                ON CONFLICT (user_id) DO UPDATE
+                    SET content_type = EXCLUDED.content_type,
+                        bytes = EXCLUDED.bytes,
+                        updated_at = now()
+                """,
+                (user_id, content_type, data),
+            )
+            connection.commit()
+        except Exception:
+            broken = True
+            raise
+        finally:
+            if broken:
+                self._discard_connection(connection)
+            else:
+                self._return_connection(connection)
+
+    def get_user_avatar(self, user_id: int) -> Optional[Tuple[str, bytes]]:
+        """(content type, bytes) for a user's picture, or None when there is none."""
+        if not self.database_url:
+            entry = (self._read_json().get("avatars") or {}).get(str(user_id))
+            if not entry:
+                return None
+            try:
+                return str(entry["content_type"]), base64.b64decode(entry["data"])
+            except Exception:
+                return None
+
+        connection = self._connection()
+        broken = False
+        try:
+            row = connection.execute(
+                "SELECT content_type, bytes FROM user_avatars WHERE user_id = %s",
+                (user_id,),
+            ).fetchone()
+        except Exception:
+            broken = True
+            raise
+        finally:
+            self._end_transaction(connection)
+            if broken:
+                self._discard_connection(connection)
+            else:
+                self._return_connection(connection)
+
+        if not row:
+            return None
+        return str(row[0]), bytes(row[1])
+
+    def delete_user_avatar(self, user_id: int) -> None:
+        """Forget a user's picture (the account keeps its default avatar)."""
+        if not self.database_url:
+            def mutate(db: Dict[str, Any]) -> None:
+                (db.get("avatars") or {}).pop(str(user_id), None)
+
+            self.update(mutate)
+            return
+
+        connection = self._connection()
+        broken = False
+        try:
+            connection.execute("DELETE FROM user_avatars WHERE user_id = %s", (user_id,))
+            connection.commit()
+        except Exception:
+            broken = True
+            raise
+        finally:
+            if broken:
+                self._discard_connection(connection)
+            else:
+                self._return_connection(connection)
+
     def _initialize_postgres(self) -> None:
         # Runs once at start-up, so it uses a throwaway connection rather than
         # the reused one. Imports the legacy JSON database only when the
@@ -223,6 +321,19 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS application_state (
                     state_id BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (state_id),
                     data JSONB NOT NULL
+                )
+                """
+            )
+            # Profile pictures live beside the state document, not inside it: an
+            # image is a few kilobytes, and the document below is read and
+            # rewritten whole on every request.
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_avatars (
+                    user_id INTEGER PRIMARY KEY,
+                    content_type TEXT NOT NULL,
+                    bytes BYTEA NOT NULL,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
                 )
                 """
             )

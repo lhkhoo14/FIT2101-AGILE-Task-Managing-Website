@@ -57,6 +57,7 @@
                     <div class="avatar-actions">
                         <button id="change-photo-btn" class="btn btn-secondary">Change photo</button>
                         <input type="file" id="avatar-file-input" accept="image/png, image/jpeg, image/webp" style="display: none;">
+                        <input type="hidden" id="avatar-pending-value" value="">
                         <button id="remove-photo-btn" class="btn btn-text">Remove photo</button>
                     </div>
                 </div>
@@ -148,6 +149,7 @@
         const changePhotoBtn = document.getElementById('change-photo-btn');
         const removePhotoBtn = document.getElementById('remove-photo-btn');
         const previewImg = document.getElementById('settings-avatar-preview');
+        const pendingValue = document.getElementById('avatar-pending-value');
 
         changePhotoBtn.addEventListener('click', () => fileInput.click());
 
@@ -172,7 +174,7 @@
                     ctx.drawImage(img, sx, sy, size, size, 0, 0, 128, 128);
                     const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
                     previewImg.src = dataUrl;
-                    document.body.dispatchEvent(new CustomEvent('app:avatar-selected', { detail: dataUrl }));
+                    pendingValue.value = dataUrl;
                 };
                 img.src = event.target.result;
             };
@@ -181,7 +183,7 @@
 
         removePhotoBtn.addEventListener('click', () => {
             previewImg.src = '../assets/default-profile.svg';
-            document.body.dispatchEvent(new CustomEvent('app:avatar-selected', { detail: '' }));
+            pendingValue.value = 'remove';
         });
     </script>
 
