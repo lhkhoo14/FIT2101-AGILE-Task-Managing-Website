@@ -44,6 +44,14 @@ async def handle_signout(event):
     await show_snackbar("Signing out...")
     window.location.replace("login.html")
 
+# The silhouette the top bar shows when an account has no picture. Kept in step
+# with the markup in src/components/topbar.html and the pages that inline it.
+_DEFAULT_AVATAR_SVG = (
+    '<svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 '
+    '1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>'
+)
+
+
 def render_user_profile(user: dict):
     name_elem = web.page["#user-display-name"]
     email_elem = web.page["#user-display-email"]
@@ -52,14 +60,20 @@ def render_user_profile(user: dict):
         name_elem.innerText = user.get("username", "Username")
     if email_elem:
         email_elem.innerText = user.get("email", "Email")
-    if user.get("profile_photo") and not str(user.get("profile_photo")).endswith("default-profile.svg"):
-        profile_btn = document.querySelector("#profile-menu-btn .profile-avatar")
-        if profile_btn:
-            img = document.createElement("img")
-            img.className = "profile-avatar-img"
-            img.src = user.get("profile_photo")
-            profile_btn.innerHTML = ""
-            profile_btn.appendChild(img)
+    avatar = document.querySelector("#profile-menu-btn .profile-avatar")
+    if not avatar:
+        return
+    photo = str(user.get("profile_photo") or "")
+    if photo and not photo.endswith("default-profile.svg"):
+        img = document.createElement("img")
+        img.className = "profile-avatar-img"
+        img.src = photo
+        avatar.innerHTML = ""
+        avatar.appendChild(img)
+    elif not avatar.querySelector("svg"):
+        # No picture, or the user just removed one: put the silhouette back
+        # rather than leaving the previous image on screen.
+        avatar.innerHTML = _DEFAULT_AVATAR_SVG
 
 async def guard_session(server_data: ServerData) -> dict | None:
     """Validates session asynchronously against FastAPI backend."""

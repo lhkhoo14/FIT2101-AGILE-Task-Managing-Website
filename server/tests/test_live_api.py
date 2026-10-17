@@ -21,6 +21,7 @@ Every check is printed and the process exits non-zero if any failed. It is a
 plain script rather than a pytest module because the repository has no test
 runner configured.
 """
+import base64
 import hashlib
 import json
 import pathlib
@@ -40,6 +41,10 @@ TRACKED_DB = SERVER / "data" / "server_database.json"
 
 sys.path.insert(0, str(SERVER))
 from security import hash_password  # noqa: E402
+
+PNG_1PX = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
 
 TMP = pathlib.Path(tempfile.mkdtemp(prefix="smoke_"))
 DB = TMP / "smoke_db.json"
@@ -343,6 +348,42 @@ try:
 
     r = client.patch(f"/api/users/{alice_id}/profile", json={"username": "Alice B"})
     check("PATCH /users/{id}/profile -> 200", r.status_code == 200, r.text[:200])
+    # The picture is stored in its own table and served from its own URL, so the
+    # shared state document never carries the image bytes.
+    photo = "data:image/png;base64," + base64.b64encode(PNG_1PX).decode("ascii")
+    r = client.patch(f"/api/users/{alice_id}/profile",
+                     json={"username": "Alice B", "profile_photo": photo})
+    check("PATCH profile stores a photo -> 200", r.status_code == 200, r.text[:200])
+    photo_url = str(r.json().get("profile_photo", ""))
+    check("the response carries an absolute avatar URL",
+          photo_url.startswith("http") and f"/users/{alice_id}/avatar" in photo_url, photo_url)
+
+    r = client.get(f"/api/users/{alice_id}")
+    check("GET /users/{id} carries the avatar URL, not the image",
+          f"/users/{alice_id}/avatar" in str(r.json().get("profile_photo")), r.text[:200])
+
+    r = client.get(f"/api/users/{alice_id}/avatar")
+    check("GET the avatar -> 200 image/png",
+          r.status_code == 200 and r.headers.get("content-type", "").startswith("image/png"),
+          r.status_code)
+    check("the avatar bytes come back unchanged", r.content == PNG_1PX, len(r.content))
+    etag = r.headers.get("etag") or ""
+    r = client.get(f"/api/users/{alice_id}/avatar", headers={"If-None-Match": etag})
+    check("a cached avatar revalidates with 304", r.status_code == 304, r.status_code)
+
+    r = client.get("/api/users", params={"user_id": alice_id})
+    check("the directory lists avatar URLs instead of image bytes",
+          "/users/" in r.text and "data:image" not in r.text, r.text[:200])
+
+    r = client.patch(f"/api/users/{alice_id}/profile", json={"profile_photo": ""})
+    check("removing the photo -> 200", r.status_code == 200, r.text[:200])
+    r = client.get(f"/api/users/{alice_id}/avatar")
+    check("the removed avatar is gone (404)", r.status_code == 404, r.status_code)
+    r = client.get(f"/api/users/{alice_id}")
+    check("the account falls back to the default picture",
+          str(r.json().get("profile_photo", "")).endswith("default-profile.svg"), r.text[:200])
+    check("the state document holds no inline data URL",
+          "data:image" not in DB.read_text(encoding="utf-8"), "base64 found in the state")
 
     r = client.post(f"/api/users/{alice_id}/password",
                     json={"current_password": "Password123", "new_password": "Password456"})

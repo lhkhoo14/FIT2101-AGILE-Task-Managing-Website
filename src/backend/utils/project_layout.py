@@ -1,3 +1,4 @@
+import asyncio
 import sys
 import os
 import js  # type: ignore
@@ -11,6 +12,10 @@ if "src/backend" not in sys.path:
 import topbar
 import sidebar_state
 from project_helpers import get_project_id_from_url
+from auth import show_snackbar
+from dialog import confirm_action
+from project_role_helpers import permissions_for_user
+from server_data import ServerData
 
 # CHANGE: project_layout.py is shared by three project views, each of which
 # ships a different nav item already marked "active" in its own markup.
@@ -107,3 +112,49 @@ def handle_nav_sprints(event):
 
 # Initialize project view layout
 init_project_layout()
+
+# --- DELETE PROJECT (shared by every project view) --------------------------
+# The button sits in the sidebar footer of all four project pages, and every one
+# of them loads this module, so the reveal and the click live here rather than
+# only on the description view.
+async def _reveal_delete_control():
+    project_id = get_project_id_from_url()
+    button = web.page["#delete-project-btn"]
+    if project_id is None or button is None:
+        return
+
+    db = ServerData()
+    # The members payload carries the role map and the role definitions, which is
+    # what permissions_for_user() reads; the project itself carries no roles.
+    members_payload = await db.get_project_members(project_id)
+    if not members_payload:
+        return
+    if "delete_project" in permissions_for_user(members_payload, db.get_active_session()):
+        button.classList.remove("hidden")
+
+
+@when("click", "#delete-project-btn")
+async def handle_delete_project(event):
+    """Confirm, delete this project, then return to the dashboard."""
+    project_id = get_project_id_from_url()
+    if project_id is None:
+        return
+
+    db = ServerData()
+    project = await db.get_project_by_id(project_id)
+    name = getattr(project, "name", None) or f"project {project_id}"
+
+    confirmed, _password = await confirm_action(title=f"Delete project {name}")
+    if not confirmed:
+        return
+
+    success, message = await db.delete_project(project_id)
+    if not success:
+        # Keep the page (and the button) so the failure can be read and retried.
+        await show_snackbar(message)
+        return
+
+    window.location.href = "dashboard.html"
+
+
+asyncio.ensure_future(_reveal_delete_control())

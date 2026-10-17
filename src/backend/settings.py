@@ -4,7 +4,6 @@ from server_data import ServerData
 from auth import show_feedback, clear_errors, show_snackbar, validate_email, validate_password
 
 server = ServerData()
-_pending_avatar = None
 
 def _toggle_password_visibility(input_selector):
     """Show/hide a password field (this page uses one emoji button, not eye icons)."""
@@ -57,14 +56,25 @@ async def _handle_verification(token):
         pass
     await _load_settings()
 
-@when("app:avatar-selected", "body")
-def handle_avatar_selected(event):
-    global _pending_avatar
-    _pending_avatar = event.detail
+def _pending_photo() -> str | None:
+    """The photo the user picked: a data URL, "" to remove it, or None for no change.
+
+    The file input handler in settings.html writes the cropped image into the
+    hidden #avatar-pending-value field rather than announcing it with a custom
+    event: the choice has to survive until Save is pressed, and reading a plain
+    input keeps it a Python string that the JSON body can carry.
+    """
+    field = document.querySelector("#avatar-pending-value")
+    if field is None:
+        return None
+    value = (field.value or "").strip()
+    if not value:
+        return None
+    return "" if value == "remove" else value
+
 
 @when("click", "#save-profile-btn")
 async def handle_save_profile(event):
-    global _pending_avatar
     clear_errors(["#display-name"])
     uname = document.querySelector("#display-name").value.strip()
     if not uname:
@@ -72,13 +82,17 @@ async def handle_save_profile(event):
         return
     
     kwargs = {"username": uname}
-    if _pending_avatar is not None:
-        kwargs["profile_photo"] = _pending_avatar
+    photo = _pending_photo()
+    if photo is not None:
+        kwargs["profile_photo"] = photo
 
     success, data = await server.update_profile(**kwargs)
     if success:
         asyncio.ensure_future(show_snackbar("Profile updated successfully.", 3))
-        _pending_avatar = None
+        # The choice is saved now, so a later save should not send it again.
+        saved = document.querySelector("#avatar-pending-value")
+        if saved is not None:
+            saved.value = ""
         await _load_settings()
         # update topbar profile
         from topbar import render_user_profile
