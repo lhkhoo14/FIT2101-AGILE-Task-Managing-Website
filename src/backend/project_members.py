@@ -1,13 +1,24 @@
 import sys
-import os
 import asyncio
 import html
-import js # type: ignore
+import js
 
-from pyscript import web, window, when # type: ignore
+from pyscript import web, window, when
+
+if "." not in sys.path:
+    sys.path.append(".")
 
 from server_data import ServerData
-from project_layout import get_project_id_from_url # type: ignore
+
+
+def get_project_id_from_url():
+    params = js.URLSearchParams.new(window.location.search)
+    project_id = params.get("project_id")
+
+    if project_id and project_id.isdigit():
+        return int(project_id)
+
+    return None
 
 
 def get_role_for_member(member_id, roles):

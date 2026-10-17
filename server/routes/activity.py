@@ -20,8 +20,8 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
-import logic.contribution_logic as logic
-import logic.sprint_logic as sprint_logic
+import contribution_logic as logic
+import sprint_logic
 from database_manager import db_manager
 from dependencies import verify_project_access
 

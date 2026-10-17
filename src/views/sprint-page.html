@@ -39,7 +39,7 @@
   <!-- Layout Stylesheet -->
   <link rel="stylesheet" href="../styles/project-layout.css">
   <!-- Page Stylesheet -->
-  <link rel="stylesheet" href="../styles/sprint-page.css?v=20261014">
+  <link rel="stylesheet" href="../styles/sprint-page.css?v=20261005">
   <!-- Snackbar Stylesheet -->
   <link rel="stylesheet" href="../styles/snackbar.css">
   <!--
@@ -91,7 +91,7 @@
         <path
           d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
       </svg>
-      <input type="text" id="global-search" class="search-input" placeholder="Search tasks by tag...">
+      <input type="text" id="global-search" class="search-input" placeholder="Search tasks or tags...">
     </div>
 
     <!-- TEMP demo-only role switch — remove once real User.role exists -->
@@ -182,16 +182,6 @@
         <button type="button" id="end-sprint-btn" class="btn-end-sprint">End Sprint</button>
       </div>
 
-      <!--
-          Kanban Board: #kanban-board and each .kanban-column-body / column-count
-          element are the ONLY permanent nodes here. Python's _render_board()
-          wipes and rebuilds the task-card children on every load and every
-          drag/drop move — so the drag listeners below are attached to
-          #kanban-board itself (event delegation via closest()), never to
-          individual .task-card / .kanban-column-body nodes, or they'd go
-          stale the moment the board re-renders.
-        -->
-      <p id="board-search-empty" class="board-search-empty hidden"></p>
       <div class="kanban-board" id="kanban-board">
 
         <div class="kanban-column" data-column="backlog">
@@ -284,11 +274,6 @@
       <h3 id="task-detail-title" class="modal-title">Task Details</h3>
       <div id="task-detail-meta" class="task-detail-meta"></div>
 
-      <label class="modal-label" for="task-description-input">Description</label>
-      <textarea id="task-description-input" class="modal-input task-description-input" rows="4"
-        maxlength="1000" placeholder="Add a description..."></textarea>
-      <button type="button" id="task-description-save-btn" class="modal-btn-submit task-save-btn">Save description</button>
-
       <div id="task-progress-container" class="task-progress-container">
         <div class="task-progress-bar-bg">
           <div id="task-progress-fill" class="task-progress-bar-fill"></div>
@@ -350,15 +335,14 @@
       </div>
 
       <div class="modal-actions" style="margin-top: 20px;">
-        <button type="button" id="return-to-backlog-btn" class="modal-btn-cancel return-backlog-btn hidden">Return to product backlog</button>
         <button type="button" id="task-detail-close-btn" class="modal-btn-cancel">Close</button>
       </div>
     </div>
   </div>
 
   <!-- Link settings.json for PyScript backend -->
-  <script type="py" config="../../settings.json" src="../backend/utils/layout.py?v=20261011"></script>
-  <script type="py" config="../../settings.json" src="../backend/views/sprint-page.py?v=20261011"></script>
+  <script type="py" config="../../settings.json" src="../backend/layout.py?v=20261011"></script>
+  <script type="py" config="../../settings.json" src="../backend/sprint-page.py?v=20261011"></script>
 </body>
 
 </html>

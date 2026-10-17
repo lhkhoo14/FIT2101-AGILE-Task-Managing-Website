@@ -6,7 +6,7 @@ if "." not in sys.path:
 
 from pyscript import when, web, window  # type: ignore
 from server_data import ServerData
-from auth import ( # type: ignore
+from auth import (
     validate_email,
     validate_password,
     clear_errors,

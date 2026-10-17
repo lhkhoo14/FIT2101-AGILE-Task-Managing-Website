@@ -79,41 +79,21 @@ def normalize_tags(raw) -> list:
     return tags[:MAX_TAGS]
 
 
-def tags_match_query(tags, query) -> bool:
-    """True if a tag list matches the search text (shared by sprints and tasks).
+def filter_sprints_by_tag(sprints, query):
+    """Sprints whose tags match the search text.
 
     The query is split on commas/whitespace (a leading "#" is ignored). Every
-    term must partially match at least one of the tags, so "front" finds
-    "frontend" and "api urgent" finds items tagged both. An empty query matches
-    everything. Items with no tags never match a search.
+    term must partially match at least one of the sprint's tags, so "front"
+    finds "frontend" and "api urgent" finds sprints tagged both. An empty
+    query returns all sprints. Sprints with no tags never match a search.
     """
     terms = [w.lstrip("#").lower() for w in str(query or "").replace(",", " ").split()]
     terms = [w for w in terms if w]
     if not terms:
-        return True
-    lowered = [str(tag).lower() for tag in (tags or [])]
-    return bool(lowered) and all(any(term in tag for tag in lowered) for term in terms)
-
-
-def filter_sprints_by_tag(sprints, query):
-    """Sprints whose tags match the search text. An empty query returns all."""
-    return [s for s in sprints if tags_match_query(s.get("tags"), query)]
-
-
-def task_tags(task) -> list:
-    """Tags on a task card or product-backlog item.
-
-    Items saved before tasks had several tags carry a single "tag" string; it is
-    read as a one-item list so old data keeps its tag without a migration.
-    """
-    tags = task.get("tags")
-    return normalize_tags(tags if tags is not None else task.get("tag"))
-
-
-def task_matches_tag_query(task, query) -> bool:
-    """True if the task's tags match the search text (same rules as sprints)."""
-    return tags_match_query(task_tags(task), query)
-
-
-# Longest task description a member can save (the server enforces the same limit).
-MAX_DESCRIPTION_LENGTH = 1000
+        return list(sprints)
+    result = []
+    for s in sprints:
+        tags = [str(tag).lower() for tag in (s.get("tags") or [])]
+        if tags and all(any(term in tag for tag in tags) for term in terms):
+            result.append(s)
+    return result

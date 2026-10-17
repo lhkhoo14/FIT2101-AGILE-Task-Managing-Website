@@ -33,8 +33,7 @@ python -m venv .venv
 Install the backend dependencies using the virtual environment's Python:
 
 ```powershell
-cd server
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r server\requirements.txt
 ```
 
 Start the API in one terminal (no activation required):
