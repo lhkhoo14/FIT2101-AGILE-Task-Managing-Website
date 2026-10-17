@@ -717,3 +717,37 @@
   color: #666666;
   font-size: 0.9rem;
 }
+
+/* --- Stopwatch buttons --- */
+.modal-btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modal-btn-secondary {
+  background-color: transparent;
+  border: 1px solid #d0d0d0;
+  color: #555555;
+}
+
+.modal-btn-secondary:hover {
+  background-color: #f4f5f9;
+}
+
+.modal-btn-primary {
+  background-color: #4747D4;
+  border: none;
+  color: #ffffff;
+}
+
+.modal-btn-primary:hover {
+  background-color: #3636b8;
+}
+
+.modal-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

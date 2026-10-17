@@ -1,8 +1,8 @@
 {
     "next_user_id": 5,
-    "next_project_id": 4,
-    "next_backlog_id": 14,
-    "next_sprint_id": 7,
+    "next_project_id": 5,
+    "next_backlog_id": 15,
+    "next_sprint_id": 8,
     "users": [
         {
             "user_id": 1,
@@ -36,7 +36,9 @@
             "username": "Wei Ho",
             "email": "weiholye@gmail.com",
             "password": "$2b$12$kYzorpYr0EIw0Yxy1ymWaOwRZZZcEOQYWaryhNy703V8cQK184CNK",
-            "projects": [],
+            "projects": [
+                4
+            ],
             "failed_attempts": 0,
             "lockout_until": 0
         }
@@ -381,6 +383,250 @@
                     }
                 }
             ]
+        },
+        "4": {
+            "project_id": 4,
+            "name": "project 1",
+            "description": "",
+            "status": "active",
+            "created_at": 1792232353166,
+            "creator": [
+                4
+            ],
+            "members": [
+                4
+            ],
+            "contribute": [
+                4
+            ],
+            "roles": {
+                "Project Creator": [
+                    4
+                ],
+                "Scrum Master": [],
+                "Product Owner": [],
+                "Manager": [],
+                "Employee": []
+            },
+            "role_definitions": {
+                "Project Creator": {
+                    "colour": "#44E",
+                    "description": "Highest ranking role with full project permissions.",
+                    "permissions": [
+                        "edit_project",
+                        "delete_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Scrum Master": {
+                    "colour": "#E44",
+                    "description": "Manages sprints, team membership, tasks, and reviews.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Product Owner": {
+                    "colour": "#4E4",
+                    "description": "Manages product backlog, sprints, and team collaboration.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Manager": {
+                    "colour": "#E4E",
+                    "description": "Manages sprint cycles and tasks.",
+                    "permissions": [
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Employee": {
+                    "colour": "#4EE",
+                    "description": "Standard contributor handling tasks and forwarding sprint items.",
+                    "permissions": [
+                        "edit_sprints",
+                        "manage_tasks"
+                    ],
+                    "conflicting_roles": []
+                }
+            },
+            "backlog": [],
+            "sprints": [
+                {
+                    "id": "7",
+                    "name": "Sprint 1",
+                    "details": "No description",
+                    "status": "active",
+                    "start_date": "2026-10-17",
+                    "end_date": "2026-10-21",
+                    "priority": "medium",
+                    "tags": [],
+                    "members": [
+                        4
+                    ],
+                    "created_by": 4,
+                    "created_at": 1792232381462,
+                    "kanban_state": {
+                        "backlog": [
+                            {
+                                "id": "task-14",
+                                "title": "task 1",
+                                "tags": [],
+                                "description": "yes",
+                                "priority": "low",
+                                "assignee": "Wei Ho",
+                                "start_date": null,
+                                "end_date": null,
+                                "stopwatch": {
+                                    "status": "running",
+                                    "accumulated_seconds": 0,
+                                    "resumed_at": 1792232484.136
+                                },
+                                "time_log": {
+                                    "entries": [
+                                        {
+                                            "user_id": 4,
+                                            "started_at": "2026-10-17T10:20:31.576239+00:00",
+                                            "ended_at": null
+                                        }
+                                    ],
+                                    "started_at": "2026-10-17T10:20:31.576239+00:00",
+                                    "ended_at": null,
+                                    "user_id": 4
+                                },
+                                "assignee_id": 4,
+                                "checklist": [
+                                    {
+                                        "id": "1792232457430",
+                                        "text": "login page wireframe",
+                                        "done": false,
+                                        "created_by": 4
+                                    }
+                                ]
+                            }
+                        ],
+                        "active": [],
+                        "review": [],
+                        "completed": []
+                    }
+                }
+            ],
+            "history": [
+                {
+                    "action": "project_change",
+                    "message": "Wei Ho created backlog task task 1",
+                    "actor": "Wei Ho",
+                    "actor_id": 4,
+                    "sprint_id": null,
+                    "sprint_name": null,
+                    "task_id": "14",
+                    "task_title": "task 1",
+                    "from_status": null,
+                    "to_status": null,
+                    "timestamp": "2026-10-17 10:19 UTC",
+                    "recorded_at": "2026-10-17T10:19:25.999007+00:00",
+                    "id": 1
+                },
+                {
+                    "action": "project_change",
+                    "message": "Wei Ho created sprint Sprint 1",
+                    "actor": "Wei Ho",
+                    "actor_id": 4,
+                    "sprint_id": "7",
+                    "sprint_name": "Sprint 1",
+                    "task_id": null,
+                    "task_title": null,
+                    "from_status": null,
+                    "to_status": null,
+                    "timestamp": "2026-10-17 10:19 UTC",
+                    "recorded_at": "2026-10-17T10:19:41.494722+00:00",
+                    "id": 2
+                },
+                {
+                    "action": "project_change",
+                    "message": "Wei Ho added a backlog task to Sprint 1",
+                    "actor": "Wei Ho",
+                    "actor_id": 4,
+                    "sprint_id": "7",
+                    "sprint_name": "Sprint 1",
+                    "task_id": "14",
+                    "task_title": null,
+                    "from_status": null,
+                    "to_status": null,
+                    "timestamp": "2026-10-17 10:19 UTC",
+                    "recorded_at": "2026-10-17T10:19:50.417884+00:00",
+                    "id": 3
+                },
+                {
+                    "action": "time_log",
+                    "message": "Wei Ho started working on task 1",
+                    "actor": "Wei Ho",
+                    "actor_id": 4,
+                    "sprint_id": "7",
+                    "sprint_name": "Sprint 1",
+                    "task_id": "task-14",
+                    "task_title": "task 1",
+                    "timestamp": "2026-10-17 10:20 UTC",
+                    "recorded_at": "2026-10-17T10:20:31.576239+00:00",
+                    "id": 4
+                }
+            ],
+            "contributions": {
+                "4": {
+                    "user_id": 4,
+                    "name": "Wei Ho",
+                    "assigned": 1,
+                    "completed": 0,
+                    "logged_seconds": 0,
+                    "logged_hours": 0.0,
+                    "tasks": [
+                        {
+                            "title": "task 1",
+                            "status": "backlog",
+                            "sprint": "Sprint 1",
+                            "sprint_id": "7"
+                        }
+                    ],
+                    "work_logs": [
+                        {
+                            "task_id": "task-14",
+                            "task_title": "task 1",
+                            "sprint_id": "7",
+                            "user_id": 4,
+                            "started_at": "2026-10-17T10:20:31.576239+00:00",
+                            "ended_at": null,
+                            "seconds": 0
+                        }
+                    ]
+                }
+            },
+            "contributions_updated_at": "2026-10-17 10:21 UTC"
         }
     }
 }

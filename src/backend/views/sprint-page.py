@@ -920,10 +920,7 @@ def _render_task_detail_modal():
             line_div.textContent = line
             status_el.appendChild(line_div)
 
-    # No stopwatch here: this branch tracks work with the Time Log buttons above
-    # (Start Task / End Task, both recorded through log_task_time). The merged
-    # file used to call _render_stopwatch_ui() at this point, a helper only main
-    # ever had, so opening any task raised NameError and the click looked dead.
+    _render_stopwatch_ui(task)
 
 
 def _render_task_assignee_and_dates(task):
