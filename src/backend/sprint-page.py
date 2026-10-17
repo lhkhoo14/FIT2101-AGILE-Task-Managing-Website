@@ -42,6 +42,11 @@ def _is_manager():
 # ==========================================
 COLUMN_ORDER = ["backlog", "active", "review", "completed"]
 
+# CHANGE: tasks may move backlog -> active with checklist items still open, but
+# every column after this one requires a fully completed checklist. Editing this
+# value moves the gate (e.g. "backlog" gates every forward move).
+CHECKLIST_GATE_COLUMN = "active"
+
 _sprint_id = None
 _project_id = None
 _sprint_ended = False
@@ -164,26 +169,33 @@ async def _current_actor():
 
 
 async def _record_change(action, sprint, task=None, from_status=None, to_status=None):
-    # The activity feed remains browser-local; the sprint board itself is API-backed.
+    # US-20: the activity feed is stored on the server, so an event recorded here
+    # is visible on every device that opens this project.
+    if not _project_id:
+        return
     actor = await _current_actor()
-    entry = {
-        "action": action,
-        "message": (
-            f"{actor} moved {task.get('title', 'a task')} from "
-            f"{from_status} to {to_status} in {sprint.get('name', 'a sprint')}"
-            if action == "moved"
-            else f"{actor} ended {sprint.get('name', 'a sprint')}"
-        ),
-        "sprint_id": _sprint_id,
-        "sprint_name": sprint.get("name", "Sprint"),
-        "task_id": task.get("id") if task else None,
-        "task_title": task.get("title") if task else None,
-        "from_status": from_status,
-        "to_status": to_status,
-        "actor": actor,
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-    }
-    await window.sprintHistoryDb.add(js.JSON.parse(json.dumps(entry)))
+    if action == "moved":
+        target = task.get("title", "a task") if task else "a task"
+        message = (
+            f"{actor} moved {target} from {from_status} to {to_status} "
+            f"in {sprint.get('name', 'a sprint')}"
+        )
+    else:
+        message = f"{actor} ended {sprint.get('name', 'a sprint')}"
+
+    success, err = await server_data.record_change(
+        _project_id,
+        message,
+        action=action,
+        sprint_id=_sprint_id,
+        sprint_name=sprint.get("name", "Sprint"),
+        task_id=task.get("id") if task else None,
+        task_title=task.get("title") if task else None,
+        from_status=from_status,
+        to_status=to_status,
+    )
+    if not success:
+        print(f"[Change History] {err}")
 
 
 def _task_matches_search(task, query):
@@ -349,11 +361,6 @@ def handle_show_sprints(event):
     _navigate_to_dashboard(view="sprints")
 
 
-@when("click", "#nav-members")
-def handle_show_members(event):
-    _navigate_to_dashboard(view="members")
-
-
 @when("click", "#nav-effort")
 def handle_show_effort(event):
     _navigate_to_dashboard(view="effort")
@@ -371,7 +378,8 @@ def handle_show_contributions(event):
 
 @when("click", "#settings-btn")
 def handle_unavailable_settings(event):
-    asyncio.ensure_future(show_snackbar("Settings are not available yet."))
+    # CHANGE: navigation to settings.html is handled by topbar.py
+    return
 
 
 def _navigate_to_dashboard(view=None, action=None):
@@ -435,13 +443,15 @@ async def handle_card_drop(event):
             await show_snackbar("Only a manager can move a task to Completed.")
             return
 
-        # Gate forward moves if the task has unchecked checklist items
-        checklist = task.get("checklist", [])
-        if any(not item.get("done", False) for item in checklist):
-            asyncio.ensure_future(
-                show_snackbar("Complete all checklist items before moving this task forward.")
-            )
-            return
+        # CHANGE: only moves PAST the gate column need a finished checklist, so a
+        # task can be picked up and started while work is still outstanding.
+        if _column_index(target_column) > _column_index(CHECKLIST_GATE_COLUMN):
+            checklist = task.get("checklist", [])
+            if any(not item.get("done", False) for item in checklist):
+                await show_snackbar(
+                    f"Complete all checklist items before moving this task to {target_column}."
+                )
+                return
     # Managers may otherwise move tasks in any direction, to any column...
 
     # ...but NOBODY (manager included) may complete a task with unchecked checklist items.
@@ -732,6 +742,8 @@ def _render_task_detail_modal():
             line_div = document.createElement("div")
             line_div.textContent = line
             status_el.appendChild(line_div)
+
+    _render_stopwatch_ui(task)
 
 
 def _render_task_assignee_and_dates(task):
@@ -1035,54 +1047,85 @@ def handle_role_change(event):
 
 # --- SECTION: Task Time Logging ---
 
+def _parse_stamp(value):
+    """ISO stamp -> datetime, or None when it is missing/unreadable.
+
+    US-21: work sessions are stamped by the server in UTC, while tasks logged
+    before the switchover carry a naive local stamp. Treating a naive stamp as
+    UTC keeps the two comparable instead of raising on the subtraction, and
+    converting to the browser's timezone keeps the display local.
+    """
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone()
+
+
 def _time_log_summary(task):
+    """(started, ended, duration, status) for a task's tracked work.
+
+    US-21: the server stores each work session separately, so the duration is the
+    sum of every finished session rather than only the most recent one. Tasks that
+    predate session tracking carry a single flat started_at/ended_at pair and are
+    read as one session.
+    """
     time_log = task.get("time_log")
     if not time_log:
         return "", "", "", ""
 
-    started_at_str = time_log.get("started_at")
-    ended_at_str = time_log.get("ended_at")
+    entries = [entry for entry in (time_log.get("entries") or []) if isinstance(entry, dict)]
+    if not entries:
+        entries = [
+            {"started_at": time_log.get("started_at"), "ended_at": time_log.get("ended_at")}
+        ]
 
     started_fmt = ""
     ended_fmt = ""
     duration_str = ""
     status_txt = ""
+    total_seconds = 0
+    running = False
 
-    if started_at_str:
-        try:
-            dt_start = datetime.fromisoformat(started_at_str)
-            started_fmt = dt_start.strftime("%b %d, %Y %I:%M %p")
+    for entry in entries:
+        start = _parse_stamp(entry.get("started_at"))
+        end = _parse_stamp(entry.get("ended_at"))
+        if start is not None and not started_fmt:
+            started_fmt = start.strftime("%b %d, %Y %I:%M %p")
+        if end is not None:
+            ended_fmt = end.strftime("%b %d, %Y %I:%M %p")
+        if start is None:
+            continue
+        if end is None:
+            running = True
+            continue
+        total_seconds += max(0, int((end - start).total_seconds()))
+
+    if started_fmt:
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        duration_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
+        if running:
             status_txt = "In progress"
-        except ValueError:
-            pass
-
-    if ended_at_str and started_at_str:
-        try:
-            dt_start = datetime.fromisoformat(started_at_str)
-            dt_end = datetime.fromisoformat(ended_at_str)
-            ended_fmt = dt_end.strftime("%b %d, %Y %I:%M %p")
-
-            total_seconds = int((dt_end - dt_start).total_seconds())
-            if total_seconds < 0:
-                total_seconds = 0
-
-            hours = total_seconds // 3600
-            minutes = (total_seconds % 3600) // 60
-
-            if hours > 0:
-                duration_str = f"{hours}h {minutes}m"
-            else:
-                duration_str = f"{minutes}m"
-
+        elif ended_fmt:
             status_txt = duration_str
-        except ValueError:
-            pass
 
     return started_fmt, ended_fmt, duration_str, status_txt
 
 
-@when("click", "#start-task-btn")
-async def handle_start_task(event):
+async def _submit_time_log(action, verb):
+    """US-21: open or close the work session on the currently open task.
+
+    The server owns the clock and stamps the session with the acting User ID and
+    the Task ID, then returns the task's updated time_log. That record is copied
+    onto the in-memory board so the card badge and the dialog match what is
+    stored, and the contribution totals are recalculated server-side in the same
+    transaction.
+    """
     if _sprint_ended or not _open_task_id:
         return
 
@@ -1090,33 +1133,26 @@ async def handle_start_task(event):
     if target_task is None:
         return
 
-    time_log = target_task.get("time_log")
-    if not time_log:
-        time_log = {}
-        target_task["time_log"] = time_log
+    success, err, payload = await server_data.log_task_time(
+        _project_id, _sprint_id, target_task.get("id"), action
+    )
+    if not success or not payload:
+        await show_snackbar(f"Could not {verb} the timer: {err}")
+        return
 
-    if not time_log.get("started_at"):
-        time_log["started_at"] = datetime.now().isoformat()
-        await _persist_kanban_state(_kanban_state)
-        _render_task_detail_modal()
-        _render_board(_kanban_state)
+    target_task["time_log"] = payload.get("time_log") or target_task.get("time_log")
+    _render_task_detail_modal()
+    _render_board(_kanban_state)
+
+
+@when("click", "#start-task-btn")
+async def handle_start_task(event):
+    await _submit_time_log("start", "start")
 
 
 @when("click", "#end-task-btn")
 async def handle_end_task(event):
-    if _sprint_ended or not _open_task_id:
-        return
-
-    target_task = _find_open_task()
-    if target_task is None:
-        return
-
-    time_log = target_task.get("time_log")
-    if time_log and time_log.get("started_at") and not time_log.get("ended_at"):
-        time_log["ended_at"] = datetime.now().isoformat()
-        await _persist_kanban_state(_kanban_state)
-        _render_task_detail_modal()
-        _render_board(_kanban_state)
+    await _submit_time_log("stop", "stop")
 
 
 def _close_task_detail_modal():
@@ -1135,6 +1171,198 @@ def handle_modal_backdrop_click(event):
     if event.target.id == event.currentTarget.id:
         _close_task_detail_modal()
 
+
+# --- SECTION: Task Stopwatch ---
+
+_stopwatch_ticker_started = False
+
+def _stopwatch_elapsed(task):
+    sw = task.get("stopwatch", {})
+    status = sw.get("status", "idle")
+    accumulated = sw.get("accumulated_seconds", 0)
+    if status == "running":
+        resumed_at = sw.get("resumed_at")
+        if resumed_at:
+            diff = time.time() - resumed_at
+            if diff > 0:
+                return int(accumulated + diff)
+    return int(accumulated)
+
+def _format_hms(seconds):
+    seconds = max(0, int(seconds))
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+def _format_hm(seconds):
+    seconds = max(0, int(seconds))
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    if h > 0:
+        return f"{h}h {m}m"
+    return f"{m}m"
+
+def _render_stopwatch_ui(task):
+    global _stopwatch_ticker_started
+    if not _stopwatch_ticker_started:
+        _stopwatch_ticker_started = True
+        asyncio.ensure_future(_start_stopwatch_ticker())
+
+    sw = task.get("stopwatch", {"status": "idle", "accumulated_seconds": 0, "resumed_at": None})
+    status = sw.get("status", "idle")
+    elapsed = _stopwatch_elapsed(task)
+
+    display_el = document.getElementById("stopwatch-display")
+    if display_el:
+        display_el.textContent = _format_hms(elapsed)
+
+    total_seconds = task.get("time_spent_seconds", 0)
+    total_el = document.getElementById("stopwatch-total")
+    if total_el:
+        total_el.textContent = f"Total time spent: {_format_hm(total_seconds)}"
+
+    start_btn = document.getElementById("stopwatch-start-btn")
+    pause_btn = document.getElementById("stopwatch-pause-btn")
+    resume_btn = document.getElementById("stopwatch-resume-btn")
+    log_btn = document.getElementById("stopwatch-log-btn")
+
+    if start_btn:
+        start_btn.classList.remove("hidden")
+        start_btn.disabled = (status != "idle") or _sprint_ended
+    if pause_btn:
+        pause_btn.classList.remove("hidden")
+        pause_btn.disabled = (status != "running") or _sprint_ended
+    if resume_btn:
+        resume_btn.classList.remove("hidden")
+        resume_btn.disabled = (status != "paused") or _sprint_ended
+    if log_btn:
+        log_btn.classList.remove("hidden")
+        log_btn.disabled = (status == "idle") or _sprint_ended
+
+async def _start_stopwatch_ticker():
+    while True:
+        await asyncio.sleep(1)
+        if _open_task_id:
+            task = _find_open_task()
+            if task:
+                sw = task.get("stopwatch", {})
+                if sw.get("status") == "running":
+                    display_el = document.getElementById("stopwatch-display")
+                    if display_el:
+                        display_el.textContent = _format_hms(_stopwatch_elapsed(task))
+
+@when("click", "#stopwatch-start-btn")
+def _handle_stopwatch_start(event):
+    if _sprint_ended or not _open_task_id:
+        return
+    task = _find_open_task()
+    if not task:
+        return
+    task["stopwatch"] = {
+        "status": "running",
+        "accumulated_seconds": 0,
+        "resumed_at": time.time()
+    }
+    async def _save_and_render():
+        success = await _persist_kanban_state(_kanban_state)
+        if not success:
+            await show_snackbar("Failed to save stopwatch state.")
+            return
+        _render_board(_kanban_state)
+        _render_task_detail_modal()
+    asyncio.ensure_future(_save_and_render())
+
+@when("click", "#stopwatch-pause-btn")
+def _handle_stopwatch_pause(event):
+    if _sprint_ended or not _open_task_id:
+        return
+    task = _find_open_task()
+    if not task:
+        return
+    elapsed = _stopwatch_elapsed(task)
+    task["stopwatch"] = {
+        "status": "paused",
+        "accumulated_seconds": elapsed,
+        "resumed_at": None
+    }
+    async def _save_and_render():
+        success = await _persist_kanban_state(_kanban_state)
+        if not success:
+            await show_snackbar("Failed to save stopwatch state.")
+            return
+        _render_board(_kanban_state)
+        _render_task_detail_modal()
+    asyncio.ensure_future(_save_and_render())
+
+@when("click", "#stopwatch-resume-btn")
+def _handle_stopwatch_resume(event):
+    if _sprint_ended or not _open_task_id:
+        return
+    task = _find_open_task()
+    if not task:
+        return
+    sw = task.get("stopwatch", {})
+    accumulated = sw.get("accumulated_seconds", 0)
+    task["stopwatch"] = {
+        "status": "running",
+        "accumulated_seconds": accumulated,
+        "resumed_at": time.time()
+    }
+    async def _save_and_render():
+        success = await _persist_kanban_state(_kanban_state)
+        if not success:
+            await show_snackbar("Failed to save stopwatch state.")
+            return
+        _render_board(_kanban_state)
+        _render_task_detail_modal()
+    asyncio.ensure_future(_save_and_render())
+
+@when("click", "#stopwatch-log-btn")
+def _handle_stopwatch_log(event):
+    if _sprint_ended or not _open_task_id:
+        return
+    task = _find_open_task()
+    if not task:
+        return
+    elapsed = _stopwatch_elapsed(task)
+    if elapsed < 60:
+        asyncio.ensure_future(show_snackbar("Run the stopwatch for at least a minute before logging."))
+        return
+    
+    entry_id = str(int(time.time() * 1000))
+    logged_at = datetime.now().isoformat()
+    entry = {
+        "id": entry_id,
+        "seconds": elapsed,
+        "logged_at": logged_at,
+        "user_id": _current_user_id
+    }
+    
+    if "time_entries" not in task:
+        task["time_entries"] = []
+    task["time_entries"].append(entry)
+    
+    current_spent = task.get("time_spent_seconds", 0)
+    task["time_spent_seconds"] = current_spent + elapsed
+    
+    task["stopwatch"] = {
+        "status": "idle",
+        "accumulated_seconds": 0,
+        "resumed_at": None
+    }
+    
+    async def _save_and_log():
+        success = await _persist_kanban_state(_kanban_state)
+        if not success:
+            await show_snackbar("Failed to save time log.")
+            return
+        _render_board(_kanban_state)
+        _render_task_detail_modal()
+        await show_snackbar(f"Logged {_format_hm(elapsed)}.")
+    asyncio.ensure_future(_save_and_log())
+
+
 _page_params = js.URLSearchParams.new(window.location.search)
 if _page_params.get("prewarm") == "1":
     ready_message = {
@@ -1146,4 +1374,4 @@ if _page_params.get("prewarm") == "1":
         str(window.location.origin),
     )
 else:
-    asyncio.ensure_future(_init_page())
+    asyncio.ensure_future(_init_page())
