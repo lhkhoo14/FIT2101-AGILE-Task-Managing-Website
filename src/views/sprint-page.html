@@ -185,6 +185,8 @@
         </div>
       </div>
 
+      <p id="board-search-empty" class="board-search-empty hidden"></p>
+
       <div class="kanban-board" id="kanban-board">
 
         <div class="kanban-column" data-column="backlog">
@@ -284,6 +286,10 @@
         <span id="task-progress-text" class="task-progress-text"></span>
       </div>
 
+      <label class="modal-label" for="task-description-input">Description</label>
+      <textarea id="task-description-input" class="modal-input task-description-input" rows="3" maxlength="1000" placeholder="Add a description..."></textarea>
+      <button type="button" id="task-description-save-btn" class="modal-btn-submit task-save-btn">Save description</button>
+
       <label class="modal-label" for="task-assignee-select">Assignee</label>
       <select id="task-assignee-select" class="modal-input"></select>
 
@@ -338,6 +344,8 @@
       </div>
 
       <div class="modal-actions" style="margin-top: 20px;">
+        <button type="button" id="delete-task-btn" class="modal-btn-danger hidden">Delete Task</button>
+        <button type="button" id="return-to-backlog-btn" class="modal-btn-cancel hidden">Return to Backlog</button>
         <button type="button" id="task-detail-close-btn" class="modal-btn-cancel">Close</button>
       </div>
     </div>

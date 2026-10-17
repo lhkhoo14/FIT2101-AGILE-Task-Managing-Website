@@ -682,3 +682,38 @@
   border-color: #dddddd;
   cursor: not-allowed;
 }
+
+/* --- Task description, Delete Task button, board search note --- */
+.task-description-input {
+  resize: vertical;
+  min-height: 70px;
+  font-family: inherit;
+  margin-bottom: 8px;
+}
+
+.modal-btn-danger {
+  padding: 10px 18px;
+  background-color: #d9534f;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modal-btn-danger:hover {
+  background-color: #b94441;
+}
+
+.modal-btn-danger:disabled {
+  background-color: #f0f0f0;
+  color: #999999;
+  cursor: not-allowed;
+}
+
+.board-search-empty {
+  margin: 0 0 16px;
+  color: #666666;
+  font-size: 0.9rem;
+}
