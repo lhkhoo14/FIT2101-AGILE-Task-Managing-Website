@@ -14,8 +14,6 @@ if "." not in sys.path:
 # lists these two folders under extraPaths: it lets the editor resolve the same
 # names. The ignores stay because they are what the browser actually does.
 from auth import show_snackbar  # type: ignore
-from dialog import confirm_action  # type: ignore
-from project_role_helpers import permissions_for_user  # type: ignore
 from server_data import ServerData, Project  # type: ignore
 
 # get_project_id_from_url() is defined in this module below: it reads the id out
@@ -75,29 +73,7 @@ def _on_end_project_click(event):
 end_project_proxy = create_proxy(_on_end_project_click)
 
 
-# Delete Project lives in this page's sidebar footer. These hold what the click
-# handler needs: which project the page is showing, and whether the signed-in
-# user is allowed to delete it at all.
-_project_id = None
-_can_delete = False
-
-
-def _reveal_delete_control(permissions):
-    """Offer Delete Project to a role holding delete_project, nobody else.
-
-    The same permission the DELETE /projects/{id} route enforces, so this only
-    stops the page from presenting an action that would come back as a 403.
-    """
-    global _can_delete
-    _can_delete = "delete_project" in permissions
-
-    button = web.page["#delete-project-btn"]
-    if button is None:
-        return
-    if _can_delete:
-        button.classList.remove("hidden")
-    else:
-        button.classList.add("hidden")
+# Delete Project is handled by project_layout.py, which every project view loads.
 
 
 def load_default_view(project: Project):
@@ -148,13 +124,6 @@ async def init_project_page():
         _db = db
         _project_id = project_id
         load_default_view(project)
-        # One extra read decides whether the sidebar offers Delete Project. It is
-        # the members payload (roles + role definitions), which is what
-        # permissions_for_user() reads; get_project_by_id() carries no role map.
-        members_payload = await db.get_project_members(project_id)
-        _reveal_delete_control(
-            permissions_for_user(members_payload, db.get_active_session())
-        )
     else:
         content_el = web.page["#project-view-content"]
         if content_el:
@@ -163,35 +132,6 @@ async def init_project_page():
                     <h1 class="page-title">Access Denied or Project Not Found</h1>
                 </div>
             """
-
-
-@when("click", "#delete-project-btn")
-async def handle_delete_project(event):
-    """Confirm, delete this project, then return to the dashboard.
-
-    Bound with @when rather than a raw create_proxy(): the decorator registers a
-    synchronous event handler, so this async function is scheduled by PyScript
-    itself and the button has no competing card-level navigation to lose to.
-    """
-    if not _project_id or not _can_delete:
-        return
-
-    db = ServerData()
-    project = await db.get_project_by_id(_project_id)
-    name = getattr(project, "name", None) or f"project {_project_id}"
-
-    confirmed, _password = await confirm_action(title=f"Delete project {name}")
-    if not confirmed:
-        return
-
-    success, message = await db.delete_project(_project_id)
-    if not success:
-        # Keep the page (and the button) so the failure can be read and retried.
-        await show_snackbar(message)
-        return
-
-    # Nothing is left on this page to return to, so go back to the dashboard.
-    window.location.href = "dashboard.html"
 
 
 # Launch the async initialization process

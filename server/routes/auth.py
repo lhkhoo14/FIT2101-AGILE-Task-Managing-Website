@@ -1,5 +1,5 @@
 import os
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr
 import time
 from database_manager import db_manager
@@ -78,7 +78,7 @@ def register(payload: RegisterPayload):
     return db_manager.update(mutate)
 
 @router.get("/users/{user_id}")
-def get_user(user_id: int):
+def get_user(user_id: int, request: Request):
     user = db_manager.find_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -86,11 +86,11 @@ def get_user(user_id: int):
         "user_id": user["user_id"],
         "username": user["username"],
         "email": user["email"],
-        "profile_photo": user.get("profile_photo", DEFAULT_PROFILE_PHOTO)
+        "profile_photo": _photo_url(request, user),
     }
 
 @router.get("/users")
-def get_users(user_id: int):
+def get_users(user_id: int, request: Request):
     # CHANGE: single read. find_user_by_id() reads the database again to validate
     # a session we can check against the snapshot we are about to return anyway.
     db = db_manager.read()
@@ -101,12 +101,13 @@ def get_users(user_id: int):
             "user_id": user["user_id"],
             "username": user["username"],
             "email": user["email"],
-            "profile_photo": user.get("profile_photo", DEFAULT_PROFILE_PHOTO)
+            "profile_photo": _photo_url(request, user),
         }
         for user in db["users"]
     ]
 
 # --- SECTION: Account Settings (US-24) & Account Deletion (US-38) ---
+import base64
 import secrets
 import hashlib
 import hmac
@@ -135,6 +136,48 @@ ALLOWED_PHOTO_PREFIXES = (
     "data:image/webp;base64,",
 )
 MAX_PHOTO_LENGTH = 300000
+
+# What each accepted data URL prefix means, and the magic bytes its payload has
+# to start with. The prefix alone would let any bytes through behind an image
+# label, so both are checked before anything is stored.
+PHOTO_TYPES = {
+    "data:image/png;base64,": ("image/png", b"\x89PNG\r\n\x1a\n"),
+    "data:image/jpeg;base64,": ("image/jpeg", b"\xff\xd8\xff"),
+    "data:image/webp;base64,": ("image/webp", b"RIFF"),
+}
+
+
+def _decode_photo(photo: str) -> tuple[str, bytes]:
+    """Validate one of the browser data URLs and return (content type, bytes)."""
+    for prefix, (content_type, magic) in PHOTO_TYPES.items():
+        if not photo.startswith(prefix):
+            continue
+        try:
+            data = base64.b64decode(photo[len(prefix):], validate=True)
+        except Exception:
+            raise HTTPException(status_code=422, detail="That image could not be read.")
+        if not data.startswith(magic):
+            raise HTTPException(status_code=422, detail="That image could not be read.")
+        return content_type, data
+    raise HTTPException(status_code=422, detail="Image is too large or not a supported type.")
+
+
+def _photo_url(request: Request, user) -> str:
+    """Where the browser should fetch this user picture from.
+
+    The frontend is served from a different origin than this API, so the URL has
+    to be absolute. url_for() builds it from the route and the host the caller
+    used, which keeps it right locally, on Render and in the tests without
+    another setting to keep in sync.
+    """
+    if user.get("has_avatar"):
+        version = user.get("avatar_updated_at") or 0
+        return f"{request.url_for('get_user_avatar', user_id=user['user_id'])}?v={version}"
+    stored = str(user.get("profile_photo") or "")
+    # A picture saved before avatars moved into their own table.
+    return stored if stored.startswith("data:") else DEFAULT_PROFILE_PHOTO
+
+
 # These two have to match the presets defined in routes/projects.py, because the
 # promotion below only helps if it lands in the role that actually carries the
 # project's permissions in this app: "Project Creator" is the top role here, and
@@ -164,7 +207,7 @@ def _clear_pending_email(user):
 
 
 @router.get("/users/{user_id}/settings")
-def get_user_settings(user_id: int):
+def get_user_settings(user_id: int, request: Request):
     db = db_manager.read()
     user = _find_user(db, user_id)
     if not user:
@@ -174,12 +217,51 @@ def get_user_settings(user_id: int):
         "username": user["username"],
         "email": user["email"],
         "pending_email": user.get("pending_email"),
-        "profile_photo": user.get("profile_photo", DEFAULT_PROFILE_PHOTO)
+        "profile_photo": _photo_url(request, user),
     }
 
 
+@router.get("/users/{user_id}/avatar")
+def get_user_avatar(user_id: int, request: Request):
+    """Serve one user profile picture.
+
+    The bytes live in their own table, so this is the only request that pays for
+    them, and they can be reused from the browser cache: the ETag changes only
+    when the picture does.
+    """
+    avatar = db_manager.get_user_avatar(user_id)
+    if avatar is None:
+        raise HTTPException(status_code=404, detail="This user has no profile picture.")
+
+    content_type, data = avatar
+    etag = "\"" + hashlib.sha256(data).hexdigest()[:32] + "\""
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304)
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"ETag": etag, "Cache-Control": "private, max-age=300"},
+    )
+
+
 @router.patch("/users/{user_id}/profile")
-def update_user_profile(user_id: int, payload: UpdateProfilePayload):
+def update_user_profile(user_id: int, payload: UpdateProfilePayload, request: Request):
+    # The picture is validated, and its bytes written, before the shared state
+    # document is touched: the image lives in its own table, and a rejected one
+    # must not leave the account pointing at something that is not there.
+    avatar = None
+    remove_avatar = False
+    if payload.profile_photo is not None:
+        if payload.profile_photo == "":
+            remove_avatar = True
+        elif len(payload.profile_photo) > MAX_PHOTO_LENGTH:
+            raise HTTPException(
+                status_code=422,
+                detail="Image is too large or not a supported type."
+            )
+        else:
+            avatar = _decode_photo(payload.profile_photo)
+
     def mutate(db):
         user = _find_user(db, user_id)
         if not user:
@@ -201,25 +283,31 @@ def update_user_profile(user_id: int, payload: UpdateProfilePayload):
                 raise HTTPException(status_code=409, detail="That display name is already taken.")
             user["username"] = name
 
-        if payload.profile_photo is not None:
-            photo = payload.profile_photo
-            if photo == "":
-                user.pop("profile_photo", None)
-            elif not photo.startswith(ALLOWED_PHOTO_PREFIXES) or len(photo) > MAX_PHOTO_LENGTH:
-                raise HTTPException(
-                    status_code=422,
-                    detail="Image is too large or not a supported type."
-                )
-            else:
-                user["profile_photo"] = photo
+        if avatar is not None:
+            # The bytes are in user_avatars; this record only remembers that there
+            # is a picture and when it changed, which is what the URL carries.
+            user["has_avatar"] = True
+            user["avatar_updated_at"] = int(time.time())
+            user.pop("profile_photo", None)
+        elif remove_avatar:
+            user.pop("has_avatar", None)
+            user.pop("avatar_updated_at", None)
+            user.pop("profile_photo", None)
 
         return {
             "status": "success",
             "username": user["username"],
-            "profile_photo": user.get("profile_photo", DEFAULT_PROFILE_PHOTO)
+            "profile_photo": _photo_url(request, user)
         }
 
+    if avatar is not None:
+        db_manager.save_user_avatar(user_id, avatar[0], avatar[1])
+    elif remove_avatar:
+        db_manager.delete_user_avatar(user_id)
+
     return db_manager.update(mutate)
+
+
 
 
 @router.post("/users/{user_id}/email-change")
