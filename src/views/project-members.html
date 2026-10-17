@@ -110,6 +110,17 @@
             </nav>
 
             <div class="sidebar-footer">
+                <!-- Delete Project is revealed by project_layout.py for a role holding
+                     delete_project, so every project view offers it. The DELETE route
+                     re-checks the permission, so hiding it is presentation, not protection. -->
+                <button type="button" id="delete-project-btn" class="nav-item nav-item-danger hidden"
+                    title="Delete this project and everything in it">
+                    <svg viewBox="0 0 24 24" class="icon">
+                        <path
+                            d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+                    </svg>
+                    <span>Delete Project</span>
+                </button>
                 <button type="button" id="settings-btn" class="nav-item">
                     <svg viewBox="0 0 24 24" class="icon">
                         <path
@@ -130,9 +141,24 @@
             </p>
         </div>
 
-        <button id="add-member-btn" class="add-member-btn">
-            + Add Member
-        </button>
+        <!-- CHANGE: removing a member is now something you switch on, and the
+             switch only appears for a manage_members holder. With it off the
+             roster is read-only, so nobody removes a teammate by mis-clicking a
+             card. Turning it on offers Remove on the members this user outranks
+             (see can_remove_member) and never on themselves; the endpoint
+             re-checks manage_members on the request, so this is presentation. -->
+        <div class="member-actions">
+            <label id="remove-mode-toggle" class="remove-mode-toggle hidden"
+                title="Turn on to remove members from this project">
+                <input type="checkbox" id="remove-mode-checkbox">
+                <span class="remove-mode-track"><span class="remove-mode-thumb"></span></span>
+                <span class="remove-mode-label">Remove members</span>
+            </label>
+
+            <button id="add-member-btn" class="add-member-btn">
+                + Add Member
+            </button>
+        </div>
     </div>
 
     <div id="add-member-form" class="add-member-form hidden">
@@ -158,7 +184,9 @@
     </div>
 
     <!-- Link settings.json for PyScript backend -->
-    <script type="py" config="../../settings.json" src="../backend/utils/project_layout.py?v=20261011"></script>
-    <script type="py" config="../../settings.json" src="../backend/views/project_members.py"></script>
+    <div id="snackbar">Some text some message..</div>
+
+    <script type="py" config="../../settings.json" src="../backend/utils/project_layout.py?v=20261018"></script>
+    <script type="py" config="../../settings.json" src="../backend/views/project_members.py?v=20261017"></script>
 </body>
 </html>

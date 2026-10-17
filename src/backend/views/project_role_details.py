@@ -1,7 +1,6 @@
 import sys
 import asyncio
 import html
-import json
 import js  # type: ignore
 from pyscript import web, window, when  # type: ignore
 from urllib.parse import parse_qs, urlparse, unquote
@@ -11,18 +10,22 @@ if "." not in sys.path:
 
 from server_data import ServerData
 from auth import show_snackbar  # type: ignore
+from dialog import confirm_action  # type: ignore
 from project_helpers import get_project_id_from_url  # type: ignore
 from project_role_helpers import ( # type: ignore
-    close_all_modals, 
-    ROLE_PERMISSIONS, 
-    PRESET_ROLES, 
-    PROTECTED_PRESET_NAMES  
+    close_all_modals,
+    ROLE_PERMISSIONS,
+    PRESET_ROLES,
+    PRESET_RANK,
+    UNRANKED,
+    SINGLETON_PRESET_ROLES,
+    highest_preset_rank,
+    PROTECTED_PRESET_NAMES
 )
 
 _current_role_meta = {}
 _all_project_roles = []
 _current_role_members = []
-_role_to_delete = None
 
 def get_role_name_from_url():
     parsed_url = urlparse(str(window.location.href))
@@ -236,6 +239,9 @@ async def handle_edit_role_submit(event):
     if event:
         event.preventDefault()
     project_id = get_project_id_from_url()
+    # Nothing to save without a project id in the URL.
+    if project_id is None:
+        return
     role_name = js.document.getElementById("edit-role-original-name").value
     colour = js.document.getElementById("edit-role-colour-input").value
     description = js.document.getElementById("edit-role-desc-input").value.strip()
@@ -262,38 +268,34 @@ async def handle_edit_role_submit(event):
         await show_snackbar(message)
 
 def trigger_delete_role_flow(role_name):
+    """Confirm through the shared dialog, then delete the role.
+
+    The roles list calls this through window.triggerDeleteRole, so it stays a
+    plain function and hands the actual work to an async helper.
+    """
     if role_name in PROTECTED_PRESET_NAMES:
         asyncio.ensure_future(show_snackbar("Cannot delete preset system roles."))
         return
-    global _role_to_delete
-    _role_to_delete = role_name
-    text_el = web.page["#delete-role-confirmation-text"]
-    if text_el:
-        text_el.innerHTML = f"Are you sure you want to delete the role <b>{html.escape(role_name)}</b>? This action cannot be undone."
-    modal = web.page["#delete-role-modal"]
-    if modal:
-        modal.classes.remove("hidden")
+    asyncio.ensure_future(_confirm_and_delete_role(role_name))
 
 window.triggerDeleteRole = lambda r_name: trigger_delete_role_flow(r_name)
 
-@when("click", "#confirm-delete-role-btn")
-async def confirm_delete_role(event):
-    global _role_to_delete
-    if not _role_to_delete or _role_to_delete in PROTECTED_PRESET_NAMES:
+async def _confirm_and_delete_role(role_name):
+    """Ask the shared dialog to confirm, then delete the role and reload the list."""
+    confirmed, _password = await confirm_action(title=f"Delete role {role_name}")
+    if not confirmed:
         return
-    project_id = get_project_id_from_url()
-    modal = web.page["#delete-role-modal"]
-    if modal:
-        modal.classes.add("hidden")
 
+    project_id = get_project_id_from_url()
+    if project_id is None:
+        return
     db = ServerData()
-    success, message = await db.delete_project_role(project_id, _role_to_delete)
+    success, message = await db.delete_project_role(project_id, role_name)
     if success:
-        await show_snackbar(f"Role '{_role_to_delete}' deleted successfully.")
+        await show_snackbar(f"Role '{role_name}' deleted successfully.")
         window.location.href = f"project-roles.html?project_id={project_id}"
     else:
         await show_snackbar(message)
-    _role_to_delete = None
 
 _member_to_remove_id = None
 
@@ -316,6 +318,8 @@ async def confirm_remove_role_member(event):
         return
     project_id = get_project_id_from_url()
     role_name = get_role_name_from_url()
+    if project_id is None:
+        return
     modal = web.page["#confirm-remove-role-member-modal"]
     if modal:
         modal.classes.add("hidden")
@@ -335,6 +339,10 @@ async def confirm_remove_role_member(event):
 async def open_add_member_modal(event):
     project_id = get_project_id_from_url()
     role_name = get_role_name_from_url()
+    # Both are needed to work out who could take the role, and the role name is
+    # also a key into the preset tables below.
+    if project_id is None or not role_name:
+        return
     db = ServerData()
     project_data = await db.get_project_members(project_id)
     if not project_data:
@@ -349,8 +357,19 @@ async def open_add_member_modal(event):
         return
 
     html_content = ""
+
+    # Only members who rank below the role being handed out are offered. A
+    # member whose most senior preset role already matches or outranks it stays
+    # off the list, which stops an Employee post being offered to a Manager and
+    # is also what leaves a filled single-seat post (Project Creator, Scrum
+    # Master, Product Owner) with no candidates: the sitting holder always
+    # ranks at least as high as the role itself.
+    target_rank = PRESET_RANK.get(role_name, UNRANKED)
+
     for uid in member_ids:
         if uid in current_ids:
+            continue
+        if highest_preset_rank(project_data, uid) >= target_rank:
             continue
         u_obj = next((u for u in users_db if u.get("user_id") == uid), {"username": f"User {uid}", "email": ""})
         uname = html.escape(u_obj.get("username", ""))
@@ -360,7 +379,23 @@ async def open_add_member_modal(event):
             <button type="button" onclick="assignRoleToMember({uid}, '{uname}', '{role_name}')" style="background: #e0e7ff; color: #4338ca; border: none; padding: 4px 10px; border-radius: 4px; font-size: 12px; cursor: pointer;">Add</button>
         </div>
         """
-    container.innerHTML = html_content or '<p style="text-align: center; color: #64748b; font-size: 13px;">No available members to add.</p>'
+
+    if not html_content:
+        holders = (project_data.get("roles") or {}).get(role_name) or []
+        if role_name in SINGLETON_PRESET_ROLES and holders:
+            holder_name = next(
+                (html.escape(u.get("username", "")) for u in users_db if u.get("user_id") == holders[0]),
+                f"User {holders[0]}",
+            )
+            html_content = (
+                '<p style="text-align: center; color: #64748b; font-size: 13px;">'
+                f'{holder_name} already holds {html.escape(role_name)}. '
+                'Remove them from the role first - only one member can hold it.</p>'
+            )
+        else:
+            html_content = '<p style="text-align: center; color: #64748b; font-size: 13px;">No available members to add.</p>'
+
+    container.innerHTML = html_content
     
     modal = web.page["#add-role-member-modal"]
     if modal:
@@ -368,6 +403,8 @@ async def open_add_member_modal(event):
 
 async def assign_role_to_member_flow(user_id, username, role_name):
     project_id = get_project_id_from_url()
+    if project_id is None:
+        return
     db = ServerData()
     success, message = await db.assign_project_role(project_id, role_name, user_id)
     if success:
@@ -380,6 +417,6 @@ window.assignRoleToMember = lambda uid, uname, rname: asyncio.ensure_future(assi
 
 @when("click", ".modal-btn-cancel")
 def close_modals(event):
-    close_all_modals(["#edit-role-modal", "#delete-role-modal", "#add-role-member-modal", "#confirm-remove-role-member-modal"])
+    close_all_modals(["#edit-role-modal", "#add-role-member-modal", "#confirm-remove-role-member-modal"])
 
 asyncio.ensure_future(init_role_detail())

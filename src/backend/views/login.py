@@ -1,14 +1,13 @@
 import sys
 import asyncio
 import re
-
 from server_data import ServerData
 
 if "." not in sys.path:
     sys.path.append(".")
 
 from pyscript import when, web, window  # type: ignore
-from auth import show_feedback, clear_errors, toggle_password_mask, show_snackbar # type: ignore
+from auth import show_snackbar, show_feedback, clear_errors, toggle_password_mask  # type: ignore
 
 # Global lockout task reference to prevent overlapping timers
 lockout_task = None
@@ -88,3 +87,12 @@ async def handle_login(event):
 @when("click", "#toggle-password")
 def handle_password_toggle(event):
     toggle_password_mask("password", "eye-icon", "eye-off-icon")
+
+    # --- SECTION: Account deleted message (US-38) ---
+try:
+    msg = window.sessionStorage.getItem("account_deleted_message")
+    if msg:
+        window.sessionStorage.removeItem("account_deleted_message")
+        asyncio.ensure_future(show_snackbar(msg, 4))
+except Exception:
+    pass

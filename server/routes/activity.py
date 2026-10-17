@@ -57,14 +57,42 @@ def refresh_contributions(db: Dict[str, Any], project: Dict[str, Any]) -> Dict[s
 
 
 def append_history(project: Dict[str, Any], entry: Dict[str, Any]) -> Dict[str, Any]:
-    """Append one audit entry to the project, trimming the oldest beyond the cap."""
+    """Append one audit entry to the project, trimming the oldest beyond the cap.
+
+    The stamps are filled in here when a caller leaves them out, so every entry
+    carries the same server clock and no route has to remember both fields. A
+    caller that has already taken a timestamp - the time-log routes, or the
+    one-time browser migration that back-dates old entries - keeps what it passed.
+    """
     entries = project.setdefault("history", [])
     entry = dict(entry)
+    entry.setdefault("timestamp", logic.utc_stamp())
+    entry.setdefault("recorded_at", logic.utc_iso())
     entry["id"] = (entries[-1].get("id", 0) + 1) if entries else 1
     entries.append(entry)
     if len(entries) > logic.HISTORY_LIMIT:
         del entries[: len(entries) - logic.HISTORY_LIMIT]
     return entry
+
+
+def actor_label(db: Dict[str, Any], user_id: Any) -> str:
+    """Readable name of a user for an audit entry.
+
+    The deletion routes write history from outside this module, and one of them
+    (account deletion) removes the acting user in the same transaction, so this
+    lookup is deliberately tolerant: an id that no longer resolves still gets a
+    label rather than raising.
+    """
+    target = logic.as_id(user_id)
+    if target is None:
+        return "Someone"
+    users_by_id = {
+        parsed: user
+        for user in db.get("users", []) or []
+        for parsed in [logic.as_id(user.get("user_id"))]
+        if parsed is not None
+    }
+    return logic.display_name(users_by_id, target)
 
 
 class HistoryPayload(BaseModel):

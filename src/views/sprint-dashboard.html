@@ -115,6 +115,18 @@
         // A task went back to the product backlog from the open board: the
         // sidebar list and the sprint cards' task counts behind it are stale.
         document.body.dispatchEvent(new CustomEvent("app:sprint-backlog-changed"));
+      } else if (event.data?.type === "sprint-deleted") {
+        // The board inside the frame deleted its own sprint. Hide the frame (it is
+        // showing a sprint that no longer exists) and let the dashboard re-render
+        // what is behind it - see the app:sprint-deleted handler. The warm-iframe
+        // flags are deliberately left alone: the next card click reuses this same
+        // frame and activates the new sprint in it, which only happens while
+        // dataset.ready is still "true".
+        frame.hidden = true;
+        activeSprintId = null;
+        document.body.dispatchEvent(new CustomEvent("app:sprint-deleted", {
+          detail: event.data,
+        }));
       } else if (event.data?.type === "sprint-dashboard-navigation") {
         // "Create Sprint" opens its modal on top of the open board, so the user is
         // not thrown back to the sprint list; every other link leaves the board.
@@ -246,6 +258,17 @@
       </nav>
 
       <div class="sidebar-footer">
+          <!-- Delete Project is revealed by project_layout.py for a role holding
+               delete_project, so every project view offers it. The DELETE route
+               re-checks the permission, so hiding it is presentation, not protection. -->
+          <button type="button" id="delete-project-btn" class="nav-item nav-item-danger hidden"
+              title="Delete this project and everything in it">
+              <svg viewBox="0 0 24 24" class="icon">
+                  <path
+                      d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+              </svg>
+              <span>Delete Project</span>
+          </button>
           <button type="button" id="settings-btn" class="nav-item">
               <svg viewBox="0 0 24 24" class="icon">
                   <path
@@ -431,7 +454,8 @@
         <span class="modal-label">Assign Members</span>
         <div id="sprint-members-list" class="members-list"></div>
         <p class="members-hint">Only assigned members can open this sprint or drag tasks into it. You are always
-          included.
+          included, and so are the project's Project Creator, Scrum Masters and Product Owners: they are part
+          of every sprint in this project.
         </p>
 
         <div class="modal-actions">
@@ -494,7 +518,7 @@
   </div>
 
   <!-- Link settings.json for PyScript backend -->
-  <script type="py" config="../../settings.json" src="../backend/utils/project_layout.py?v=20261011"></script>
+  <script type="py" config="../../settings.json" src="../backend/utils/project_layout.py?v=20261018"></script>
 <script type="py" config="../../settings.json" src="../backend/views/sprint-dashboard.py?v=20261011"></script>
 </body>
 

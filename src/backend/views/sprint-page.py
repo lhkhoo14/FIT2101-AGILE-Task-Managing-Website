@@ -1,0 +1,1709 @@
+import sys
+import asyncio
+import json
+import time
+from datetime import datetime, timezone
+
+
+# Ensure the current directory is in the system path for local module imports
+if "." not in sys.path:
+    sys.path.append(".")
+
+from pyscript import when, web, window, document  # type: ignore
+
+# `auth`, `dialog`, `sprint_access` and `project_role_helpers` are loaded by their
+# flat names via settings.json's file map (src/backend/utils/auth.py -> ./auth.py),
+# so Pylance cannot resolve them from this folder; the ignores keep those
+# runtime-correct imports quiet.
+from auth import show_snackbar  # type: ignore[reportMissingImports]
+from dialog import confirm_action  # type: ignore[reportMissingImports]
+from sprint_access import is_sprint_member, task_tags, task_matches_tag_query, MAX_DESCRIPTION_LENGTH  # type: ignore[reportMissingImports]
+from project_role_helpers import permissions_for_user  # type: ignore[reportMissingImports]
+from html import escape
+import charts
+import js  # type: ignore
+
+from server_data import ServerData
+
+# `topbar` (src/backend/utils/topbar.py -> ./topbar.py) is imported for its side
+# effects rather than for a name in it: loading it registers the top bar's
+# profile-dropdown, outside-click and sign-out handlers for this page and boots
+# its session guard. Pylance greys out a module imported only for its side effects
+# and no ignore comment silences that hint, so the `as topbar` re-export form marks
+# the import as deliberate; the rule ignore covers the flat name it cannot resolve
+# from this folder (see the flat-name comment above).
+import topbar as topbar  # type: ignore[reportMissingImports]
+
+# ServerData owns the FastAPI session and provides the sprint/project API.
+# The page keeps only the currently displayed board in memory; every mutation
+# is persisted with update_kanban_state on the server.
+server_data = ServerData()
+_current_user_id = server_data.get_active_session()
+
+# The board's direction rules follow the signed-in user's real project
+# permissions (_permissions, loaded in _init_page): edit_sprints covers the
+# forward moves, and review_tasks adds the In Review -> Completed step and the
+# backwards moves. The demo "view as manager/employee" switch that used to stand
+# in for those roles has been removed.
+
+# ==========================================
+# CONSTANTS & GLOBAL STATE
+# ==========================================
+COLUMN_ORDER = ["backlog", "active", "review", "completed"]
+
+# CHANGE: tasks may move backlog -> active with checklist items still open, but
+# every column after this one requires a fully completed checklist. Editing this
+# value moves the gate (e.g. "backlog" gates every forward move).
+CHECKLIST_GATE_COLUMN = "active"
+
+# The board this page is showing. Both stay None until _init_page() has read
+# them out of the URL, and _board_ids() below is how every handler turns them
+# into the ints the server routes want.
+_sprint_id: int | None = None
+_project_id: int | None = None
+_sprint_ended = False
+_has_access = False
+_permissions = set()     # what the signed-in user may do in this project (manage_tasks, ...)
+_active_sprint = None
+_kanban_state = {}
+_assignees = []          # [(user_id, display name)] who can be assigned tasks in this sprint
+_watcher_started = False
+_search_query = ""
+
+# ==========================================
+# URL HELPERS
+# ==========================================
+
+def _as_id(value) -> int | None:
+    """A URL parameter as an int, or None when it is missing or not a number.
+
+    The FastAPI routes take ints, so a parameter that is not a run of digits can
+    only ever fail the request; treating it as absent lets the caller redirect.
+    """
+    text = str(value or "")
+    return int(text) if text.isdigit() else None
+
+
+def _get_url_params() -> tuple[int | None, int | None]:
+    """The sprint and project ids in the URL, as (sprint_id, project_id)."""
+    params = js.URLSearchParams.new(window.location.search)
+    return _as_id(params.get("sprint_id")), _as_id(params.get("project_id"))
+
+
+def _find_sprint(sprints, sprint_id):
+    return next(
+        (sprint for sprint in sprints if str(sprint.get("id", sprint.get("sprint_id"))) == str(sprint_id)),
+        None,
+    )
+
+def _board_ids() -> tuple[int, int] | None:
+    """The project and sprint this board is showing, or None when the URL lacked them.
+
+    _init_page() sends the browser back to the dashboard in that case, so a
+    handler that finds None here has nothing to act on - and the server routes
+    take ints, never a maybe-None value.
+    """
+    if _project_id is None or _sprint_id is None:
+        return None
+    return _project_id, _sprint_id
+
+
+async def _persist_kanban_state(state):
+    """Persist the current in-memory board through the FastAPI client."""
+    ids = _board_ids()
+    if ids is None:
+        return False
+    project_id, sprint_id = ids
+    success, err = await server_data.update_kanban_state(project_id, sprint_id, state)
+    if not success:
+        await show_snackbar(f"Failed to update board: {err}")
+    return success
+
+
+def _normalized_task_id(task_id):
+    task_id = str(task_id or "")
+    return task_id[5:] if task_id.startswith("task-") else task_id
+
+# ==========================================
+# RENDERING & UI HELPERS
+# ==========================================
+def _tag_chips_html(task):
+    """The task's tags as chips (same look as sprint tags), or "" when untagged."""
+    chips = "".join(f'<span class="task-tag-chip">{escape(tag)}</span>' for tag in task_tags(task))
+    return f'<div class="task-card-tags">{chips}</div>' if chips else ""
+
+
+def _make_task_card(task, column_key):
+    card = document.createElement("div")
+    card.className = "task-card"
+    task_id = task.get("id", task.get("backlog_id", ""))
+    card.id = f"task-{_normalized_task_id(task_id)}"
+    card.setAttribute("draggable", "true")
+    card.setAttribute("data-column", column_key)
+
+    assignee = task.get("assignee")
+    if assignee:
+        initials = "".join(part[0] for part in assignee.split()[:2]).upper()
+        avatar_html = f'<div class="assignee-avatar" title="{assignee}">{initials}</div>'
+    else:
+        avatar_html = '<div class="assignee-avatar" title="Unassigned">?</div>'
+
+
+    priority = task.get("priority", "medium")
+    title = task.get("title", "Untitled Task")
+
+    # --- NEW CHECKLIST PROGRESS HTML ---
+    done_cnt, total_cnt, pct = _checklist_progress(task)
+    if total_cnt > 0:
+        progress_html = f"""
+        <div class="card-checklist-progress">
+            <div class="card-progress-bar-bg">
+                <div class="card-progress-bar-fill" style="width: {pct}%;"></div>
+            </div>
+            <span class="card-progress-text">{done_cnt}/{total_cnt}</span>
+        </div>
+        """
+    else:
+        progress_html = ""
+    # -----------------------------------
+
+    task_start, task_end = charts.parse_iso(task.get("start_date")), charts.parse_iso(task.get("end_date"))
+    if task_start and task_end:
+        dates_text = f"{charts.format_day(task_start)} \u2192 {charts.format_day(task_end)}"
+    elif task_start:
+        dates_text = f"Starts {charts.format_day(task_start)}"
+    elif task_end:
+        dates_text = f"Due {charts.format_day(task_end)}"
+    else:
+        dates_text = ""
+    dates_html = f'<p class="task-card-dates">{escape(dates_text)}</p>' if dates_text else ""
+
+    # --- TIME LOG BADGE HTML ---
+    _, _, time_status, _ = _time_log_summary(task)
+    if time_status:
+        time_html = f'<div class="card-time-log">⏱ {escape(time_status)}</div>'
+    else:
+        time_html = ""
+    # ---------------------------
+
+    card.innerHTML = f"""
+        {_tag_chips_html(task)}
+        <p class="task-card-title">{escape(str(task['title']))}</p>
+        {dates_html}
+        {progress_html}
+        {time_html}
+        <div class="task-card-footer">
+            <span class="priority-badge priority-{priority}">{priority.capitalize()}</span>
+            {avatar_html}
+        </div>
+    """
+    
+    return card
+
+
+async def _current_actor():
+    user_id = server_data.get_active_session()
+    user = await server_data.get_user_by_id(user_id) if user_id is not None else None
+    return (user.get("username") or user.get("email")) if user else "Unknown user"
+
+
+async def _record_change(action, sprint, task=None, from_status=None, to_status=None):
+    # US-20: the activity feed is stored on the server, so an event recorded here
+    # is visible on every device that opens this project.
+    if not _project_id:
+        return
+    actor = await _current_actor()
+    if action == "moved":
+        target = task.get("title", "a task") if task else "a task"
+        message = (
+            f"{actor} moved {target} from {from_status} to {to_status} "
+            f"in {sprint.get('name', 'a sprint')}"
+        )
+    elif action == "returned":
+        target = task.get("title", "a task") if task else "a task"
+        message = (
+            f"{actor} returned {target} from {sprint.get('name', 'a sprint')} "
+            "to the product backlog"
+        )
+    else:
+        message = f"{actor} ended {sprint.get('name', 'a sprint')}"
+
+    success, err = await server_data.record_change(
+        _project_id,
+        message,
+        action=action,
+        sprint_id=_sprint_id,
+        sprint_name=sprint.get("name", "Sprint"),
+        task_id=task.get("id") if task else None,
+        task_title=task.get("title") if task else None,
+        from_status=from_status,
+        to_status=to_status,
+    )
+    if not success:
+        print(f"[Change History] {err}")
+
+
+def _task_matches_search(task, query):
+    """Tag search: tasks whose tags do not fit the search text are hidden.
+
+    Same rules as the sprint search on the dashboard (see sprint_access): every
+    search term must partially match one of the task's tags, and an empty search
+    shows every task.
+    """
+    return task_matches_tag_query(task, query)
+
+
+def _render_board(state):
+    shown = 0
+    for column_key in COLUMN_ORDER:
+        body = web.page[f"column-{column_key}"]
+        if body:
+            body.innerHTML = ""
+            for task in state.get(column_key, []):
+                if _task_matches_search(task, _search_query):
+                    body.appendChild(_make_task_card(task, column_key))
+                    shown += 1
+
+    note = web.page["board-search-empty"]
+    if note is not None:
+        no_match = bool(_search_query) and shown == 0
+        if no_match:
+            note.textContent = f'No tasks have a tag matching "{_search_query}".'
+        note.classList.toggle("hidden", not no_match)
+    _refresh_all_counts()
+
+def _update_column_count(column_key):
+    body = web.page[f"column-{column_key}"]
+    count_el = web.page[f"count-{column_key}"]
+    if body is not None and count_el is not None:
+        count_el.textContent = str(len(body.children))
+
+def _refresh_all_counts():
+    for key in COLUMN_ORDER:
+        _update_column_count(key)
+
+def _column_index(column_key):
+    return COLUMN_ORDER.index(column_key)
+
+# ==========================================
+# PAGE INITIALIZATION & BOOTSTRAP
+# ==========================================
+def _apply_delete_sprint_state(sprint):
+    """Offer Delete Sprint to the roles that hold manage_sprints, and nobody else.
+
+    Two rules, the same two the DELETE endpoint enforces: the user must hold
+    manage_sprints, and a completed sprint cannot be deleted at all - it is the
+    record its burndown and its members' contribution figures were computed from.
+    A completed sprint keeps the button visible but disabled so the rule is
+    legible rather than looking like a missing feature.
+    """
+    button = web.page["#delete-sprint-btn"]
+    if button is None:
+        return
+
+    if "manage_sprints" not in _permissions:
+        button.classList.add("hidden")
+        return
+
+    ended = sprint.get("status") == "ended"
+    button.classList.remove("hidden")
+    button.disabled = ended
+    button.setAttribute(
+        "title",
+        "A completed sprint is kept as the record of what the team finished, so it cannot be deleted."
+        if ended else "Delete this sprint and everything on its board",
+    )
+
+
+def _apply_header_and_lock_state(sprint):
+    name_el = web.page["sprint-name"]
+    if name_el:
+        name_el.textContent = sprint.get("name", f"Sprint {_sprint_id}")
+
+    global _sprint_ended
+    _sprint_ended = sprint.get("status") == "ended"
+
+    _apply_delete_sprint_state(sprint)
+
+    range_el = web.page["sprint-range"]
+    if range_el:
+        start, end = charts.parse_iso(sprint.get("start_date")), charts.parse_iso(sprint.get("end_date"))
+        range_el.textContent = (
+            f"{charts.format_day(start)} \u2013 {charts.format_day(end, True)}" if start and end else ""
+        )
+        range_el.classList.toggle("hidden", not (start and end))
+
+    if _sprint_ended:
+        board = web.page["kanban-board"]
+        if board is not None:
+            board.classList.add("sprint-ended")
+        end_btn = web.page["end-sprint-btn"]
+        if end_btn is not None:
+            end_btn.textContent = "Sprint Ended"
+            end_btn.disabled = True
+    else:
+        board = web.page["kanban-board"]
+        if board is not None:
+            board.classList.remove("sprint-ended")
+        end_btn = web.page["end-sprint-btn"]
+        if end_btn is not None:
+            end_btn.textContent = "End Sprint"
+            end_btn.disabled = False
+            _start_end_watcher()
+
+
+async def _load_assignees(sprint):
+    """Sprint members (or every user, for legacy open sprints) who can be assigned tasks."""
+    member_ids = sprint.get("members")
+    users = []
+    if member_ids is None:
+        users = await server_data.get_users()
+    else:
+        for member_id in member_ids:
+            user = await server_data.get_user_by_id(int(member_id))
+            if user:
+                users.append(user)
+    return [(u["user_id"], u.get("username") or u.get("email") or f"User {u['user_id']}") for u in users]
+
+
+def _start_end_watcher():
+    global _watcher_started
+    if not _watcher_started:
+        _watcher_started = True
+        asyncio.ensure_future(_watch_for_sprint_end())
+
+
+async def _watch_for_sprint_end():
+    """The server completes a sprint once its end date passes; lock an open board when that happens."""
+    global _active_sprint
+    while True:
+        await asyncio.sleep(30)
+        if not _has_access or _sprint_ended or not _project_id or not _sprint_id:
+            continue
+        sprint = _find_sprint(await server_data.get_sprints(_project_id), _sprint_id)
+        if sprint and sprint.get("status") == "ended":
+            _active_sprint = sprint
+            _apply_header_and_lock_state(sprint)
+            if _open_task_id:
+                _render_task_detail_modal()
+            await show_snackbar("This sprint has reached its end date and was completed automatically.")
+
+
+async def _init_page(sprint_id=None):
+    """Load the selected sprint, verify membership, and render its board."""
+    global _sprint_id, _sprint_ended, _has_access, _project_id, _active_sprint, _kanban_state, _assignees
+    global _permissions
+    url_sprint_id, _project_id = _get_url_params()
+    _sprint_id = sprint_id or url_sprint_id
+    _sprint_ended = False
+    _has_access = False
+    _permissions = set()
+
+    if not _sprint_id or not _project_id:
+        window.location.href = "dashboard.html"
+        return
+
+    sprints = await server_data.get_sprints(_project_id)
+    sprint = _find_sprint(sprints, _sprint_id)
+    if not sprint:
+        window.location.href = f"sprint-dashboard.html?project_id={_project_id}"
+        return
+
+    # Only members assigned to this sprint may open its page (this also covers
+    # anyone who types the sprint_id into the URL directly).
+    if not is_sprint_member(sprint, _current_user_id):
+        window.location.href = (
+            f"sprint-dashboard.html?project_id={_project_id}"
+            "&view=sprints&message=You%20are%20not%20assigned%20to%20that%20sprint."
+        )
+        return
+    _has_access = True
+    # One extra read decides whether the task modal offers Delete at all. It mirrors
+    # the dashboard's "can this user delete a sprint?" read and only drives what the
+    # UI shows: the delete endpoint checks manage_tasks again on every request.
+    _permissions = permissions_for_user(
+        await server_data.get_project_members(_project_id), _current_user_id
+    )
+    _active_sprint = sprint
+    _assignees = await _load_assignees(sprint)
+
+    _apply_header_and_lock_state(sprint)
+
+
+    state = await server_data.get_kanban_state(_project_id, _sprint_id)
+    if state is None:
+        state = {column: [] for column in COLUMN_ORDER}
+        await show_snackbar("Unable to load this sprint board from the server.")
+    for column in COLUMN_ORDER:
+        state.setdefault(column, [])
+    _kanban_state = state
+    _render_board(state)
+
+# ==========================================
+# EVENT HANDLERS
+# ==========================================
+@when("click", "#create-sprint-btn")
+def handle_create_sprint_navigation(event):
+    _navigate_to_dashboard(action="create-sprint")
+
+
+@when("click", "#nav-all-projects")
+def handle_show_sprints(event):
+    _navigate_to_dashboard(view="sprints")
+
+
+@when("click", "#nav-effort")
+def handle_show_effort(event):
+    _navigate_to_dashboard(view="effort")
+
+
+@when("click", "#nav-history")
+def handle_show_history(event):
+    _navigate_to_dashboard(view="history")
+
+
+@when("click", "#nav-contributions")
+def handle_show_contributions(event):
+    _navigate_to_dashboard(view="contributions")
+
+
+@when("click", "#settings-btn")
+def handle_unavailable_settings(event):
+    asyncio.ensure_future(show_snackbar("Settings are not available yet."))
+
+
+@when("click", "#delete-sprint-btn")
+async def handle_delete_sprint(event):
+    """Confirm, delete the sprint this board is showing, then leave the board.
+
+    Bound with @when so PyScript - not a hand-made create_proxy() - schedules the
+    coroutine: an async handler wrapped in create_proxy() runs after the click has
+    already finished bubbling, which is what made the old card-level Delete button
+    lose to the card's own "open this sprint" handler.
+    """
+    if not _project_id or not _sprint_id or not _has_access or _sprint_ended:
+        return
+
+    name = (_active_sprint or {}).get("name") or f"sprint {_sprint_id}"
+
+    confirmed, _password = await confirm_action(title=f"Delete sprint {name}")
+    if not confirmed:
+        return
+
+    success, message = await server_data.delete_sprint(_project_id, _sprint_id)
+    if not success:
+        await show_snackbar(message)
+        return
+
+    # The board on screen has just been deleted, so leave it. Embedded, the
+    # dashboard behind this iframe is where the sprint's card, its backlog counts
+    # and the panel currently showing this board all live, so it is asked to
+    # refresh and to come back to the sprint list.
+    if window.isEmbeddedSprintPage:
+        payload = {"type": "sprint-deleted", "sprint_id": str(_sprint_id)}
+        window.parent.postMessage(js.JSON.parse(json.dumps(payload)), str(window.location.origin))
+        return
+
+    await show_snackbar(message)
+    window.location.href = f"sprint-dashboard.html?project_id={_project_id}&view=sprints"
+
+
+def _navigate_to_dashboard(view=None, action=None):
+    """Return to the live dashboard iframe or navigate to a standalone dashboard."""
+    if window.isEmbeddedSprintPage:
+        payload = {"type": "sprint-dashboard-navigation", "view": view, "action": action}
+        window.parent.postMessage(js.JSON.parse(json.dumps(payload)), str(window.location.origin))
+        return
+    if action == "create-sprint":
+        window.location.href = f"sprint-dashboard.html?project_id={_project_id}&modal=create-sprint-modal"
+    else:
+        window.location.href = f"sprint-dashboard.html?project_id={_project_id}&view={view}"
+
+
+@when("app:activate-sprint-page", "body")
+async def handle_activate_sprint_page(event):
+    await _init_page(event.detail.sprintId)
+
+
+@when("app:card-drop", "body")
+async def handle_card_drop(event):
+    if _sprint_ended or not _has_access:
+        return
+
+    detail = event.detail
+    card_id = detail.cardId
+    target_column = detail.targetColumn
+
+    if not card_id or target_column not in COLUMN_ORDER:
+        return
+
+    if not _project_id or not _sprint_id:
+        return
+
+    state = _kanban_state
+    raw_id = _normalized_task_id(card_id)
+    task = next(
+        (
+            item
+            for tasks in state.values()
+            for item in tasks
+            if _normalized_task_id(item.get("id", item.get("backlog_id", ""))) == raw_id
+        ),
+        None,
+    )
+
+    if not task:
+        return
+
+    source_column = next(column for column in COLUMN_ORDER if task in state[column])
+    if source_column == target_column:
+        return
+
+    if "review_tasks" not in _permissions:
+        # Without review_tasks: forward-only, and no self-moving into Completed.
+        if _column_index(target_column) < _column_index(source_column):
+            await show_snackbar("Tasks can only be pushed forward on the board.")
+            return
+
+        if target_column == "completed":
+            await show_snackbar(
+                "Moving a task to Completed needs the review_tasks permission in this project."
+            )
+            return
+
+        # CHANGE: only moves PAST the gate column need a finished checklist, so a
+        # task can be picked up and started while work is still outstanding.
+        if _column_index(target_column) > _column_index(CHECKLIST_GATE_COLUMN):
+            checklist = task.get("checklist", [])
+            if any(not item.get("done", False) for item in checklist):
+                await show_snackbar(
+                    f"Complete all checklist items before moving this task to {target_column}."
+                )
+                return
+    # A review_tasks holder may otherwise move tasks in any direction, to any column...
+
+    # ...but NOBODY may complete a task with unchecked checklist items.
+    if target_column == "completed":
+        pending = _unchecked_count(task)
+        if pending:
+            noun = "item" if pending == 1 else "items"
+            await show_snackbar(
+                f"Tick off all checklist items first ({pending} {noun} remaining) "
+                "before moving this task to Completed."
+            )
+            return
+
+    source_index = state[source_column].index(task)
+    state[source_column].remove(task)
+    task.pop("status", None)
+    state[target_column].append(task)
+
+    sprint = _active_sprint or {"name": "Sprint"}
+    if not await _persist_kanban_state(state):
+        # Server refused the move: put the card back so the board matches the server.
+        state[target_column].remove(task)
+        state[source_column].insert(source_index, task)
+        _render_board(state)
+        return
+    await _record_change("moved", sprint, task, source_column.replace("_", " "), target_column.replace("_", " "))
+
+    _render_board(state)
+
+# --- END SPRINT: lock the board and persist status via ServerData ---
+@when("click", "#end-sprint-btn")
+async def handle_end_sprint(event):
+    # Lock the board, persist the ended state, and record the sprint event.
+    global _sprint_ended, _active_sprint
+    if _sprint_ended:
+        return
+    ids = _board_ids()
+    if ids is None:
+        return
+    project_id, sprint_id = ids
+    success, err, sprint = await server_data.update_sprint_status(
+        project_id, sprint_id, "ended"
+    )
+    if not success:
+        await show_snackbar(f"Failed to end sprint: {err}")
+        return
+    _sprint_ended = True
+    _active_sprint = sprint or _active_sprint
+    await _record_change("ended", _active_sprint or {"name": "Sprint"})
+
+    board = web.page["kanban-board"]
+    if board is not None:
+        board.classList.add("sprint-ended")
+
+    end_btn = web.page["end-sprint-btn"]
+    if end_btn is not None:
+        end_btn.textContent = "Sprint Ended"
+        end_btn.disabled = True
+
+    asyncio.ensure_future(show_snackbar("Sprint ended. Board is now locked."))
+
+# --- Search Bar
+@when("input", "#global-search")
+def handle_search_input(event):
+    global _search_query
+    _search_query = event.target.value.strip()
+    _render_board(_kanban_state)
+
+# --- SECTION: Task Checklist & Detail Modal ---
+
+_open_task_id = None
+# True while the description box holds typing that has not been saved yet, so a
+# re-render of the modal (e.g. after ticking a checklist item) does not wipe it.
+_description_dirty = False
+
+
+def _checklist_progress(task):
+    checklist = task.get("checklist", [])
+    total = len(checklist)
+    if total == 0:
+        return 0, 0, 0
+    done = sum(1 for item in checklist if item.get("done", False))
+    percent = round(done / total * 100)
+    return done, total, percent
+
+
+def _unchecked_count(task):
+    return sum(1 for item in task.get("checklist", []) if not item.get("done", False))
+
+
+def _find_task_and_column(task_id):
+    """Return (task, column_key) for a card id, or (None, None)."""
+    wanted = _normalized_task_id(task_id)
+    for column_key, column_tasks in _kanban_state.items():
+        for t in column_tasks:
+            if _normalized_task_id(t.get("id")) == wanted:
+                return t, column_key
+    return None, None
+
+
+def _render_task_detail_modal():
+    global _open_task_id
+    if not _open_task_id:
+        return
+
+    kanban_state = _kanban_state
+    task = None
+    task_column = None
+    for col_key, col_tasks in kanban_state.items():
+        for t in col_tasks:
+            if _normalized_task_id(t.get("id")) == _normalized_task_id(_open_task_id):
+                task = t
+                task_column = col_key
+                break
+        if task:
+            break
+
+    if not task:
+        _close_task_detail_modal()
+        return
+
+    can_review = "review_tasks" in _permissions
+
+    # Title
+    web.page["task-detail-title"].textContent = task.get("title", "Task Details")
+
+    # Tags & Priority Meta
+    meta_container = web.page["task-detail-meta"]
+    meta_container.innerHTML = ""
+    for tag in task_tags(task):
+        tag_span = document.createElement("span")
+        tag_span.className = "task-tag-chip"
+        tag_span.textContent = tag
+        meta_container.appendChild(tag_span)
+    prio_span = document.createElement("span")
+    prio_span.className = f"task-priority priority-{task.get('priority', 'medium').lower()}"
+    prio_span.textContent = task.get("priority", "Medium")
+    meta_container.appendChild(prio_span)
+
+    # Description: any sprint member can add or edit it until the sprint ends.
+    description_input = web.page["task-description-input"]
+    if not _description_dirty:
+        description_input.value = task.get("description") or ""
+    description_input.disabled = _sprint_ended
+    description_input.placeholder = (
+        "No description." if _sprint_ended else "Add a description..."
+    )
+    web.page["task-description-save-btn"].disabled = _sprint_ended
+
+    # Return to product backlog: only for tasks still in the sprint backlog.
+    return_btn = web.page["return-to-backlog-btn"]
+    can_return = task_column == "backlog" and not _sprint_ended
+    return_btn.classList.toggle("hidden", not can_return)
+    has_work = _has_logged_work(task)
+    return_btn.disabled = has_work
+    return_btn.title = (
+        "This task has logged work time, so it can't go back to the product backlog."
+        if has_work else "Move this task back to the product backlog"
+    )
+
+    # Delete: deleting a task needs manage_tasks, and a task that reached Completed
+    # is never offered for deletion because that column is the record of what the
+    # team finished. Every preset role holds manage_tasks, so in practice this only
+    # restricts a custom role that was left without it.
+    delete_btn = web.page["delete-task-btn"]
+    can_delete = (
+        "manage_tasks" in _permissions
+        and task_column != "completed"
+        and not _sprint_ended
+    )
+    delete_btn.classList.toggle("hidden", not can_delete)
+    if task_column == "completed":
+        delete_btn.title = "A completed task cannot be deleted."
+    elif _sprint_ended:
+        delete_btn.title = "This sprint has ended, so its tasks can no longer be changed."
+    elif "manage_tasks" not in _permissions:
+        delete_btn.title = "You need the manage_tasks permission in this project to delete a task."
+    else:
+        delete_btn.title = "Delete this task permanently"
+
+    # Progress Bar
+    done, total, percent = _checklist_progress(task)
+    fill_el = web.page["task-progress-fill"]
+    text_el = web.page["task-progress-text"]
+    if total > 0:
+        fill_el.style.width = f"{percent}%"
+        text_el.textContent = f"{done} of {total} done ({percent}%)"
+        web.page["task-progress-container"].classList.remove("hidden")
+    else:
+        fill_el.style.width = "0%"
+        web.page["task-progress-container"].classList.add("hidden")
+
+    # Checklist Rows
+    items_container = web.page["checklist-items"]
+    items_container.innerHTML = ""
+    checklist = task.get("checklist", [])
+
+    if not checklist:
+        empty_div = document.createElement("div")
+        empty_div.className = "checklist-empty"
+        empty_div.textContent = "No checklist items yet."
+        items_container.appendChild(empty_div)
+    else:
+        for idx, item in enumerate(checklist):
+            row = document.createElement("div")
+            row.className = "checklist-row"
+
+            checkbox = document.createElement("input")
+            checkbox.type = "checkbox"
+            checkbox.id = f"chk-item-{item.get('id', idx)}"
+            checkbox.dataset.itemId = str(item.get("id", ""))
+            checkbox.checked = item.get("done", False)
+            # Ended sprint = read only. A completed task keeps its ticks (un-ticking would
+            # leave a "completed" task with unfinished work).
+            if _sprint_ended or (task_column == "completed" and item.get("done", False)):
+                checkbox.disabled = True
+
+            label = document.createElement("label")
+            label.htmlFor = checkbox.id
+            label.textContent = item.get("text", "")
+
+            row.appendChild(checkbox)
+            row.appendChild(label)
+
+            # --- Delete button: only visible to the item's own creator ---
+            is_owner = (
+                _current_user_id is not None
+                and item.get("created_by") == _current_user_id
+            )
+            if is_owner and not _sprint_ended:
+                delete_btn = document.createElement("button")
+                delete_btn.type = "button"
+                delete_btn.className = "checklist-delete-btn"
+                delete_btn.title = "Delete this item"
+                delete_btn.dataset.itemId = str(item.get("id", ""))
+                delete_btn.textContent = "×"
+                row.appendChild(delete_btn)
+            # ---------------------------------------------------------------
+
+            items_container.appendChild(row)
+
+    _render_task_assignee_and_dates(task)
+
+    # Ended sprint view-only controls
+    input_el = web.page["checklist-input"]
+    add_btn = web.page["checklist-add-btn"]
+    if _sprint_ended or task_column == "completed":
+        input_el.disabled = True
+        add_btn.disabled = True
+        input_el.placeholder = (
+            "Move the task out of Completed to add items"
+            if task_column == "completed" and not _sprint_ended
+            else "Add a sub-item..."
+        )
+    else:
+        input_el.disabled = False
+        add_btn.disabled = False
+        input_el.placeholder = "Add a sub-item..."
+
+    # --- Review feedback (Review column only) ---
+    feedback_section = web.page["review-feedback-section"]
+    if task_column == "review":
+        feedback_section.classList.remove("hidden")
+
+        messages_el = web.page["feedback-messages"]
+        messages_el.innerHTML = ""
+        feedback_list = task.get("feedback") or []
+        if not feedback_list:
+            empty_div = document.createElement("div")
+            empty_div.className = "feedback-empty"
+            empty_div.textContent = "No feedback yet."
+            messages_el.appendChild(empty_div)
+        else:
+            for msg in feedback_list:
+                msg_div = document.createElement("div")
+                msg_div.className = "feedback-message"
+
+                text_span = document.createElement("span")
+                author_span = document.createElement("span")
+                author_span.className = "feedback-author"
+                author_span.textContent = f"{msg.get('author', 'Reviewer')}:"
+                text_span.appendChild(author_span)
+                text_span.appendChild(document.createTextNode(f" {msg.get('text', '')}"))
+                msg_div.appendChild(text_span)
+
+                # Only the reviewer who posted it can delete their own feedback
+                is_own_feedback = (
+                    can_review
+                    and _current_user_id is not None
+                    and msg.get("author_id") == _current_user_id
+                )
+                if is_own_feedback and not _sprint_ended:
+                    delete_btn = document.createElement("button")
+                    delete_btn.type = "button"
+                    delete_btn.className = "feedback-delete-btn"
+                    delete_btn.title = "Delete this feedback"
+                    delete_btn.dataset.feedbackId = str(msg.get("id", ""))
+                    delete_btn.textContent = "×"
+                    msg_div.appendChild(delete_btn)
+
+                messages_el.appendChild(msg_div)
+
+        feedback_input = web.page["feedback-input"]
+        feedback_btn = web.page["feedback-add-btn"]
+        can_post = can_review and not _sprint_ended
+        feedback_input.disabled = not can_post
+        feedback_btn.disabled = not can_post
+    else:
+        feedback_section.classList.add("hidden")
+
+    # --- Time Log UI ---
+    started_fmt, ended_fmt, duration_str, status_txt = _time_log_summary(task)
+    start_btn = web.page["start-task-btn"]
+    end_btn = web.page["end-task-btn"]
+    status_el = web.page["time-log-status"]
+
+    time_log = task.get("time_log") or {}
+    has_started = bool(time_log.get("started_at"))
+    has_ended = bool(time_log.get("ended_at"))
+
+    if _sprint_ended:
+        start_btn.disabled = True
+        end_btn.disabled = True
+    else:
+        start_btn.disabled = has_started
+        end_btn.disabled = (not has_started) or has_ended
+
+    status_el.innerHTML = ""
+    if not has_started:
+        status_el.textContent = "Not started yet."
+    else:
+        lines = [f"Started: {started_fmt}"]
+        if has_ended:
+            lines.append(f"Ended: {ended_fmt}")
+            lines.append(f"Duration: {duration_str}")
+        for line in lines:
+            line_div = document.createElement("div")
+            line_div.textContent = line
+            status_el.appendChild(line_div)
+
+    _render_stopwatch_ui(task)
+
+
+def _render_task_assignee_and_dates(task):
+    """Fill the assignee picker and the start/end date inputs for the open task."""
+    select = web.page["task-assignee-select"]
+    select.innerHTML = ""
+    choices = [("", "Unassigned")] + [(f"id:{uid}", name) for uid, name in _assignees]
+    current_id, current_name = task.get("assignee_id"), task.get("assignee")
+    selected = ""
+    if current_id is not None and any(uid == current_id for uid, _ in _assignees):
+        selected = f"id:{current_id}"
+    elif current_name:
+        match = next((uid for uid, name in _assignees if name == current_name), None)
+        if match is not None:
+            selected = f"id:{match}"
+        else:  # a name that is not a current member (e.g. seeded data): keep it selectable
+            choices.append(("legacy", current_name))
+            selected = "legacy"
+    for value, label in choices:
+        option = document.createElement("option")
+        option.value = value
+        option.textContent = label
+        select.appendChild(option)
+    select.value = selected
+    select.disabled = _sprint_ended
+
+    start_input, end_input = web.page["task-start-input"], web.page["task-end-input"]
+    hint = web.page["task-date-hint"]
+    s_start = charts.parse_iso((_active_sprint or {}).get("start_date"))
+    s_end = charts.parse_iso((_active_sprint or {}).get("end_date"))
+    # Tested directly rather than through a has_range flag: the flag does not
+    # narrow the two values for a type checker, and this reads the same.
+    if s_start is not None and s_end is not None:
+        start_input.min = end_input.min = s_start.isoformat()
+        start_input.max = end_input.max = s_end.isoformat()
+        hint.textContent = f"Dates must fall within the sprint: {charts.format_day(s_start)} \u2013 {charts.format_day(s_end, True)}."
+    else:
+        hint.textContent = "Task dates are unavailable because this sprint was created without a date range."
+    start_input.value = task.get("start_date") or ""
+    end_input.value = task.get("end_date") or ""
+    # Unusable without a sprint range to bound them, and once the sprint has ended.
+    start_input.disabled = end_input.disabled = _sprint_ended or s_start is None or s_end is None
+    web.page["task-details-save-btn"].disabled = _sprint_ended
+
+
+def _find_open_task():
+    for col_tasks in _kanban_state.values():
+        for t in col_tasks:
+            if _normalized_task_id(t.get("id")) == _normalized_task_id(_open_task_id):
+                return t
+    return None
+
+
+@when("click", "#task-details-save-btn")
+async def handle_save_task_details(event):
+    """Validate and save the open task's assignee and start/end dates."""
+    if _sprint_ended or not _open_task_id:
+        return
+    task = _find_open_task()
+    if task is None:
+        return
+
+    start_text = web.page["task-start-input"].value
+    end_text = web.page["task-end-input"].value
+    start, end = charts.parse_iso(start_text), charts.parse_iso(end_text)
+    s_start = charts.parse_iso((_active_sprint or {}).get("start_date"))
+    s_end = charts.parse_iso((_active_sprint or {}).get("end_date"))
+
+    if start and end and end < start:
+        await show_snackbar("The task end date cannot be before its start date.")
+        return
+    if s_start and s_end:
+        for label, value in (("start", start), ("end", end)):
+            if value and not (s_start <= value <= s_end):
+                await show_snackbar(
+                    f"The task {label} date must be within the sprint "
+                    f"({charts.format_day(s_start)} \u2013 {charts.format_day(s_end, True)})."
+                )
+                return
+
+    chosen = web.page["task-assignee-select"].value
+    previous = {key: task.get(key) for key in ("assignee", "assignee_id", "start_date", "end_date")}
+    if chosen == "":
+        task["assignee"], task["assignee_id"] = None, None
+    elif chosen.startswith("id:"):
+        uid = int(chosen[3:])
+        task["assignee_id"] = uid
+        task["assignee"] = next((name for u, name in _assignees if u == uid), task.get("assignee"))
+    # "legacy" keeps the existing assignee untouched
+    task["start_date"] = start_text or None
+    task["end_date"] = end_text or None
+
+    ids = _board_ids()
+    if ids is None:
+        return
+    project_id, sprint_id = ids
+    success, err = await server_data.update_kanban_state(project_id, sprint_id, _kanban_state)
+    if not success:
+        task.update(previous)  # roll back the in-memory change so the UI matches the server
+        await show_snackbar(f"Could not save task details: {err}")
+        return
+
+    _render_board(_kanban_state)
+    _render_task_detail_modal()
+    await show_snackbar("Task details saved.")
+
+
+@when("input", "#task-description-input")
+def handle_description_typing(event):
+    """Remember there is unsaved text so re-rendering the modal keeps it."""
+    global _description_dirty
+    _description_dirty = True
+
+
+@when("click", "#task-description-save-btn")
+async def handle_save_task_description(event):
+    """Save the open task's description (an empty box removes it)."""
+    global _description_dirty
+    if _sprint_ended or not _open_task_id:
+        return
+    task = _find_open_task()
+    if task is None:
+        return
+
+    text = web.page["task-description-input"].value.strip()
+    if len(text) > MAX_DESCRIPTION_LENGTH:
+        await show_snackbar(f"Descriptions can be at most {MAX_DESCRIPTION_LENGTH} characters.")
+        return
+    previous = task.get("description")
+    if text == (previous or ""):
+        _description_dirty = False
+        await show_snackbar("No changes to save.")
+        return
+
+    task["description"] = text
+    ids = _board_ids()
+    if ids is None:
+        return
+    project_id, sprint_id = ids
+    success, err = await server_data.update_kanban_state(project_id, sprint_id, _kanban_state)
+    if not success:
+        # Roll back the in-memory change so the UI matches the server (the text stays in the box).
+        if previous is None:
+            task.pop("description", None)
+        else:
+            task["description"] = previous
+        await show_snackbar(f"Could not save the description: {err}")
+        return
+
+    _description_dirty = False
+    _render_task_detail_modal()
+    await show_snackbar("Description saved." if text else "Description removed.")
+
+
+@when("click", "#kanban-board")
+def handle_kanban_click(event):
+    card = event.target.closest(".task-card")
+    if not card:
+        return
+
+    task_id = card.id
+    global _open_task_id, _description_dirty
+    _open_task_id = task_id
+    _description_dirty = False
+
+    _render_task_detail_modal()
+    web.page["task-detail-modal"].classList.remove("hidden")
+
+
+@when("submit", "#checklist-add-form")
+async def handle_add_checklist_item(event):
+    event.preventDefault()
+    if _sprint_ended or not _open_task_id:
+        return
+
+    input_el = web.page["checklist-input"]
+    text = input_el.value.strip()
+    if not text:
+        return
+
+    target_task, task_column = _find_task_and_column(_open_task_id)
+    if not target_task:
+        return
+
+    if task_column == "completed":
+        # A new (unticked) item would leave a "completed" task with unfinished work.
+        await show_snackbar("Move this task out of Completed before adding checklist items.")
+        return
+
+    new_item = {
+        "id": str(int(time.time() * 1000)),
+        "text": text,
+        "done": False,
+        "created_by": _current_user_id,
+    }
+    target_task.setdefault("checklist", []).append(new_item)
+
+    if not await _persist_kanban_state(_kanban_state):
+        target_task["checklist"].remove(new_item)  # keep the UI in sync with the server
+        _render_task_detail_modal()
+        return
+
+    input_el.value = ""
+    _render_task_detail_modal()
+    _render_board(_kanban_state)
+
+
+@when("change", "#checklist-items")
+async def handle_checklist_toggle(event):
+    if _sprint_ended or not _open_task_id:
+        return
+
+    target = event.target
+    if target.tagName.lower() != "input" or target.type != "checkbox":
+        return
+
+    item_id = target.dataset.itemId
+    is_checked = target.checked
+
+    target_task, task_column = _find_task_and_column(_open_task_id)
+    if not target_task:
+        return
+
+    item = next((i for i in target_task.get("checklist", []) if str(i.get("id")) == item_id), None)
+    if item is None:
+        return
+
+    if task_column == "completed" and not is_checked:
+        # Completed tasks must keep every item ticked.
+        await show_snackbar("Move this task out of Completed before un-ticking checklist items.")
+        _render_task_detail_modal()
+        return
+
+    previous = item.get("done", False)
+    item["done"] = is_checked
+
+    if not await _persist_kanban_state(_kanban_state):
+        item["done"] = previous  # the save failed, so un-tick/re-tick the box to match the server
+        _render_task_detail_modal()
+        return
+
+    _render_task_detail_modal()
+    _render_board(_kanban_state)
+
+@when("click", "#checklist-items")
+async def handle_checklist_delete(event):
+    if _sprint_ended or not _open_task_id:
+        return
+
+    target = event.target
+    if not target.classList.contains("checklist-delete-btn"):
+        return
+
+    item_id = target.dataset.itemId
+
+    kanban_state = _kanban_state
+    target_task = None
+    for col_tasks in kanban_state.values():
+        for t in col_tasks:
+            if _normalized_task_id(t.get("id")) == _normalized_task_id(_open_task_id):
+                target_task = t
+                break
+        if target_task:
+            break
+
+    if not target_task:
+        return
+
+    checklist = target_task.get("checklist", [])
+    item_to_delete = next((i for i in checklist if str(i.get("id")) == item_id), None)
+
+    # Guard: only the creator may delete their own item
+    if item_to_delete is None:
+        return
+    if _current_user_id is None or item_to_delete.get("created_by") != _current_user_id:
+        asyncio.ensure_future(
+            show_snackbar("You can only delete checklist items you created.")
+        )
+        return
+
+    target_task["checklist"] = [i for i in checklist if str(i.get("id")) != item_id]
+    await _persist_kanban_state(kanban_state)
+    _render_task_detail_modal()
+    _render_board(kanban_state)
+
+@when("submit", "#feedback-add-form")
+async def handle_add_feedback(event):
+    event.preventDefault()
+    if _sprint_ended or not _open_task_id or "review_tasks" not in _permissions:
+        return
+
+    input_el = web.page["feedback-input"]
+    text = input_el.value.strip()
+    if not text:
+        return
+
+    target_task = _find_open_task()
+    if target_task is None:
+        return
+
+    if not target_task.get("feedback"):
+        target_task["feedback"] = []
+
+    target_task["feedback"].append({
+        "id": str(int(time.time() * 1000)),
+        "text": text,
+        "author": await _current_actor(),
+        "author_id": _current_user_id,
+    })
+    await _persist_kanban_state(_kanban_state)
+
+    input_el.value = ""
+    _render_task_detail_modal()
+
+
+@when("click", "#feedback-messages")
+async def handle_delete_feedback(event):
+    if _sprint_ended or not _open_task_id or "review_tasks" not in _permissions:
+        return
+
+    target = event.target
+    if not target.classList.contains("feedback-delete-btn"):
+        return
+
+    feedback_id = target.dataset.feedbackId
+
+    target_task = _find_open_task()
+    if target_task is None:
+        return
+
+    feedback_list = target_task.get("feedback") or []
+    msg_to_delete = next((m for m in feedback_list if str(m.get("id")) == feedback_id), None)
+
+    # Guard: only the reviewer who posted it may delete it
+    if msg_to_delete is None:
+        return
+    if _current_user_id is None or msg_to_delete.get("author_id") != _current_user_id:
+        asyncio.ensure_future(
+            show_snackbar("You can only delete feedback you posted.")
+        )
+        return
+
+    target_task["feedback"] = [m for m in feedback_list if str(m.get("id")) != feedback_id]
+    await _persist_kanban_state(_kanban_state)
+    _render_task_detail_modal()
+
+
+
+# --- SECTION: Task Time Logging ---
+
+def _parse_stamp(value):
+    """ISO stamp -> datetime, or None when it is missing/unreadable.
+
+    US-21: work sessions are stamped by the server in UTC, while tasks logged
+    before the switchover carry a naive local stamp. Treating a naive stamp as
+    UTC keeps the two comparable instead of raising on the subtraction, and
+    converting to the browser's timezone keeps the display local.
+    """
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone()
+
+
+def _time_log_summary(task):
+    """(started, ended, duration, status) for a task's tracked work.
+
+    US-21: the server stores each work session separately, so the duration is the
+    sum of every finished session rather than only the most recent one. Tasks that
+    predate session tracking carry a single flat started_at/ended_at pair and are
+    read as one session.
+    """
+    time_log = task.get("time_log")
+    if not time_log:
+        return "", "", "", ""
+
+    entries = [entry for entry in (time_log.get("entries") or []) if isinstance(entry, dict)]
+    if not entries:
+        entries = [
+            {"started_at": time_log.get("started_at"), "ended_at": time_log.get("ended_at")}
+        ]
+
+    started_fmt = ""
+    ended_fmt = ""
+    duration_str = ""
+    status_txt = ""
+    total_seconds = 0
+    running = False
+
+    for entry in entries:
+        start = _parse_stamp(entry.get("started_at"))
+        end = _parse_stamp(entry.get("ended_at"))
+        if start is not None and not started_fmt:
+            started_fmt = start.strftime("%b %d, %Y %I:%M %p")
+        if end is not None:
+            ended_fmt = end.strftime("%b %d, %Y %I:%M %p")
+        if start is None:
+            continue
+        if end is None:
+            running = True
+            continue
+        total_seconds += max(0, int((end - start).total_seconds()))
+
+    if started_fmt:
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        duration_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
+        if running:
+            status_txt = "In progress"
+        elif ended_fmt:
+            status_txt = duration_str
+
+    return started_fmt, ended_fmt, duration_str, status_txt
+
+
+async def _submit_time_log(action, verb):
+    """US-21: open or close the work session on the currently open task.
+
+    The server owns the clock and stamps the session with the acting User ID and
+    the Task ID, then returns the task's updated time_log. That record is copied
+    onto the in-memory board so the card badge and the dialog match what is
+    stored, and the contribution totals are recalculated server-side in the same
+    transaction.
+    """
+    if _sprint_ended or not _open_task_id:
+        return
+
+    target_task = _find_open_task()
+    if target_task is None:
+        return
+
+    ids = _board_ids()
+    if ids is None:
+        return
+    project_id, sprint_id = ids
+    success, err, payload = await server_data.log_task_time(
+        project_id, sprint_id, target_task.get("id"), action
+    )
+    if not success or not payload:
+        await show_snackbar(f"Could not {verb} the timer: {err}")
+        return
+
+    target_task["time_log"] = payload.get("time_log") or target_task.get("time_log")
+    _render_task_detail_modal()
+    _render_board(_kanban_state)
+
+
+@when("click", "#start-task-btn")
+async def handle_start_task(event):
+    await _submit_time_log("start", "start")
+
+
+@when("click", "#end-task-btn")
+async def handle_end_task(event):
+    await _submit_time_log("stop", "stop")
+
+
+def _has_logged_work(task):
+    """True once the task's timer has been started (work time is on record)."""
+    time_log = task.get("time_log") or {}
+    return bool(time_log.get("started_at") or time_log.get("entries"))
+
+
+def _has_sprint_details(task):
+    """True if the card holds sprint-only details that returning it would clear."""
+    return bool(
+        task.get("checklist") or task.get("assignee") or task.get("assignee_id") is not None
+        or task.get("start_date") or task.get("end_date") or task.get("feedback")
+    )
+
+
+def _notify_dashboard_backlog_changed():
+    """Ask the dashboard hosting this board (in an iframe) to refresh the product
+    backlog list and each sprint card's task count."""
+    if window.isEmbeddedSprintPage:
+        payload = {"type": "sprint-backlog-changed"}
+        window.parent.postMessage(js.JSON.parse(json.dumps(payload)), str(window.location.origin))
+
+
+@when("click", "#return-to-backlog-btn")
+async def handle_return_to_backlog(event):
+    """Send the open task from the sprint backlog back to the product backlog."""
+    if _sprint_ended or not _open_task_id:
+        return
+    task, column = _find_task_and_column(_open_task_id)
+    if task is None or column != "backlog":
+        return
+    if _has_logged_work(task):
+        await show_snackbar("This task has logged work time, so it can't go back to the product backlog.")
+        return
+    if _has_sprint_details(task) and not window.confirm(
+        "Return this task to the product backlog? Its checklist, assignee and dates will be cleared."
+    ):
+        return
+
+    ids = _board_ids()
+    if ids is None:
+        return
+    project_id, sprint_id = ids
+    success, err, _item = await server_data.return_task_to_backlog(
+        project_id, sprint_id, task.get("id")
+    )
+    if not success:
+        await show_snackbar(f"Could not return the task: {err}")
+        return
+
+    _kanban_state["backlog"] = [t for t in _kanban_state.get("backlog", []) if t is not task]
+    _close_task_detail_modal()
+    _render_board(_kanban_state)
+    _notify_dashboard_backlog_changed()
+    await _record_change("returned", _active_sprint or {"name": "Sprint"}, task)
+    await show_snackbar("Task returned to the product backlog.")
+
+
+@when("click", "#delete-task-btn")
+async def handle_delete_task(event):
+    """Delete the open task from the sprint board, once the user confirms.
+
+    The button is only offered to a holder of manage_tasks, and this re-checks the
+    permission so a stale page cannot submit anyway; the endpoint enforces it too.
+    No change-history entry is written from here: the delete endpoint records the
+    deletion server-side, so calling _record_change as well would log it twice.
+    """
+    if _sprint_ended or not _open_task_id:
+        return
+    if "manage_tasks" not in _permissions:
+        await show_snackbar("You need the manage_tasks permission in this project to delete a task.")
+        return
+
+    task, column = _find_task_and_column(_open_task_id)
+    if task is None or column is None:
+        return
+    if column == "completed":
+        await show_snackbar("A completed task cannot be deleted.")
+        return
+
+    confirmed, _password = await confirm_action(
+        title=f"Delete task {task.get('title', 'this task')}"
+    )
+    if not confirmed:
+        return
+
+    ids = _board_ids()
+    if ids is None:
+        return
+    project_id, sprint_id = ids
+    success, message = await server_data.delete_task(project_id, sprint_id, task.get("id"))
+    if not success:
+        await show_snackbar(message)
+        return
+
+    _kanban_state[column] = [t for t in _kanban_state.get(column, []) if t is not task]
+    _close_task_detail_modal()
+    _render_board(_kanban_state)
+    _refresh_all_counts()
+    # The sprint card on the dashboard counts tasks, so it has to re-read too.
+    _notify_dashboard_backlog_changed()
+    await show_snackbar(message)
+
+
+def _close_task_detail_modal():
+    global _open_task_id, _description_dirty
+    _open_task_id = None
+    _description_dirty = False
+    web.page["task-detail-modal"].classList.add("hidden")
+
+
+@when("click", "#task-detail-close-btn")
+def handle_close_modal_click(event):
+    _close_task_detail_modal()
+
+
+@when("click", "#task-detail-modal")
+def handle_modal_backdrop_click(event):
+    if event.target.id == event.currentTarget.id:
+        _close_task_detail_modal()
+
+
+# --- SECTION: Task Stopwatch ---
+
+_stopwatch_ticker_started = False
+
+def _stopwatch_elapsed(task):
+    sw = task.get("stopwatch", {})
+    status = sw.get("status", "idle")
+    accumulated = sw.get("accumulated_seconds", 0)
+    if status == "running":
+        resumed_at = sw.get("resumed_at")
+        if resumed_at:
+            diff = time.time() - resumed_at
+            if diff > 0:
+                return int(accumulated + diff)
+    return int(accumulated)
+
+def _format_hms(seconds):
+    seconds = max(0, int(seconds))
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+def _format_hm(seconds):
+    seconds = max(0, int(seconds))
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    if h > 0:
+        return f"{h}h {m}m"
+    return f"{m}m"
+
+def _render_stopwatch_ui(task):
+    global _stopwatch_ticker_started
+    if not _stopwatch_ticker_started:
+        _stopwatch_ticker_started = True
+        asyncio.ensure_future(_start_stopwatch_ticker())
+
+    sw = task.get("stopwatch", {"status": "idle", "accumulated_seconds": 0, "resumed_at": None})
+    status = sw.get("status", "idle")
+    elapsed = _stopwatch_elapsed(task)
+
+    display_el = document.getElementById("stopwatch-display")
+    if display_el:
+        display_el.textContent = _format_hms(elapsed)
+
+    total_seconds = task.get("time_spent_seconds", 0)
+    total_el = document.getElementById("stopwatch-total")
+    if total_el:
+        total_el.textContent = f"Total time spent: {_format_hm(total_seconds)}"
+
+    start_btn = document.getElementById("stopwatch-start-btn")
+    pause_btn = document.getElementById("stopwatch-pause-btn")
+    resume_btn = document.getElementById("stopwatch-resume-btn")
+    log_btn = document.getElementById("stopwatch-log-btn")
+
+    if start_btn:
+        start_btn.classList.remove("hidden")
+        start_btn.disabled = (status != "idle") or _sprint_ended
+    if pause_btn:
+        pause_btn.classList.remove("hidden")
+        pause_btn.disabled = (status != "running") or _sprint_ended
+    if resume_btn:
+        resume_btn.classList.remove("hidden")
+        resume_btn.disabled = (status != "paused") or _sprint_ended
+    if log_btn:
+        log_btn.classList.remove("hidden")
+        log_btn.disabled = (status == "idle") or _sprint_ended
+
+async def _start_stopwatch_ticker():
+    while True:
+        await asyncio.sleep(1)
+        if _open_task_id:
+            task = _find_open_task()
+            if task:
+                sw = task.get("stopwatch", {})
+                if sw.get("status") == "running":
+                    display_el = document.getElementById("stopwatch-display")
+                    if display_el:
+                        display_el.textContent = _format_hms(_stopwatch_elapsed(task))
+
+@when("click", "#stopwatch-start-btn")
+def _handle_stopwatch_start(event):
+    if _sprint_ended or not _open_task_id:
+        return
+    task = _find_open_task()
+    if not task:
+        return
+    task["stopwatch"] = {
+        "status": "running",
+        "accumulated_seconds": 0,
+        "resumed_at": time.time()
+    }
+    async def _save_and_render():
+        success = await _persist_kanban_state(_kanban_state)
+        if not success:
+            await show_snackbar("Failed to save stopwatch state.")
+            return
+        _render_board(_kanban_state)
+        _render_task_detail_modal()
+    asyncio.ensure_future(_save_and_render())
+
+@when("click", "#stopwatch-pause-btn")
+def _handle_stopwatch_pause(event):
+    if _sprint_ended or not _open_task_id:
+        return
+    task = _find_open_task()
+    if not task:
+        return
+    elapsed = _stopwatch_elapsed(task)
+    task["stopwatch"] = {
+        "status": "paused",
+        "accumulated_seconds": elapsed,
+        "resumed_at": None
+    }
+    async def _save_and_render():
+        success = await _persist_kanban_state(_kanban_state)
+        if not success:
+            await show_snackbar("Failed to save stopwatch state.")
+            return
+        _render_board(_kanban_state)
+        _render_task_detail_modal()
+    asyncio.ensure_future(_save_and_render())
+
+@when("click", "#stopwatch-resume-btn")
+def _handle_stopwatch_resume(event):
+    if _sprint_ended or not _open_task_id:
+        return
+    task = _find_open_task()
+    if not task:
+        return
+    sw = task.get("stopwatch", {})
+    accumulated = sw.get("accumulated_seconds", 0)
+    task["stopwatch"] = {
+        "status": "running",
+        "accumulated_seconds": accumulated,
+        "resumed_at": time.time()
+    }
+    async def _save_and_render():
+        success = await _persist_kanban_state(_kanban_state)
+        if not success:
+            await show_snackbar("Failed to save stopwatch state.")
+            return
+        _render_board(_kanban_state)
+        _render_task_detail_modal()
+    asyncio.ensure_future(_save_and_render())
+
+@when("click", "#stopwatch-log-btn")
+def _handle_stopwatch_log(event):
+    if _sprint_ended or not _open_task_id:
+        return
+    task = _find_open_task()
+    if not task:
+        return
+    elapsed = _stopwatch_elapsed(task)
+    if elapsed < 60:
+        asyncio.ensure_future(show_snackbar("Run the stopwatch for at least a minute before logging."))
+        return
+    
+    entry_id = str(int(time.time() * 1000))
+    logged_at = datetime.now().isoformat()
+    entry = {
+        "id": entry_id,
+        "seconds": elapsed,
+        "logged_at": logged_at,
+        "user_id": _current_user_id
+    }
+    
+    if "time_entries" not in task:
+        task["time_entries"] = []
+    task["time_entries"].append(entry)
+    
+    current_spent = task.get("time_spent_seconds", 0)
+    task["time_spent_seconds"] = current_spent + elapsed
+    
+    task["stopwatch"] = {
+        "status": "idle",
+        "accumulated_seconds": 0,
+        "resumed_at": None
+    }
+    
+    async def _save_and_log():
+        success = await _persist_kanban_state(_kanban_state)
+        if not success:
+            await show_snackbar("Failed to save time log.")
+            return
+        _render_board(_kanban_state)
+        _render_task_detail_modal()
+        await show_snackbar(f"Logged {_format_hm(elapsed)}.")
+    asyncio.ensure_future(_save_and_log())
+
+
+_page_params = js.URLSearchParams.new(window.location.search)
+if _page_params.get("prewarm") == "1":
+    ready_message = {
+        "type": "sprint-page-ready",
+        "sprintId": _get_url_params()[0],
+    }
+    window.parent.postMessage(
+        js.JSON.parse(json.dumps(ready_message)),
+        str(window.location.origin),
+    )
+else:
+    asyncio.ensure_future(_init_page())

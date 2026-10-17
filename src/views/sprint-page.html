@@ -39,7 +39,7 @@
   <!-- Layout Stylesheet -->
   <link rel="stylesheet" href="../styles/project-layout.css">
   <!-- Page Stylesheet -->
-  <link rel="stylesheet" href="../styles/sprint-page.css?v=20261014">
+  <link rel="stylesheet" href="../styles/sprint-page.css?v=20261005">
   <!-- Snackbar Stylesheet -->
   <link rel="stylesheet" href="../styles/snackbar.css">
   <!--
@@ -91,7 +91,7 @@
         <path
           d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
       </svg>
-      <input type="text" id="global-search" class="search-input" placeholder="Search tasks by tag...">
+      <input type="text" id="global-search" class="search-input" placeholder="Search tasks or tags...">
     </div>
 
     <!-- TEMP demo-only role switch — remove once real User.role exists -->
@@ -179,19 +179,14 @@
           <span class="kanban-badge">Kanban View</span>
           <span class="kanban-badge sprint-range-badge" id="sprint-range"></span>
         </div>
-        <button type="button" id="end-sprint-btn" class="btn-end-sprint">End Sprint</button>
+        <div class="sprint-header-actions">
+          <button type="button" id="delete-sprint-btn" class="btn-delete-sprint hidden">Delete Sprint</button>
+          <button type="button" id="end-sprint-btn" class="btn-end-sprint">End Sprint</button>
+        </div>
       </div>
 
-      <!--
-          Kanban Board: #kanban-board and each .kanban-column-body / column-count
-          element are the ONLY permanent nodes here. Python's _render_board()
-          wipes and rebuilds the task-card children on every load and every
-          drag/drop move — so the drag listeners below are attached to
-          #kanban-board itself (event delegation via closest()), never to
-          individual .task-card / .kanban-column-body nodes, or they'd go
-          stale the moment the board re-renders.
-        -->
       <p id="board-search-empty" class="board-search-empty hidden"></p>
+
       <div class="kanban-board" id="kanban-board">
 
         <div class="kanban-column" data-column="backlog">
@@ -234,14 +229,6 @@
 
   <div id="snackbar">Some text some message..</div>
 
-  <!--
-      Plain JS owns the raw HTML5 drag events. It reads the dragged card's id
-      and the drop target's column key SYNCHRONOUSLY (before the browser can
-      null them out), then hands Python only plain strings via a custom
-      "app:card-drop" event. Listeners are bound to the permanent #kanban-board
-      wrapper with closest() lookups, not to individual cards/columns, so they
-      keep working after Python rebuilds the column contents.
-    -->
   <script>
     (function () {
       const board = document.getElementById("kanban-board");
@@ -292,17 +279,16 @@
       <h3 id="task-detail-title" class="modal-title">Task Details</h3>
       <div id="task-detail-meta" class="task-detail-meta"></div>
 
-      <label class="modal-label" for="task-description-input">Description</label>
-      <textarea id="task-description-input" class="modal-input task-description-input" rows="4"
-        maxlength="1000" placeholder="Add a description..."></textarea>
-      <button type="button" id="task-description-save-btn" class="modal-btn-submit task-save-btn">Save description</button>
-
       <div id="task-progress-container" class="task-progress-container">
         <div class="task-progress-bar-bg">
           <div id="task-progress-fill" class="task-progress-bar-fill"></div>
         </div>
         <span id="task-progress-text" class="task-progress-text"></span>
       </div>
+
+      <label class="modal-label" for="task-description-input">Description</label>
+      <textarea id="task-description-input" class="modal-input task-description-input" rows="3" maxlength="1000" placeholder="Add a description..."></textarea>
+      <button type="button" id="task-description-save-btn" class="modal-btn-submit task-save-btn">Save description</button>
 
       <label class="modal-label" for="task-assignee-select">Assignee</label>
       <select id="task-assignee-select" class="modal-input"></select>
@@ -336,6 +322,17 @@
       </div>
       <div id="time-log-status" class="time-log-status"></div>
 
+      <!-- Stopwatch Section -->
+      <div class="modal-label">Stopwatch</div>
+      <div id="stopwatch-display" class="stopwatch-display">00:00:00</div>
+      <div id="stopwatch-total" class="stopwatch-total">Total time spent: 0m</div>
+      <div class="time-log-buttons">
+        <button id="stopwatch-start-btn" class="modal-btn modal-btn-submit">Start Stopwatch</button>
+        <button id="stopwatch-pause-btn" class="modal-btn modal-btn-secondary">Pause Task</button>
+        <button id="stopwatch-resume-btn" class="modal-btn modal-btn-secondary">Resume Task</button>
+        <button id="stopwatch-log-btn" class="modal-btn modal-btn-primary">Log Time</button>
+      </div>
+
       <!-- Manager Feedback / Review Chat -->
       <div id="review-feedback-section" class="review-feedback-section hidden">
         <div class="modal-label" style="margin-top: 15px;">Manager Feedback</div>
@@ -347,7 +344,8 @@
       </div>
 
       <div class="modal-actions" style="margin-top: 20px;">
-        <button type="button" id="return-to-backlog-btn" class="modal-btn-cancel return-backlog-btn hidden">Return to product backlog</button>
+        <button type="button" id="delete-task-btn" class="modal-btn-danger hidden">Delete Task</button>
+        <button type="button" id="return-to-backlog-btn" class="modal-btn-cancel hidden">Return to Backlog</button>
         <button type="button" id="task-detail-close-btn" class="modal-btn-cancel">Close</button>
       </div>
     </div>

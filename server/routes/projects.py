@@ -1,3 +1,6 @@
+import copy
+
+import time
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, status
@@ -9,6 +12,14 @@ from dependencies import (
     verify_project_permission, 
     validate_role_assignment
 )
+
+import logic.membership_logic as membership_logic
+# CHANGE: create_backlog_item() normalises tags and descriptions with
+# sprint_logic, but the module was never imported here, so every request to
+# POST /projects/{id}/backlog died with "NameError: name 'sprint_logic' is not
+# defined" (a 500) before the item was stored.
+import logic.sprint_logic as sprint_logic
+from routes.activity import actor_label, append_history, refresh_contributions
 
 router = APIRouter()
 
@@ -57,6 +68,26 @@ PRESET_ROLES = {
     }
 }
 
+# The presets cannot be deleted: the application's permissions are defined
+# against them, so removing one would silently strip every member holding it.
+# This is the same set the Roles page blocks in the browser.
+PROTECTED_PRESET_NAMES = frozenset(PRESET_ROLES)
+
+VALID_PROJECT_STATUSES = ("active", "completed")
+DEFAULT_PROJECT_STATUS = "active"
+
+def with_project_defaults(project: dict) -> dict:
+    """Returns a copy of a project with `status` and `created_at` always present.
+
+    Projects saved before US-28 have neither field. They default to Active, and
+    `created_at` is None (unknown) so the frontend sorts them oldest, falling
+    back to project_id order, which is monotonic with creation order.
+    """
+    result = dict(project)
+    result.setdefault("status", DEFAULT_PROJECT_STATUS)
+    result.setdefault("created_at", None)
+    return result
+
 class CreateProjectPayload(BaseModel):
     user_id: int
     name: str
@@ -70,6 +101,10 @@ class CreateBacklogPayload(BaseModel):
     # Older clients send a single tag; it is folded into `tags` below.
     tag: Optional[str] = None
     description: str = ""
+
+class UpdateProjectStatusPayload(BaseModel):
+    user_id: int
+    status: str
 
 class AddMemberPayload(BaseModel):
     user_id: int
@@ -123,7 +158,14 @@ def ensure_member_fields(project: dict) -> None:
     if "contribute" not in project:
         project["contribute"] = list(members)
         
-    if "roles" not in project:
+    # CHANGE: a project cannot be permission-checked without a role map, and this is
+    # the only place one is built: the presets cannot be deleted and all five keys
+    # are always written, so an empty map can only mean the record predates roles.
+    # Stored projects carry "roles": {} rather than no key at all, which the old
+    # `"roles" not in project` test skipped over - leaving those projects
+    # role-less, so verify_project_permission() refused every user (the creator
+    # included) and permissions_for_user() hid every destructive control.
+    if not project.get("roles"):
         creators = [uid for uid in project.get("creator", []) if uid in members]
         project["roles"] = {
             "Project Creator": creators,
@@ -133,7 +175,21 @@ def ensure_member_fields(project: dict) -> None:
             "Employee": [uid for uid in members if uid not in creators],
         }
 
-    definitions = project.setdefault("role_definitions", PRESET_ROLES )
+    # Every preset key exists in every role map, whatever the record looked like:
+    # assign_role_to_member() copes without one, but the removal rules and the
+    # Roles page read this map directly.
+    roles = project.get("roles")
+    if isinstance(roles, dict):
+        for preset_name in PRESET_ROLES:
+            roles.setdefault(preset_name, [])
+
+    # The presets are copied in, never aliased: PRESET_ROLES is one module-level
+    # table, and a project that borrowed it would write every custom role of its
+    # own straight into that shared table, leaking the role into every other
+    # project, and into the definitions a later repair hands out.
+    definitions = project.setdefault("role_definitions", {})
+    for preset_name, preset_meta in PRESET_ROLES.items():
+        definitions.setdefault(preset_name, copy.deepcopy(preset_meta))
 
     for r_name, meta in definitions.items():
         if isinstance(meta, dict):
@@ -170,13 +226,20 @@ def create_project(payload: CreateProjectPayload):
         "project_id": project_id,
         "name": payload.name,
         "description": payload.description,
+        "status": DEFAULT_PROJECT_STATUS,
+        "created_at": int(time.time() * 1000),  # epoch ms, same unit as sprints
         "creator": [payload.user_id],
         "members": [payload.user_id],
         "contribute": [payload.user_id],
+        # The five preset keys the rest of the application reads, which is also
+        # the set ensure_member_fields() repairs - so a new project needs no
+        # repair and never carries role names that have no definition.
         "roles": {
             "Project Creator": [payload.user_id],
-            "Project Manager": [],
-            "Project Member": []
+            "Scrum Master": [],
+            "Product Owner": [],
+            "Manager": [],
+            "Employee": []
         },
         "role_definitions": {
             "Project Creator": {
@@ -256,6 +319,43 @@ def create_project(payload: CreateProjectPayload):
 
     return {"status": "success", "project": new_project}
 
+class DeleteProjectPayload(BaseModel):
+    user_id: int
+
+@router.delete("/projects/{project_id}", status_code=status.HTTP_200_OK)
+def delete_project(project_id: int, payload: DeleteProjectPayload):
+    """Delete a project and everything stored inside it.
+
+    Gated behind delete_project, which among the preset roles only the Project
+    Creator holds. Member accounts survive: they lose the project, not their user
+    record, so the same people can be brought together in another project. There
+    is nowhere left to record an audit entry once the project is gone, so this is
+    the one deletion that cannot be written to Change History.
+    """
+    def mutate(db):
+        project = db.get("projects", {}).get(str(project_id))
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        ensure_member_fields(project)
+        verify_project_permission(project, payload.user_id, "delete_project")
+
+        name = project.get("name", "Project")
+        db.get("projects", {}).pop(str(project_id), None)
+
+        # Leave no dangling project id behind on any account, so it cannot be
+        # reopened from a member's project list.
+        for user in db.get("users", []) or []:
+            owned = user.get("projects")
+            if isinstance(owned, list):
+                user["projects"] = [
+                    value for value in owned if str(value) != str(project_id)
+                ]
+
+        return {"status": "success", "message": f"Project '{name}' deleted."}
+
+    return db_manager.update(mutate)
+
 @router.get("/users/{user_id}/projects")
 def get_user_projects(user_id: int):
     # CHANGE: single read. find_user_by_id() reads the database again for a
@@ -265,11 +365,36 @@ def get_user_projects(user_id: int):
         raise HTTPException(status_code=404, detail="User not found")
 
     all_projects = db.get("projects", {})
-    return [p for p in all_projects.values() if user_id in p.get("members", [])]
+    return [
+        with_project_defaults(p)
+        for p in all_projects.values()
+        if user_id in p.get("members", [])
+    ]
 
 @router.get("/projects/{project_id}")
 def get_project(project_id: int, user_id: int):
-    return get_verified_project(project_id, user_id)
+    return with_project_defaults(get_verified_project(project_id, user_id))
+
+@router.patch("/projects/{project_id}/status")
+def update_project_status(project_id: int, payload: UpdateProjectStatusPayload):
+    if payload.status not in VALID_PROJECT_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail="Status must be one of: " + ", ".join(VALID_PROJECT_STATUSES) + ".",
+        )
+    get_verified_project(project_id, payload.user_id)
+
+    db = db_manager.read()
+    project = db["projects"][str(project_id)]
+
+    # Same rule as sprints: once ended, a project cannot be reopened.
+    if project.get("status") == "completed" and payload.status == "active":
+        raise HTTPException(status_code=409, detail="A completed project cannot be reopened.")
+
+    project["status"] = payload.status
+    project.setdefault("created_at", None)
+    db_manager.write(db)
+    return {"status": "success", "project": with_project_defaults(project)}
 
 @router.get("/projects/{project_id}/members")
 def get_project_members(project_id: int, user_id: int):
@@ -344,7 +469,12 @@ def add_project_member(project_id: int, payload: AddMemberPayload):
 
     project["members"].append(member_id)
     project["contribute"].append(member_id)
-    project["roles"].setdefault("Project Member", []).append(member_id)
+    # CHANGE: the newcomer joins the Employee preset, the "standard contributor"
+    # role that holds edit_sprints and manage_tasks. The previous default,
+    # "Project Member", has no entry in role_definitions, so a member added here
+    # held no permissions at all: no delete controls, and a 403 from every gated
+    # route, until somebody assigned them a role by hand.
+    project["roles"].setdefault("Employee", []).append(member_id)
 
     db_manager.write(db)
 
@@ -352,8 +482,68 @@ def add_project_member(project_id: int, payload: AddMemberPayload):
         "status": "success",
         "member_id": member_id,
         "username": member["username"],
-        "role": "Project Member"
+        "role": "Employee"
     }
+
+class RemoveMemberPayload(BaseModel):
+    user_id: int        # Acting user
+
+@router.post("/projects/{project_id}/members/{member_id}/remove", status_code=status.HTTP_200_OK)
+def remove_project_member(project_id: int, member_id: int, payload: RemoveMemberPayload):
+    """Remove a member from the project (manage_members).
+
+    Their role assignments, sprint membership and task assignments go with them,
+    but the work itself stays: the tasks they were holding are left on their
+    boards, unassigned. The account is untouched and can be added back later, so
+    this is not how an account is deleted.
+    """
+    def mutate(db):
+        project = db.get("projects", {}).get(str(project_id))
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        ensure_member_fields(project)
+        verify_project_permission(project, payload.user_id, "manage_members")
+
+        if member_id not in project.get("members", []):
+            raise HTTPException(status_code=404, detail="User is not a project member")
+
+        if membership_logic.is_sole_creator(project, member_id):
+            raise HTTPException(status_code=400, detail="Cannot remove the sole Project Creator.")
+
+        # manage_members says a member may remove people; the ranking says which
+        # people. The Members page only offers Remove where this passes, so this
+        # is the API-level half of the same rule (preset rank, then the smaller
+        # permission set; never yourself).
+        if not membership_logic.can_remove_member(project, payload.user_id, member_id):
+            raise HTTPException(
+                status_code=403,
+                detail="This member's role ranks equal to or above yours, so you cannot remove them.",
+            )
+
+        # Another member of the project is named in the audit entry, so read the
+        # name before the cascade takes the member out of the member lists.
+        removed_name = actor_label(db, member_id)
+        membership_logic.detach_member(project, member_id)
+
+        actor = actor_label(db, payload.user_id)
+        append_history(project, {
+            "action": "removed_member",
+            "message": f"{actor} removed {removed_name} from the project",
+            "actor": actor,
+            "actor_id": payload.user_id,
+        })
+
+        # US-20: the member's row disappears from the contribution table with the
+        # membership, because the table is built from the project's member list.
+        refresh_contributions(db, project)
+        return {
+            "status": "success",
+            "message": f"{removed_name} was removed from the project.",
+            "member_id": member_id,
+        }
+
+    return db_manager.update(mutate)
 
 class CreateRolePayload(BaseModel):
     user_id: int
@@ -417,8 +607,11 @@ def delete_project_role(project_id: int, role_name: str, payload: DeleteRolePayl
     ensure_member_fields(project)
     verify_project_permission(project, payload.user_id, "manage_roles")
 
-    # Prevent deletion of core default roles
-    protected_roles = {"Project Creator", "Project Manager", "Project Member"}
+    # Prevent deletion of the preset roles. This is the set the Roles page blocks
+    # in the browser; it used to name two roles (Project Manager, Project Member)
+    # that no longer exist, while leaving Employee and the other presets open to a
+    # direct API call that would strip their holders of every permission.
+    protected_roles = PROTECTED_PRESET_NAMES
     if role_name in protected_roles:
         raise HTTPException(status_code=400, detail="Cannot delete default system roles.")
 

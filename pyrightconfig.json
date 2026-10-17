@@ -1,0 +1,12 @@
+{
+  "extraPaths": [
+    "src/backend",
+    "src/backend/utils"
+  ],
+  "exclude": [
+    "**/.venv",
+    "**/__pycache__",
+    "dist",
+    "**/node_modules"
+  ]
+}
