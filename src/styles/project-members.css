@@ -53,6 +53,93 @@
     gap: 20px;
 }
 
+/* The header's controls: the remove-mode switch and Add Member, side by side. */
+.member-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+/* On/off switch guarding member removal. Off by default: with it off the roster
+   has no Remove controls at all. Hidden for anyone without manage_members. */
+.remove-mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #475569;
+    user-select: none;
+}
+
+.remove-mode-toggle.hidden {
+    display: none;
+}
+
+/* The real checkbox stays in the DOM (so its change event still fires and
+   sessionStorage keeps the state) but is not the thing the user sees. */
+.remove-mode-toggle input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.remove-mode-track {
+    display: inline-flex;
+    align-items: center;
+    width: 42px;
+    height: 24px;
+    padding: 2px;
+    background: #cbd5e1;
+    border-radius: 999px;
+    transition: background-color 0.2s ease;
+}
+
+.remove-mode-thumb {
+    width: 20px;
+    height: 20px;
+    background: #ffffff;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.35);
+    transition: transform 0.2s ease;
+}
+
+.remove-mode-toggle input:checked + .remove-mode-track {
+    background: #dc2626;
+}
+
+.remove-mode-toggle input:checked + .remove-mode-track .remove-mode-thumb {
+    transform: translateX(18px);
+}
+
+.remove-mode-toggle input:focus-visible + .remove-mode-track {
+    outline: 2px solid #4747D4;
+    outline-offset: 2px;
+}
+
+.remove-mode-label {
+    white-space: nowrap;
+}
+
+/* A Remove control is only rendered while the switch is on. */
+.member-remove-btn {
+    background-color: #dc2626;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 6px;
+}
+
+.member-remove-btn:hover {
+    background-color: #b91c1c;
+}
+
 .add-member-btn {
     border: none;
     border-radius: 8px;

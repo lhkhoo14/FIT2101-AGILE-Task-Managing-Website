@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Role Details - John Monash</title>
+    <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
+    <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
+    <link rel="stylesheet" href="../styles/base.css">
+    <link rel="stylesheet" href="../styles/topbar.css">
+    <link rel="stylesheet" href="../styles/project-layout.css">
+    <link rel="stylesheet" href="../styles/project-roles.css">
+    <link rel="stylesheet" href="../styles/snackbar.css">
+</head>
+<body>
+    <header class="top-app-bar">
+        <div class="app-bar-left">
+            <button type="button" id="toggle-sidebar-btn" class="icon-btn" aria-label="Toggle Sidebar">
+                <svg viewBox="0 0 24 24" class="icon">
+                    <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
+                </svg>
+            </button>
+            <span class="brand-title brand" title="Go to dashboard">
+                <img class="brand-logo" src="../assets/logo.png" alt="John Monash" onerror="this.parentNode.classList.add('brand-text-only'); this.remove();">
+                <span class="brand-wordmark">John Monash</span>
+            </span>
+        </div>
+
+        <!-- Rounded Search Bar (Middle) -->
+        <div class="search-container">
+            <svg viewBox="0 0 24 24" class="search-icon">
+                <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
+            </svg>
+            <input type="text" id="global-search" class="search-input" placeholder="Search projects or tags...">
+        </div>
+
+        <!-- Profile Picture & Dropdown Menu -->
+        <div class="profile-menu-container">
+            <button type="button" id="profile-menu-btn" class="profile-btn" aria-label="User Profile">
+                <div class="profile-avatar">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                    </svg>
+                </div>
+            </button>
+
+            <div id="profile-dropdown" class="dropdown-menu hidden">
+                <div class="dropdown-header">
+                    <p id="user-display-name" class="user-name"></p>
+                    <p id="user-display-email" class="user-email"></p>
+                </div>
+                <hr>
+                <button type="button" id="signout-btn" class="dropdown-item">Sign Out</button>
+            </div>
+        </div>
+    </header>
+
+    <div class="dashboard-layout">
+
+        <main class="main-content" style="padding: 24px;">
+            <button type="button" id="nav-roles" class="nav-item" onclick="window.history.back()">← Back to Roles</button>
+            <div id="role-detail-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"></div>
+
+            <div class="role-card" style="margin-bottom: 24px; padding: 20px;">
+                <h3>Role Description</h3>
+                <p id="role-detail-desc" style="color: #475569; margin-top: 8px;"></p>
+                
+                <h3 style="margin-top: 16px;">Assigned Permissions</h3>
+                <div id="role-permissions-display" style="margin-top: 8px;"></div>
+
+                <h3 style="margin-top: 16px;">Conflicting Roles</h3>
+                <div id="role-conflicts-display" style="margin-top: 8px;"></div>
+
+                <div style="margin-top: 20px; display: flex; gap: 12px;" id="role-action-buttons-container"></div>
+            </div>
+
+            <div class="role-card" style="padding: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h3>Assigned Members</h3>
+                    <button type="button" class="create-role-btn" id="open-add-member-modal-btn">+ Add Member</button>
+                </div>
+                <input type="text" id="role-members-search" class="search-input" placeholder="Search members..." style="width: 100%; margin-bottom: 16px;">
+                <div id="role-members-list"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Edit Role Modal -->
+    <div id="edit-role-modal" class="modal-overlay hidden">
+        <div class="modal-box" onsubmit="event.preventDefault();">
+            <h2 class="modal-title">Edit Custom Role</h2>
+            <form id="edit-role-form">
+                <input type="hidden" id="edit-role-original-name">
+                <label class="modal-label" for="edit-role-name-display">Role Name (Read-only)</label>
+                <input type="text" id="edit-role-name-display" class="modal-input" disabled style="background: #f1f5f9; color: #64748b;">
+
+                <label class="modal-label" for="edit-role-colour-input">Role Colour</label>
+                <input type="color" id="edit-role-colour-input" class="modal-input-color" value="#4F46E5">
+
+                <label class="modal-label" for="edit-role-desc-input">Description (Optional)</label>
+                <textarea id="edit-role-desc-input" class="modal-textarea"></textarea>
+
+                <div class="modal-label">Permissions</div>
+                <div id="edit-role-permissions-list" class="permissions-checklist"></div>
+
+                <div class="modal-label">Conflicting Roles</div>
+                <div id="edit-role-conflicts-list" class="conflicts-checklist"></div>
+
+                <div class="modal-actions">
+                    <button type="button" class="modal-btn-cancel">Cancel</button>
+                    <button type="submit" class="modal-btn-submit">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Member Modal -->
+    <div id="add-role-member-modal" class="modal-overlay hidden">
+        <div class="modal-box" style="max-width: 500px;">
+            <h2 class="modal-title">Add Member to Role</h2>
+            <div id="available-non-role-members-list" style="max-height: 250px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px; margin-bottom: 16px;"></div>
+            <div class="modal-actions">
+                <button type="button" class="modal-btn-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Remove Member Modal -->
+    <div id="confirm-remove-role-member-modal" class="modal-overlay hidden">
+        <div class="modal-box" style="max-width: 400px;">
+            <h2 class="modal-title">Remove Member</h2>
+            <p id="remove-member-confirmation-text" class="modal-label" style="color: #334155; font-size: 15px;"></p>
+            <div class="modal-actions">
+                <button type="button" class="modal-btn-cancel">Cancel</button>
+                <button type="button" class="modal-btn-submit" id="confirm-remove-role-member-btn" style="background-color: #dc2626;">Remove</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="snackbar">Some text some message..</div>
+
+    <script type="py" config="../../settings.json" src="../backend/utils/topbar.py"></script>
+    <script type="py" config="../../settings.json" src="../backend/views/project_role_details.py"></script>
+</body>
+</html>

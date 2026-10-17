@@ -4,43 +4,71 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sprint Dashboard - Brand Name</title>
+  <title>Sprint Dashboard - John Monash</title>
 
   <!-- PyScript Core CDN -->
   <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
   <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
+  <!-- CHANGE: open the DNS/TLS connections to the PyScript CDN and the Render API while
+       the page is still parsing, so booting Pyodide and the first API fetch do not
+       each pay for a separate handshake. -->
+  <link rel="preconnect" href="https://pyscript.net" crossorigin>
+  <link rel="dns-prefetch" href="https://fit2101-api.onrender.com">
 
   <script>
     const CONFIG = {
-      STORAGE_KEY_APP_DATA: "pyscript_app_data",
       STORAGE_KEY_ACTIVE_SESSION: "session_user_id",
+      STORAGE_KEY_ACTIVE_PROJECT: "active_project_id",
       VIEW_LOGIN: "login.html",
       VIEW_DASHBOARD: "dashboard.html"
     };
 
     (function () {
-      // Authentication still uses the session ID required by ServerData when
-      // it sends the current user_id to FastAPI. Sprint data is not stored here.
+      // 1. Require a login session (ServerData sends this user_id to FastAPI).
       const activeSession = localStorage.getItem(CONFIG.STORAGE_KEY_ACTIVE_SESSION);
-
-      // If on dashboard and NO session exists, redirect to login
       if (!activeSession || activeSession.trim() === "") {
         window.location.replace(CONFIG.VIEW_LOGIN);
+        return;
       }
+
+      // 2. Resolve the project scope. Remember the last project opened in this
+      //    tab so a link that lost its ?project_id= query still resolves.
+      const params = new URLSearchParams(window.location.search);
+      let projectId = params.get("project_id");
+      if (projectId && /^\d+$/.test(projectId)) {
+        sessionStorage.setItem(CONFIG.STORAGE_KEY_ACTIVE_PROJECT, projectId);
+      } else {
+        projectId = sessionStorage.getItem(CONFIG.STORAGE_KEY_ACTIVE_PROJECT);
+      }
+
+      // 3. A sprint dashboard without a project scope cannot load or create data.
+      if (!projectId || !/^\d+$/.test(projectId)) {
+        window.location.replace(CONFIG.VIEW_DASHBOARD);
+        return;
+      }
+
+      // 4. Put the resolved project back in the URL so the Python modules, which
+      //    read project_id from window.location.search, need no fallback logic.
+      params.set("project_id", projectId);
+      window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
     })();
   </script>
 
   <link rel="stylesheet" href="../styles/base.css">
   <!-- Top Bar Stylesheet -->
-  <link rel="stylesheet" href="../styles/topbar.css">
+  <link rel="stylesheet" href="../styles/topbar.css?v=20261011">
   <!-- Layout Stylesheet -->
   <link rel="stylesheet" href="../styles/project-layout.css">
   <!-- Page Stylesheet -->
-  <link rel="stylesheet" href="../styles/sprint-dashboard.css">
-  <link rel="stylesheet" href="../styles/sprint-page.css">
+  <!-- CHANGE: added the ?v=20261005 cache-buster. Without it the browser kept
+       serving a stale cached sprint-dashboard.css, so the layout fixes below had
+       no visible effect. Matches the existing pattern on sprint-page.css. -->
+  <link rel="stylesheet" href="../styles/sprint-dashboard.css?v=20261013">
+  <link rel="stylesheet" href="../styles/sprint-page.css?v=20261014">
   <!-- Snackbar Stylesheet -->
   <link rel="stylesheet" href="../styles/snackbar.css">
-  <!-- Shared IndexedDB API for reading and recording sprint change history. -->
+  <!-- US-20: no longer the store of record. Loaded only so the one-time import of
+       events recorded in this browser before the switchover can run. -->
   <script src="../backend/history-db.js"></script>
   <!--
     The dashboard owns the sprint list. It warms one sprint-page runtime in a
@@ -83,6 +111,22 @@
         if (activeSprintId) {
           frame.contentWindow.postMessage({ type: "activate-sprint-page", sprintId: activeSprintId }, location.origin);
         }
+      } else if (event.data?.type === "sprint-backlog-changed") {
+        // A task went back to the product backlog from the open board: the
+        // sidebar list and the sprint cards' task counts behind it are stale.
+        document.body.dispatchEvent(new CustomEvent("app:sprint-backlog-changed"));
+      } else if (event.data?.type === "sprint-deleted") {
+        // The board inside the frame deleted its own sprint. Hide the frame (it is
+        // showing a sprint that no longer exists) and let the dashboard re-render
+        // what is behind it - see the app:sprint-deleted handler. The warm-iframe
+        // flags are deliberately left alone: the next card click reuses this same
+        // frame and activates the new sprint in it, which only happens while
+        // dataset.ready is still "true".
+        frame.hidden = true;
+        activeSprintId = null;
+        document.body.dispatchEvent(new CustomEvent("app:sprint-deleted", {
+          detail: event.data,
+        }));
       } else if (event.data?.type === "sprint-dashboard-navigation") {
         // "Create Sprint" opens its modal on top of the open board, so the user is
         // not thrown back to the sprint list; every other link leaves the board.
@@ -127,7 +171,13 @@
           <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
         </svg>
       </button>
-      <span class="brand-title">Brand Name</span>
+      <!-- US-33: organisational branding replaces the placeholder wordmark. The logo
+           is src/assets/logo.png; if the asset is missing the <img> removes itself
+           and the wordmark takes over, so the header never shows a broken image. -->
+      <span class="brand-title brand" title="Go to dashboard">
+        <img class="brand-logo" src="../assets/logo.png" alt="John Monash" onerror="this.parentNode.classList.add('brand-text-only'); this.remove();">
+        <span class="brand-wordmark">John Monash</span>
+      </span>
     </div>
 
     <!-- Rounded Search Bar (Middle) -->
@@ -166,49 +216,57 @@
     <!-- Project Sidebar -->
     <aside id="project-sidebar" class="sidebar project-sidebar">
       <nav class="sidebar-nav">
-        <!-- Returns to the project dashboard (list of all projects). -->
-        <button type="button" id="nav-projects" class="nav-item nav-projects">
-          <svg viewBox="0 0 24 24" class="icon"><path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/></svg>
-          <span>Projects</span>
-        </button>
+          <!-- Returns to the project dashboard (list of all projects). -->
+          <button type="button" id="nav-projects" class="nav-item nav-projects">
+              <svg viewBox="0 0 24 24" class="icon"><path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/></svg>
+              <span>Projects</span>
+          </button>
 
-        <div class="nav-section-title">Views</div>
+          <div class="nav-section-title">Views</div>
 
-        <button type="button" id="nav-description" class="nav-item">
-          <svg viewBox="0 0 24 24" class="icon">
-            <path
-              d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" />
-          </svg>
-          <span>Description</span>
-        </button>
+          <button type="button" id="nav-description" class="nav-item active">
+              <svg viewBox="0 0 24 24" class="icon">
+                  <path
+                      d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" />
+              </svg>
+              <span>Description</span>
+          </button>
 
-        <button type="button" id="nav-members" class="nav-item">
-          <svg viewBox="0 0 24 24" class="icon">
-            <path
-              d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
-          </svg>
-          <span>Members</span>
-        </button>
+          <button type="button" id="nav-members" class="nav-item" title="Members">
+              <svg viewBox="0 0 24 24" class="icon">
+                  <path
+                      d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+              </svg>
+              <span>Members</span>
+          </button>
 
-        <button type="button" id="nav-sprints" class="nav-item active">
-          <svg viewBox="0 0 24 24" class="icon">
-            <path
-              d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" />
-          </svg>
-          <span>Sprints</span>
-        </button>
+          <button type="button" id="nav-roles" class="nav-item" title="Roles">
+              <svg viewBox="0 0 24 24" class="icon">
+                  <path
+                      d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+              </svg>
+              <span>Roles</span>
+          </button>
+
+          <button type="button" id="nav-sprints" class="nav-item">
+              <svg viewBox="0 0 24 24" class="icon">
+                  <path
+                      d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" />
+              </svg>
+              <span>Sprints</span>
+          </button>
       </nav>
 
       <div class="sidebar-footer">
-        <button type="button" id="project-settings-btn" class="nav-item">
-          <svg viewBox="0 0 24 24" class="icon">
-            <path
-              d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6-3.6z" />
-          </svg>
-          <span>Settings</span>
-        </button>
+          <button type="button" id="settings-btn" class="nav-item">
+              <svg viewBox="0 0 24 24" class="icon">
+                  <path
+                      d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6-3.6z" />
+              </svg>
+              <span>Settings</span>
+          </button>
       </div>
-    </aside>
+  </aside>
 
     <!-- Main Sprint-Dashboard Layout -->
     <div class="sprint-dashboard-layout">
@@ -255,16 +313,10 @@
           </button>
         </nav>
 
-        <!-- Settings at Bottom -->
-        <div class="sidebar-footer">
-          <button type="button" id="sprint-settings-btn" class="nav-item">
-            <svg viewBox="0 0 24 24" class="icon">
-              <path
-                d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6-3.6z" />
-            </svg>
-            <span>Settings</span>
-          </button>
-        </div>
+        <!-- CHANGE: removed the Settings button that used to sit at the bottom of
+             this rail (#sprint-settings-btn). The project rail on the far left
+             already carries one (#project-settings-btn), so the two appeared side
+             by side. Heads up: neither button has a click handler yet. -->
 
       </aside>
 
@@ -313,71 +365,11 @@
         </div>
       </section>
 
-      <!-- Sprint roster grouped by project role; data attributes provide future contact fields. -->
-      <section id="members-view" class="members-view hidden" aria-labelledby="members-title">
-        <div class="content-header">
-          <h1 id="members-title" class="page-title">Sprint Members</h1>
-          <span class="member-count">6 members</span>
-        </div>
-        <div class="members-columns">
-          <section class="member-group" aria-labelledby="member-roles-title">
-            <h2 id="member-roles-title" class="member-group-title">Project Leadership</h2>
-            <ul class="member-list">
-              <li class="member-row">
-                <button type="button" class="member-trigger" data-member-name="Agasti Ngoh Cheng Che"
-                  data-member-phone="" data-member-email="">
-                  <span class="member-avatar" aria-hidden="true">AC</span>
-                  <span class="member-details"><strong>Agasti Ngoh Cheng Che</strong><span>Product Owner,
-                      Developer</span></span>
-                </button>
-              </li>
-              <li class="member-row">
-                <button type="button" class="member-trigger" data-member-name="Lye Wei Ho" data-member-phone=""
-                  data-member-email="">
-                  <span class="member-avatar" aria-hidden="true">WH</span>
-                  <span class="member-details"><strong>Lye Wei Ho</strong><span>Scrum Master, Developer</span></span>
-                </button>
-              </li>
-              <li class="member-row">
-                <button type="button" class="member-trigger" data-member-name="Loh Ken Yit" data-member-phone=""
-                  data-member-email="">
-                  <span class="member-avatar" aria-hidden="true">KY</span>
-                  <span class="member-details"><strong>Loh Ken Yit</strong><span>Deputy Scrum Master,
-                      Developer</span></span>
-                </button>
-              </li>
-              <li class="member-row">
-                <button type="button" class="member-trigger" data-member-name="Izaan" data-member-phone=""
-                  data-member-email="">
-                  <span class="member-avatar" aria-hidden="true">I</span>
-                  <span class="member-details"><strong>Izaan</strong><span>Secretary, Developer</span></span>
-                </button>
-              </li>
-            </ul>
-          </section>
-          <section class="member-group" aria-labelledby="member-developers-title">
-            <h2 id="member-developers-title" class="member-group-title">Developers</h2>
-            <ul class="member-list">
-              <li class="member-row">
-                <button type="button" class="member-trigger" data-member-name="Chan Chee Wei" data-member-phone=""
-                  data-member-email="">
-                  <span class="member-avatar" aria-hidden="true">CW</span>
-                  <span class="member-details"><strong>Chan Chee Wei</strong><span>Developer</span></span>
-                </button>
-              </li>
-              <li class="member-row">
-                <button type="button" class="member-trigger" data-member-name="Khoo Lip Hong" data-member-phone=""
-                  data-member-email="">
-                  <span class="member-avatar" aria-hidden="true">LH</span>
-                  <span class="member-details"><strong>Khoo Lip Hong</strong><span>Developer</span></span>
-                </button>
-              </li>
-            </ul>
-          </section>
-        </div>
-      </section>
+      <!-- CHANGE (US-18): the in-page member roster and its contact dialog were
+           removed. #nav-members is owned by project_layout.py and opens
+           project-members.html, so "Members" is a page, not a dashboard panel. -->
 
-      <!-- Change events are populated from the shared IndexedDB history store. -->
+      <!-- Change events are populated from the project's server-side audit trail. -->
       <section id="history-view" class="feature-view hidden" aria-labelledby="history-title">
         <div class="content-header">
           <h1 id="history-title" class="page-title">Change History</h1>
@@ -413,37 +405,11 @@
   <iframe id="sprint-page-frame" title="Sprint board" hidden></iframe>
   <div id="snackbar">Some text some message..</div>
 
-  <!-- Contact dialog filled from the selected member's data attributes. -->
-  <div id="member-details-modal" class="modal-overlay hidden">
-    <section class="modal-box member-details-modal" role="dialog" aria-modal="true"
-      aria-labelledby="member-modal-title">
-      <div class="member-modal-header">
-        <h2 id="member-modal-title" class="modal-title">Member Details</h2>
-        <button type="button" id="close-member-details" class="member-modal-close"
-          aria-label="Close member details">&times;</button>
-      </div>
-      <dl class="member-contact-list">
-        <div>
-          <dt>Full name</dt>
-          <dd id="member-modal-name"></dd>
-        </div>
-        <div>
-          <dt>Phone number</dt>
-          <dd id="member-modal-phone"></dd>
-        </div>
-        <div>
-          <dt>Email</dt>
-          <dd id="member-modal-email"></dd>
-        </div>
-      </dl>
-    </section>
-  </div>
-
   <!-- Create Sprint Modal -->
   <div id="create-sprint-modal" class="modal-overlay hidden">
     <div class="modal-box">
       <h2 class="modal-title">Create Sprint</h2>
-      <form id="create-sprint-form">
+      <form id="create-sprint-form" onsubmit="event.preventDefault();">
         <label class="modal-label" for="sprint-name-input">Sprint Name</label>
         <input type="text" id="sprint-name-input" class="modal-input" required>
 
@@ -477,7 +443,8 @@
         <span class="modal-label">Assign Members</span>
         <div id="sprint-members-list" class="members-list"></div>
         <p class="members-hint">Only assigned members can open this sprint or drag tasks into it. You are always
-          included.
+          included, and so are the project's Project Creator, Scrum Masters and Product Owners: they are part
+          of every sprint in this project.
         </p>
 
         <div class="modal-actions">
@@ -509,15 +476,20 @@
   <div id="create-task-modal" class="modal-overlay hidden">
     <div class="modal-box">
       <h2 class="modal-title">Create Task</h2>
-      <form id="create-task-form">
+      <form id="create-task-form" onsubmit="event.preventDefault();">
         <label class="modal-label" for="task-title-input">Task Title</label>
         <input type="text" id="task-title-input" class="modal-input" required>
 
-        <label class="modal-label" for="task-tag-input">Tag</label>
-        <select id="task-tag-input" class="modal-input">
-          <option value="frontend">Frontend</option>
-          <option value="backend">Backend</option>
-        </select>
+        <label class="modal-label" for="task-tags-input">Tags</label>
+        <input type="text" id="task-tags-input" class="modal-input" placeholder="e.g. frontend, api, urgent"
+          autocomplete="off">
+        <p class="members-hint">Separate tags with commas. Once a task is in a sprint, you can search that sprint's
+          board by tag from the top bar.</p>
+
+        <label class="modal-label" for="task-description-input">Description (optional)</label>
+        <textarea id="task-description-input" class="modal-input task-description-input" rows="3"
+          maxlength="1000" placeholder="What needs to be done?"></textarea>
+        <p class="members-hint">Sprint members can add to or edit this from the task's details on the sprint page.</p>
 
         <label class="modal-label" for="task-priority-input">Priority</label>
         <select id="task-priority-input" class="modal-input">
@@ -535,8 +507,8 @@
   </div>
 
   <!-- Link settings.json for PyScript backend -->
-  <script type="py" config="../../settings.json" src="../backend/project_layout.py"></script>
-  <script type="py" config="../../settings.json" src="../backend/sprint-dashboard.py?v=20261003"></script>
+  <script type="py" config="../../settings.json" src="../backend/utils/project_layout.py?v=20261011"></script>
+<script type="py" config="../../settings.json" src="../backend/views/sprint-dashboard.py?v=20261011"></script>
 </body>
 
 </html>

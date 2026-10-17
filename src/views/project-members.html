@@ -3,15 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Project - Brand Name</title>
+    <title>Team Members - John Monash</title>
 
     <!-- PyScript Core CDN -->
     <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
     <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
+  <!-- CHANGE: open the DNS/TLS connections to the PyScript CDN and the Render API while
+       the page is still parsing, so booting Pyodide and the first API fetch do not
+       each pay for a separate handshake. -->
+  <link rel="preconnect" href="https://pyscript.net" crossorigin>
+  <link rel="dns-prefetch" href="https://fit2101-api.onrender.com">
 
     <link rel="stylesheet" href="../styles/base.css">
     <!-- Top Bar Stylesheet -->
-    <link rel="stylesheet" href="../styles/topbar.css">
+    <link rel="stylesheet" href="../styles/topbar.css?v=20261011">
     <!-- Layout Stylesheet -->
     <link rel="stylesheet" href="../styles/project-layout.css">
     <!-- Members Page Stylesheet -->
@@ -25,7 +30,14 @@
             <button type="button" id="toggle-sidebar-btn" class="icon-btn" aria-label="Toggle Sidebar">
                 <svg viewBox="0 0 24 24" class="icon"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
             </button>
-            <span class="brand-title">Brand Name</span>
+            <!-- US-33: organisational branding replaces the placeholder wordmark. The
+                 logo is src/assets/logo.png; if the asset is missing the <img> removes
+                 itself and the wordmark takes over, so the header never shows a broken
+                 image. -->
+            <span class="brand-title brand" title="Go to dashboard">
+                <img class="brand-logo" src="../assets/logo.png" alt="John Monash" onerror="this.parentNode.classList.add('brand-text-only'); this.remove();">
+                <span class="brand-wordmark">John Monash</span>
+            </span>
         </div>
 
         <!-- Rounded Search Bar (Middle) -->
@@ -58,31 +70,51 @@
             <nav class="sidebar-nav">
                 <!-- Returns to the project dashboard (list of all projects). -->
                 <button type="button" id="nav-projects" class="nav-item nav-projects">
-                  <svg viewBox="0 0 24 24" class="icon"><path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/></svg>
-                  <span>Projects</span>
+                    <svg viewBox="0 0 24 24" class="icon"><path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/></svg>
+                    <span>Projects</span>
                 </button>
 
                 <div class="nav-section-title">Views</div>
 
-                <button type="button" id="nav-description" class="nav-item">
-                    <svg viewBox="0 0 24 24" class="icon"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+                <button type="button" id="nav-description" class="nav-item active">
+                    <svg viewBox="0 0 24 24" class="icon">
+                        <path
+                            d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" />
+                    </svg>
                     <span>Description</span>
                 </button>
 
-                <button type="button" id="nav-members" class="nav-item active">
-                    <svg viewBox="0 0 24 24" class="icon"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+                <button type="button" id="nav-members" class="nav-item" title="Members">
+                    <svg viewBox="0 0 24 24" class="icon">
+                        <path
+                            d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+                    </svg>
                     <span>Members</span>
                 </button>
 
+                <button type="button" id="nav-roles" class="nav-item" title="Roles">
+                    <svg viewBox="0 0 24 24" class="icon">
+                        <path
+                            d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+                    </svg>
+                    <span>Roles</span>
+                </button>
+
                 <button type="button" id="nav-sprints" class="nav-item">
-                    <svg viewBox="0 0 24 24" class="icon"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+                    <svg viewBox="0 0 24 24" class="icon">
+                        <path
+                            d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" />
+                    </svg>
                     <span>Sprints</span>
                 </button>
             </nav>
 
             <div class="sidebar-footer">
                 <button type="button" id="settings-btn" class="nav-item">
-                    <svg viewBox="0 0 24 24" class="icon"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6-3.6z"/></svg>
+                    <svg viewBox="0 0 24 24" class="icon">
+                        <path
+                            d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6-3.6z" />
+                    </svg>
                     <span>Settings</span>
                 </button>
             </div>
@@ -92,15 +124,30 @@
         <main id="project-members-content" class="main-content">
     <div class="content-header">
         <div>
-            <h1 class="page-title">Team Contribution</h1>
+            <h1 class="page-title">Team Members</h1>
             <p class="page-subtitle">
                 Project members and their assigned roles
             </p>
         </div>
 
-        <button id="add-member-btn" class="add-member-btn">
-            + Add Member
-        </button>
+        <!-- CHANGE: removing a member is now something you switch on, and the
+             switch only appears for a manage_members holder. With it off the
+             roster is read-only, so nobody removes a teammate by mis-clicking a
+             card. Turning it on offers Remove on the members this user outranks
+             (see can_remove_member) and never on themselves; the endpoint
+             re-checks manage_members on the request, so this is presentation. -->
+        <div class="member-actions">
+            <label id="remove-mode-toggle" class="remove-mode-toggle hidden"
+                title="Turn on to remove members from this project">
+                <input type="checkbox" id="remove-mode-checkbox">
+                <span class="remove-mode-track"><span class="remove-mode-thumb"></span></span>
+                <span class="remove-mode-label">Remove members</span>
+            </label>
+
+            <button id="add-member-btn" class="add-member-btn">
+                + Add Member
+            </button>
+        </div>
     </div>
 
     <div id="add-member-form" class="add-member-form hidden">
@@ -126,7 +173,9 @@
     </div>
 
     <!-- Link settings.json for PyScript backend -->
-    <script type="py" config="../../settings.json" src="../backend/project_layout.py"></script>
-    <script type="py" config="../../settings.json" src="../backend/project_members.py"></script>
+    <div id="snackbar">Some text some message..</div>
+
+    <script type="py" config="../../settings.json" src="../backend/utils/project_layout.py?v=20261011"></script>
+    <script type="py" config="../../settings.json" src="../backend/views/project_members.py?v=20261017"></script>
 </body>
 </html>

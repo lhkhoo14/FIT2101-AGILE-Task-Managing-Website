@@ -6,12 +6,12 @@ FIT2101 S2 2026 group repository.
 
 Add your team members and roles here.
 
-Chan Chee Wei (34073981) - Developer
-Loh Ken Yit (35731958) - Deputy Scrum Master, Developer
-Agasti Ngoh Cheng Che (36791407) Product Owner, Developer
-Lye Wei Ho (36286761) Scrum Master, Developer
-Izaan (36784478) secretary, Developer
-Khoo Lip Hong (36391948) Developer
+- Chan Chee Wei (34073981) - Developer
+- Loh Ken Yit (35731958) - Deputy Scrum Master, Developer
+- Agasti Ngoh Cheng Che (36791407) - Product Owner, Developer
+- Lye Wei Ho (36286761) - Scrum Master, Developer
+- Izaan (36784478) - Secretary, Developer
+- Khoo Lip Hong (36391948) - Developer
 
 ## Getting Started
 
@@ -33,7 +33,8 @@ python -m venv .venv
 Install the backend dependencies using the virtual environment's Python:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r server\requirements.txt
+cd server
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
 Start the API in one terminal (no activation required):
@@ -54,6 +55,52 @@ python -m http.server 5500
 Open `http://localhost:5500/src/views/login.html`. Keep both terminals running
 while using the application. The API listens on port 8000; the frontend uses
 port 5500.
+
+## Deploying to Render
+
+The repository includes `render.yaml`, which creates two Render resources:
+
+- `fit2101-api`: FastAPI web service
+- `fit2101-frontend`: static frontend site
+
+The API is explicitly configured with Render's `free` web-service plan. It may
+sleep when inactive, but it does not require the paid $7 plan. Supabase stores
+the persistent database separately.
+
+To deploy, push this repository to GitHub and choose **New > Blueprint** in
+Render. Select the GitHub repository and apply the Blueprint. During setup,
+provide `DATABASE_URL` using a connection string from Neon, Supabase, or
+another PostgreSQL provider. The first API startup creates the PostgreSQL table
+and imports `server/data/server_database.json` if the table is empty.
+
+After Render creates the frontend, optionally add `CORS_ORIGINS` to the API
+service using the actual frontend URL, for example
+`https://fit2101-frontend.onrender.com`. It is intentionally not requested
+during initial Blueprint setup because that URL does not exist yet. Until it is
+set, the API uses its development-friendly wildcard CORS default.
+
+The frontend build copies only the public application files into `dist`; the
+server database and backend-only files are not published by the static site.
+
+## Using Supabase PostgreSQL
+
+Supabase is used here as the PostgreSQL database only. The FastAPI server still
+owns the API and authentication flow. Create a Supabase project, then open
+**Project Settings > Database > Connection string** and copy the **Session
+pooler** URI. Put it in `DATABASE_URL`; do not commit the real password.
+
+For local PowerShell development:
+
+```powershell
+$env:DATABASE_URL = "postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres?sslmode=require"
+$env:CORS_ORIGINS = "http://localhost:5500"
+.\.venv\Scripts\python.exe -m uvicorn main:app --app-dir server --reload --host 127.0.0.1 --port 8000
+```
+
+For Render, paste the same Supabase URI into the API service's `DATABASE_URL`
+environment variable and set `CORS_ORIGINS` to the deployed frontend URL. On
+the first connection, the API creates its `application_state` table and imports
+the legacy JSON database if that table is empty.
 
 ## Repository Structure
 

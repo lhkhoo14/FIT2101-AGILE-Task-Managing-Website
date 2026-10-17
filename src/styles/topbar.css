@@ -37,11 +37,69 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
+/* US-33: the navigation brand is the organisation's own logo rather than a
+   placeholder wordmark. It stays one clickable element, so topbar.py's
+   `@when("click", ".brand-title")` handler (return to dashboard) is unchanged. */
 .brand-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   font-size: 18px;
   font-weight: 700;
   color: #333333;
   cursor: pointer;
+  /* The brand keeps its intrinsic size; the search field absorbs the slack. */
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+/* --- US-33: SHARED ORGANISATION BRANDING ---
+   The brand appears in the navigation header of every application page and on the
+   login/signup cards, with the same markup everywhere:
+
+     <wrapper class="brand-title brand">          (or "brand-name brand" on the
+                                                   login/signup cards)
+       <img class="brand-logo" src="../assets/logo.png" alt="John Monash"
+            onerror="this.parentNode.classList.add('brand-text-only'); this.remove();">
+       <span class="brand-wordmark">John Monash</span>
+     </wrapper>
+
+   Only the size differs per page, so that stays in each page's own stylesheet.
+   The block below is repeated verbatim in auth.css on purpose: it is deliberately
+   container-agnostic so the two copies cannot drift apart. */
+.brand-logo {
+  display: block;
+  object-fit: contain;
+  background-color: transparent;
+}
+
+.brand-wordmark {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The wordmark doubles as the brand's accessible name and as the fallback. The
+   <img> flags its wrapper .brand-text-only when the asset is missing, so exactly
+   one of the two is ever visible and a missing asset never renders as a broken
+   image. */
+.brand:not(.brand-text-only) .brand-wordmark {
+  display: none;
+}
+
+.brand-text-only .brand-logo {
+  display: none;
+}
+
+/* Navbar sizing. src/assets/logo.png is trimmed to the artwork (430x300, a 1.43:1
+   wide lockup), so this height is the mark's real rendered height. max-width is a
+   guard in case a future, much wider asset is dropped in: it cannot crowd the
+   search box and the avatar out of the 64px bar. */
+.brand-title .brand-logo {
+  height: 36px;
+  width: auto;
+  max-width: 180px;
+  object-position: left center;
 }
 
 /* Rounded Search Bar (Middle) */
@@ -169,3 +227,56 @@
 .dropdown-item:hover {
   background-color: #fff0f0;
 }
+
+/* --- US-33: BRANDING ACROSS DESKTOP AND MOBILE ---
+   The bar is one fixed 64px row of hamburger | brand | search | avatar and had no
+   media queries at all: the search box asks for up to 720px and kept it at every
+   width. The logo therefore steps down as the viewport narrows, so it stays
+   legible instead of squeezing the search field and the avatar out of the bar. */
+@media (max-width: 900px) {
+  .brand-title .brand-logo {
+    height: 30px;
+    max-width: 140px;
+  }
+}
+
+@media (max-width: 600px) {
+  .top-app-bar {
+    padding: 0 12px;
+  }
+
+  .app-bar-left {
+    gap: 8px;
+  }
+
+  .brand-title .brand-logo {
+    height: 26px;
+    max-width: 110px;
+  }
+
+  .brand-title .brand-wordmark {
+    font-size: 15px;
+  }
+
+  .search-container {
+    margin: 0 8px;
+  }
+
+  .search-icon {
+    left: 10px;
+    width: 16px;
+    height: 16px;
+  }
+
+  .search-input {
+    padding: 8px 12px 8px 34px;
+    font-size: 13px;
+  }
+
+  .profile-avatar {
+    width: 34px;
+    height: 34px;
+  }
+}
+
+.profile-avatar .profile-avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }

@@ -3,28 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Register - Brand Name</title>
+  <title>Register - John Monash</title>
 
   <!-- Include PyScript CSS & JS from CDN -->
   <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
   <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
+  <!-- CHANGE: open the DNS/TLS connections to the PyScript CDN and the Render API while
+       the page is still parsing, so booting Pyodide and the first API fetch do not
+       each pay for a separate handshake. -->
+  <link rel="preconnect" href="https://pyscript.net" crossorigin>
+  <link rel="dns-prefetch" href="https://fit2101-api.onrender.com">
 
   <!-- Page Stylesheet -->
-  <link rel="stylesheet" href="../styles/auth.css">
+  <link rel="stylesheet" href="../styles/auth.css?v=20261012">
   <!-- Snackbar Stylesheet -->
   <link rel="stylesheet" href="../styles/snackbar.css">
 </head>
 <body>
 
   <div class="auth-container">
-    <!-- Website Name -->
-    <div class="brand-name">Brand Name</div>
-
-    <!-- Blank Profile Picture (SVG Avatar) -->
-    <div class="profile-pic">
-      <svg viewBox="0 0 24 24">
-        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-      </svg>
+    <!-- US-33: the organisation's branding, in the same position as the navigation
+         header. The wordmark is the accessible name and the fallback if the asset
+         is missing. -->
+    <div class="brand-name brand">
+      <img class="brand-logo" src="../assets/logo.png" alt="John Monash" onerror="this.parentNode.classList.add('brand-text-only'); this.remove();">
+      <span class="brand-wordmark">John Monash</span>
     </div>
 
     <!-- Sign Up Form -->
@@ -87,7 +90,7 @@
   </div>
 
   <!-- Link your settings.json configuration -->
-  <script type="py" config="../../settings.json" src="../backend/signup.py"></script>
+  <script type="py" config="../../settings.json" src="../backend/views/signup.py"></script>
 
 </body>
 </html>

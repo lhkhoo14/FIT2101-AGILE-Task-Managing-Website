@@ -4,11 +4,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sprint - Brand Name</title>
+  <title>Sprint - John Monash</title>
 
   <!-- PyScript Core CDN -->
   <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
   <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
+  <!-- CHANGE: open the DNS/TLS connections to the PyScript CDN and the Render API while
+       the page is still parsing, so booting Pyodide and the first API fetch do not
+       each pay for a separate handshake. -->
+  <link rel="preconnect" href="https://pyscript.net" crossorigin>
+  <link rel="dns-prefetch" href="https://fit2101-api.onrender.com">
 
   <script>
     const CONFIG = {
@@ -30,15 +35,19 @@
 
   <link rel="stylesheet" href="../styles/base.css">
   <!-- Top Bar Stylesheet -->
-  <link rel="stylesheet" href="../styles/topbar.css">
+  <link rel="stylesheet" href="../styles/topbar.css?v=20261011">
   <!-- Layout Stylesheet -->
   <link rel="stylesheet" href="../styles/project-layout.css">
   <!-- Page Stylesheet -->
-  <link rel="stylesheet" href="../styles/sprint-page.css?v=20261005">
+  <link rel="stylesheet" href="../styles/sprint-page.css?v=20261017">
   <!-- Snackbar Stylesheet -->
   <link rel="stylesheet" href="../styles/snackbar.css">
-  <!-- Shared IndexedDB API used to record sprint-board events. -->
-  <script src="../backend/history-db.js"></script>
+  <!--
+    CHANGE (US-20): the change history this board used to write to IndexedDB now
+    lives in the project's server-side audit trail, so this page no longer loads
+    the browser history store. history-db.js stays linked on sprint-dashboard.html
+    only, to lift any pre-existing local events across once.
+  -->
   <script>
     // Never let a form perform a native submit; PyScript handlers run too late to cancel it.
     document.addEventListener("submit", (event) => event.preventDefault(), true);
@@ -67,7 +76,13 @@
           <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
         </svg>
       </button>
-      <span class="brand-title">Brand Name</span>
+      <!-- US-33: organisational branding replaces the placeholder wordmark. The logo
+           is src/assets/logo.png; if the asset is missing the <img> removes itself
+           and the wordmark takes over, so the header never shows a broken image. -->
+      <span class="brand-title brand" title="Go to dashboard">
+        <img class="brand-logo" src="../assets/logo.png" alt="John Monash" onerror="this.parentNode.classList.add('brand-text-only'); this.remove();">
+        <span class="brand-wordmark">John Monash</span>
+      </span>
     </div>
 
     <!-- Rounded Search Bar (Middle) -->
@@ -76,14 +91,8 @@
         <path
           d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
       </svg>
-      <input type="text" id="global-search" class="search-input" placeholder="Search tasks or tags...">
+      <input type="text" id="global-search" class="search-input" placeholder="Search tasks by tag...">
     </div>
-
-    <!-- TEMP demo-only role switch — remove once real User.role exists -->
-    <select id="demo-role-select" class="demo-role-select" title="Demo: view board as this role">
-      <option value="employee">View as: Employee</option>
-      <option value="manager">View as: Manager</option>
-    </select>
 
     <!-- Profile Picture & Dropdown Menu -->
     <div class="profile-menu-container">
@@ -142,13 +151,23 @@
           <span class="additional-label"></span>
           <span>History</span>
         </button>
-        <button type="button" id="nav-members" class="nav-item section-item">
-          <span class="additional-label"></span>
-          <span>Members</span>
-        </button>
       </nav>
 
       <div class="sidebar-footer">
+        <!-- CHANGE: Delete Sprint lives here, on the sprint it deletes, rather than
+             on the sprint's card in the list. The card opens the sprint when
+             clicked, so a button inside it was always racing the card's own click
+             handler. Revealed to a manage_sprints holder only, and never for a
+             completed sprint, which is the record its burndown and contribution
+             figures were built from; the DELETE endpoint enforces both rules. -->
+        <button type="button" id="delete-sprint-btn" class="nav-item nav-item-danger hidden"
+          title="Delete this sprint and everything on its board">
+          <svg viewBox="0 0 24 24" class="icon">
+            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+          </svg>
+          <span>Delete Sprint</span>
+        </button>
+
         <button type="button" id="settings-btn" class="nav-item">
           <svg viewBox="0 0 24 24" class="icon">
             <path
@@ -180,6 +199,7 @@
           individual .task-card / .kanban-column-body nodes, or they'd go
           stale the moment the board re-renders.
         -->
+      <p id="board-search-empty" class="board-search-empty hidden"></p>
       <div class="kanban-board" id="kanban-board">
 
         <div class="kanban-column" data-column="backlog">
@@ -222,14 +242,6 @@
 
   <div id="snackbar">Some text some message..</div>
 
-  <!--
-      Plain JS owns the raw HTML5 drag events. It reads the dragged card's id
-      and the drop target's column key SYNCHRONOUSLY (before the browser can
-      null them out), then hands Python only plain strings via a custom
-      "app:card-drop" event. Listeners are bound to the permanent #kanban-board
-      wrapper with closest() lookups, not to individual cards/columns, so they
-      keep working after Python rebuilds the column contents.
-    -->
   <script>
     (function () {
       const board = document.getElementById("kanban-board");
@@ -280,6 +292,11 @@
       <h3 id="task-detail-title" class="modal-title">Task Details</h3>
       <div id="task-detail-meta" class="task-detail-meta"></div>
 
+      <label class="modal-label" for="task-description-input">Description</label>
+      <textarea id="task-description-input" class="modal-input task-description-input" rows="4"
+        maxlength="1000" placeholder="Add a description..."></textarea>
+      <button type="button" id="task-description-save-btn" class="modal-btn-submit task-save-btn">Save description</button>
+
       <div id="task-progress-container" class="task-progress-container">
         <div class="task-progress-bar-bg">
           <div id="task-progress-fill" class="task-progress-bar-fill"></div>
@@ -319,9 +336,10 @@
       </div>
       <div id="time-log-status" class="time-log-status"></div>
 
-      <!-- Manager Feedback / Review Chat -->
+      <!-- Review feedback: written by a holder of review_tasks while the card sits
+           in the Review column. sprint-page.py disables the box for everyone else. -->
       <div id="review-feedback-section" class="review-feedback-section hidden">
-        <div class="modal-label" style="margin-top: 15px;">Manager Feedback</div>
+        <div class="modal-label" style="margin-top: 15px;">Review Feedback</div>
         <div id="feedback-messages" class="feedback-messages"></div>
         <form id="feedback-add-form" class="checklist-add-form">
           <input type="text" id="feedback-input" class="modal-input" placeholder="Post feedback..." />
@@ -330,14 +348,19 @@
       </div>
 
       <div class="modal-actions" style="margin-top: 20px;">
+        <button type="button" id="return-to-backlog-btn" class="modal-btn-cancel return-backlog-btn hidden">Return to product backlog</button>
+        <!-- Deletion entry point for the open task. sprint-page.py reveals it only when
+             the user holds manage_tasks here and the task has not reached Completed;
+             the delete endpoint enforces the same rule. -->
+        <button type="button" id="delete-task-btn" class="modal-btn-cancel hidden" style="background-color: #dc2626; color: #ffffff;">Delete task</button>
         <button type="button" id="task-detail-close-btn" class="modal-btn-cancel">Close</button>
       </div>
     </div>
   </div>
 
   <!-- Link settings.json for PyScript backend -->
-  <script type="py" config="../../settings.json" src="../backend/layout.py?v=20261002"></script>
-  <script type="py" config="../../settings.json" src="../backend/sprint-page.py?v=20261005"></script>
+  <script type="py" config="../../settings.json" src="../backend/utils/layout.py?v=20261011"></script>
+  <script type="py" config="../../settings.json" src="../backend/views/sprint-page.py?v=20261017"></script>
 </body>
 
 </html>

@@ -1,4 +1,6 @@
-/* --- SPRINT DASHBOARD LAYOUT --- */
+/* --- SPRINT DASHBOARD LAYOUT ---
+   Views rail | Backlog | Feature content. Only the project rail to the left of
+   this collapses; this grid stays at full width. */
 .sprint-dashboard-layout {
   display: grid;
   grid-template-columns: 240px 280px 1fr;
@@ -25,12 +27,151 @@
   display: none;
 }
 
+/* CHANGE (US-17): the project rail used to be pinned to 68px and to widen only
+   while it was hovered. That read as "my navigation collapsed itself" on every
+   page load and on every switch between the project views.
+   The rail is now always expanded, and the ONLY thing that minimises it is the
+   toolbar button (#toggle-sidebar-btn). project_layout.py stores that choice in
+   sessionStorage and re-applies it on load, so the preference survives route
+   changes instead of being recomputed per page.
+   Deliberately not scoped with :has() so it works on every browser. */
+#project-sidebar {
+  width: 240px;
+  overflow: hidden;
+  transition: width 0.25s ease, padding 0.25s ease;
+}
+
+/* Manual collapse. Needs its own id-scoped rule: #project-sidebar above
+   out-specifies project-layout.css's .sidebar.collapsed. */
+#project-sidebar.collapsed {
+  width: 80px;
+  padding: 20px 6px;
+}
+
+/* The grid column follows whichever rail the user collapsed. */
+.sprint-dashboard-layout:has(#project-sidebar.collapsed) {
+  grid-template-columns: 80px 280px 1fr;
+}
+
+.sprint-dashboard-layout.members-open:has(#project-sidebar.collapsed) {
+  grid-template-columns: 80px minmax(0, 1fr);
+}
+
+/* CHANGE: new responsive tiers. The layout had no media queries at all, so both
+   rails stayed at a fixed 240px no matter how narrow the window got.
+     1200px - narrow both rails
+     1024px - hide the backlog, it leaves no usable content width
+      900px - collapse the views rail to icons as well
+   Verified at an 815px viewport: content left edge 497 -> 160, width 485 -> 655. */
 @media (max-width: 1200px) {
   .sprint-dashboard-layout {
-    grid-template-columns: 240px 1fr;
+    grid-template-columns: 200px 220px 1fr;
   }
-  .backlog-sidebar {
-    grid-column: 1 / -1;
+
+  .sprint-dashboard-layout > #sidebar {
+    width: 200px;
+  }
+
+  .sprint-dashboard-layout.members-open {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+
+  .sprint-dashboard-layout:has(#sidebar.collapsed) {
+    grid-template-columns: 72px 260px 1fr;
+  }
+
+  .sprint-dashboard-layout.members-open:has(#sidebar.collapsed) {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  /* US-17: the project rail's manual collapse follows the same tier. */
+  .sprint-dashboard-layout:has(#project-sidebar.collapsed) {
+    grid-template-columns: 72px 220px 1fr;
+  }
+
+  .sprint-dashboard-layout.members-open:has(#project-sidebar.collapsed) {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+}
+
+/* Below this a backlog beside a feature panel leaves no usable content width. */
+@media (max-width: 1024px) {
+  .sprint-dashboard-layout,
+  .sprint-dashboard-layout.members-open {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+
+  .sprint-dashboard-layout > #sidebar {
+    width: 200px;
+  }
+
+  .sprint-dashboard-layout .backlog-sidebar {
+    display: none;
+  }
+
+  .sprint-dashboard-layout:has(#sidebar.collapsed) {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  /* US-17: the project rail is the first grid column here too. */
+  .sprint-dashboard-layout:has(#project-sidebar.collapsed) {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+}
+
+/* Narrow windows collapse the views rail to icons as well. The 900px cut-off
+   covers laptops whose usable width sits just under 850px once browser chrome
+   and the project rail are accounted for. */
+@media (max-width: 900px) {
+  .sprint-dashboard-layout,
+  .sprint-dashboard-layout.members-open,
+  .sprint-dashboard-layout:has(#sidebar.collapsed),
+  .sprint-dashboard-layout.members-open:has(#sidebar.collapsed) {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .sprint-dashboard-layout > #sidebar {
+    width: 72px;
+    padding: 20px 6px;
+    overflow: hidden;
+  }
+
+  .sprint-dashboard-layout > #sidebar .nav-item {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .sprint-dashboard-layout > #sidebar .nav-section-title,
+  .sprint-dashboard-layout > #sidebar .nav-item span,
+  .sprint-dashboard-layout > #sidebar .btn-create span {
+    display: none;
+  }
+
+  /* Keep the create icon centred once its label is gone. */
+  .sprint-dashboard-layout > #sidebar .btn-create {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  /* US-17: the project rail gets the same icon-only treatment, because the grid
+     can only spare 72px for it here. This is a viewport tier, not the automatic
+     collapse US-17 removed; the manual toggle governs every wider window. */
+  #project-sidebar {
+    width: 72px;
+    padding: 20px 6px;
+  }
+
+  #project-sidebar .nav-item {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  #project-sidebar .nav-item span,
+  #project-sidebar .nav-section-title {
+    display: none;
   }
 }
 
@@ -89,164 +230,8 @@
   gap: 16px;
 }
 
-/* Two-column roster layout with a narrow-screen stacked fallback. */
-.members-view .content-header {
-  margin-bottom: 8px;
-}
-
-.members-columns {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 28px;
-}
-
-.member-group-title {
-  margin-bottom: 8px;
-  color: #666666;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.member-count {
-  color: #666666;
-  font-size: 13px;
-}
-
-.member-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  border-top: 1px solid #e2e8f0;
-}
-
-.member-row {
-  min-height: 72px;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-/* Each roster row is a keyboard-accessible button that opens member details. */
-.member-trigger {
-  display: flex;
-  width: 100%;
-  min-height: 72px;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 4px;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-}
-
-.member-trigger:hover .member-details strong,
-.member-trigger:focus-visible .member-details strong {
-  color: #3939b0;
-}
-
-.member-trigger:focus-visible {
-  outline: 2px solid #4747d4;
-  outline-offset: -2px;
-}
-
-.member-avatar {
-  display: grid;
-  flex: 0 0 40px;
-  width: 40px;
-  aspect-ratio: 1;
-  place-items: center;
-  border-radius: 50%;
-  background-color: #e8e8fb;
-  color: #3939b0;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.member-details {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.member-details strong {
-  color: #222222;
-  font-size: 14px;
-  overflow-wrap: anywhere;
-}
-
-.member-details span {
-  color: #666666;
-  font-size: 12px;
-}
-
-@media (max-width: 700px) {
-  .members-columns {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 20px;
-  }
-}
-
-/* Contact dialog layout and readable wrapping for long member details. */
-.member-details-modal {
-  max-width: min(420px, 90vw);
-}
-
-.member-modal-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.member-modal-header .modal-title {
-  overflow-wrap: anywhere;
-}
-
-.member-modal-close {
-  display: grid;
-  flex: 0 0 32px;
-  width: 32px;
-  aspect-ratio: 1;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: #666666;
-  cursor: pointer;
-  font-size: 24px;
-  line-height: 1;
-}
-
-.member-modal-close:hover,
-.member-modal-close:focus-visible {
-  background: #f4f5f9;
-  color: #222222;
-}
-
-.member-contact-list {
-  display: grid;
-  gap: 16px;
-  margin: 0;
-}
-
-.member-contact-list div {
-  min-width: 0;
-}
-
-.member-contact-list dt {
-  margin-bottom: 4px;
-  color: #666666;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.member-contact-list dd {
-  margin: 0;
-  color: #222222;
-  font-size: 14px;
-  overflow-wrap: anywhere;
-}
+/* CHANGE: the member roster (members.css) and its contact dialog were removed.
+   #nav-members is owned by project_layout.py and opens project-members.html. */
 
 .sprint-card {
   background-color: #ffffff;
@@ -345,6 +330,13 @@
   width: 360px;
   max-width: 90vw;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  max-height: calc(100vh - 80px);
+  max-height: calc(100dvh - 80px);
+  overflow-y: auto;
+}
+
+.modal-box > * {
+  flex-shrink: 0;
 }
 
 .modal-title {
@@ -438,6 +430,40 @@
   font-size: 12px;
 }
 
+/* --- ADDITIONAL FEATURES LAYOUT ---
+   The feature panels (Change History, Effort Chart, Contributions) read
+   down the left of the content column instead of sitting centred, so the text
+   and charts are not squeezed into a narrow centred block. */
+.feature-view,
+.feature-view .content-header,
+.feature-view .feature-empty-state,
+.activity-list,
+.activity-row,
+.activity-summary,
+.activity-metadata,
+.contribution-row,
+.contribution-name,
+.contribution-metrics,
+.contribution-tasks,
+.chart-caption,
+.effort-chart,
+.burndown-chart {
+  text-align: left;
+}
+
+.feature-view .activity-row,
+.feature-view .activity-summary,
+.feature-view .feature-empty-state {
+  justify-content: flex-start;
+  justify-items: start;
+}
+
+.feature-view .activity-list {
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 0;
+}
+
 /* Task rows separate completed work typographically from unfinished work. */
 .contribution-tasks {
   display: grid;
@@ -510,7 +536,7 @@
   margin-bottom: 14px;
 }
 
-.member-avatar {
+.sprint-member-avatar {
   width: 26px;
   height: 26px;
   border-radius: 50%;
@@ -525,11 +551,11 @@
   margin-left: -8px;
 }
 
-.member-avatar:first-child {
+.sprint-member-avatar:first-child {
   margin-left: 0;
 }
 
-.member-avatar-more {
+.sprint-member-avatar-more {
   background-color: #eceef2;
   color: #555555;
 }

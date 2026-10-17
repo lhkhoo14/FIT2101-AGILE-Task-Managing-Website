@@ -9,6 +9,11 @@
     <!-- PyScript Core -->
     <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
     <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
+  <!-- CHANGE: open the DNS/TLS connections to the PyScript CDN and the Render API while
+       the page is still parsing, so booting Pyodide and the first API fetch do not
+       each pay for a separate handshake. -->
+  <link rel="preconnect" href="https://pyscript.net" crossorigin>
+  <link rel="dns-prefetch" href="https://fit2101-api.onrender.com">
 
     <link rel="stylesheet" href="../styles/base.css">
     <!-- Existing layout styles -->
@@ -17,7 +22,7 @@
     <!-- Dashboard styles for matching appearance -->
     <link rel="stylesheet" href="../styles/dashboard.css">
 
-    <link rel="stylesheet" href="../styles/create-project.css">
+    <link rel="stylesheet" href="../styles/create-project.css?v=20261005">
 </head>
 
 <body>
@@ -25,7 +30,7 @@
     <main class="main-content">
         <div class="create-project-container">
             <h1 class="create-project-title">Create New Project</h1>
-            <form id="create-project-form", onsubmit="event.preventDefault();">
+            <form id="create-project-form" onsubmit="event.preventDefault();">
 
                 <div class="form-group">
                     <label class="form-label" for="project-name">
@@ -54,6 +59,27 @@
                     ></textarea>
 
                     <div id="project-description-error" class="error-message"></div>
+                </div>
+
+                <!-- CHANGE: new "Add Members" section. The create-project API takes
+                     only a name and description, so there is no way to attach
+                     members up front. Instead this list is filled with every
+                     registered user, and each ticked username is added to the
+                     project right after it is created (see create_project.py). -->
+                <div class="form-group">
+                    <label class="form-label" for="project-members">
+                        Add Members
+                    </label>
+
+                    <p class="form-hint">
+                        Optional. Tick everyone who should have access to this project.
+                    </p>
+
+                    <div id="project-members" class="members-checkbox-list">
+                        <p class="members-loading">Loading members...</p>
+                    </div>
+
+                    <div id="project-members-error" class="error-message"></div>
                 </div>
 
                 <div class="button-container">
@@ -86,7 +112,7 @@
     <script
         type="py"
         config="../../settings.json"
-        src="../backend/create_project.py">
+        src="../backend/views/create_project.py">
     </script>
 
 </body>

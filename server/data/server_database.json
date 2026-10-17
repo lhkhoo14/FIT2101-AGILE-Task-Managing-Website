@@ -1,8 +1,8 @@
 {
-    "next_user_id": 4,
+    "next_user_id": 5,
     "next_project_id": 4,
-    "next_backlog_id": 13,
-    "next_sprint_id": 6,
+    "next_backlog_id": 14,
+    "next_sprint_id": 7,
     "users": [
         {
             "user_id": 1,
@@ -27,6 +27,15 @@
             "username": "Bob The",
             "email": "idk@gmail.com",
             "password": "$2b$12$u7X/34Y7x0r26DCnZMybwOikNQHivR48iaxNhdGx4Wycre9Kgk3kC",
+            "projects": [],
+            "failed_attempts": 0,
+            "lockout_until": 0
+        },
+        {
+            "user_id": 4,
+            "username": "Wei Ho",
+            "email": "weiholye@gmail.com",
+            "password": "$2b$12$kYzorpYr0EIw0Yxy1ymWaOwRZZZcEOQYWaryhNy703V8cQK184CNK",
             "projects": [],
             "failed_attempts": 0,
             "lockout_until": 0
@@ -166,6 +175,42 @@
                             }
                         ]
                     }
+                },
+                {
+                    "id": "6",
+                    "name": "big test",
+                    "details": "ze test",
+                    "status": "ended",
+                    "start_date": "2026-10-05",
+                    "end_date": "2026-10-09",
+                    "priority": "low",
+                    "tags": [
+                        "test"
+                    ],
+                    "members": [
+                        1,
+                        2,
+                        3
+                    ],
+                    "created_by": 1,
+                    "created_at": 1791182898221,
+                    "kanban_state": {
+                        "backlog": [],
+                        "active": [],
+                        "review": [
+                            {
+                                "id": "task-13",
+                                "title": "test",
+                                "tag": "frontend",
+                                "priority": "low",
+                                "assignee": null,
+                                "start_date": null,
+                                "end_date": null
+                            }
+                        ],
+                        "completed": []
+                    },
+                    "ended_at": "2026-10-05"
                 }
             ]
         },
