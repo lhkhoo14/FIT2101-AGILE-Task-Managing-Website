@@ -56,8 +56,9 @@ async def handle_signup(event):
         success, message = await db.register_user(username, email, password)
         
         if success:
-            await show_snackbar("Account Created! Redirecting to login...")
-            window.location.href = "login.html"
+            await show_snackbar("Account Created! Enter your verification code.")
+            encoded_email = window.encodeURIComponent(email)
+            window.location.href = f"verify.html?email={encoded_email}"
         else:
             show_feedback("email", "email-error", message)
             

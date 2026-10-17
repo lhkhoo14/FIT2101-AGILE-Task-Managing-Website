@@ -180,6 +180,18 @@ body {
     color: #666666;
 }
 
+/* Group container for multiple bottom auth links with a larger top gap and tight internal spacing */
+.auth-links-group {
+    margin-top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.auth-links-group .auth-link {
+    margin-top: 0;
+}
+
 .auth-link a {
     color: #4747D4;
     text-decoration: none;

@@ -812,3 +812,37 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to fetch users: {e}")
             return []
+
+    async def verify_user_code(self, email: str, code: str) -> tuple[bool, str]:
+        """Sends 6-character alphanumeric verification code to the backend."""
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/verify-code",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"email": email, "code": code})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data.get("message", "Email verified successfully!")
+            return False, data.get("detail", "Invalid verification code.")
+        except Exception as e:
+            print(f"[API Error] {e}")
+            return False, "Unable to connect to the server."
+
+    async def resend_verification_code(self, email: str) -> tuple[bool, str]:
+        """Requests a new 6-character alphanumeric verification code from the server."""
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/resend-code",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"email": email})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data.get("message", "Verification code resent successfully.")
+            return False, data.get("detail", "Failed to resend code.")
+        except Exception as e:
+            print(f"[API Error] {e}")
+            return False, "Unable to connect to the server."
