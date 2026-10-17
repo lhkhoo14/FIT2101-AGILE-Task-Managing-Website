@@ -651,3 +651,34 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* --- Delete Sprint button --- */
+.sprint-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-delete-sprint {
+  padding: 10px 20px;
+  background-color: #d9534f;
+  color: #ffffff;
+  border: 1px solid #d9534f;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-delete-sprint:hover {
+  background-color: #b94441;
+  border-color: #b94441;
+}
+
+.btn-delete-sprint:disabled {
+  background-color: #f0f0f0;
+  color: #999999;
+  border-color: #dddddd;
+  cursor: not-allowed;
+}
