@@ -18,8 +18,11 @@ from project_role_helpers import permissions_for_user
 from server_data import ServerData
 
 # CHANGE: project_layout.py is shared by three project views, each of which
-# ships a different nav item already marked "active" in its own markup.
-_NAV_ITEMS = ("#nav-description", "#nav-members", "#nav-sprints")
+# ships a different nav item already marked "active" in its own markup. Every
+# item _ACTIVE_NAV_BY_PAGE can name has to appear here, otherwise the clearing
+# loop below cannot un-light it and the "exactly one item is active" rule the
+# code below promises quietly stops holding.
+_NAV_ITEMS = ("#nav-description", "#nav-members", "#nav-roles", "#nav-sprints")
 
 _ACTIVE_NAV_BY_PAGE = {
     "project-page.html": "#nav-description",
@@ -60,10 +63,12 @@ def _highlight_active_nav():
 
 
 def init_project_layout():
-    project_id = get_project_id_from_url()
-    project_name_el = web.page["#project-name-display"]
-    if project_name_el and project_id:
-        project_name_el.textContent = f"Project {project_id}"
+    # The rail used to write the project id into #project-name-display, an id no
+    # page defines - and page[...] returns None for a missing id rather than
+    # raising, so the line did nothing at all. Removed instead of guarded: the
+    # project name has never been shown in the rail, and "Project 3" is the id,
+    # not the name. Showing the real one means passing it in from each page
+    # module, which already loads the project.
     # US-17: re-apply the collapse choice the user made earlier in this session
     # before the first paint of the rail, so switching between the project views
     # never looks like the navigation reset itself.

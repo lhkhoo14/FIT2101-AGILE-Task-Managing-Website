@@ -105,17 +105,38 @@ async def handle_save_profile(event):
 
 @when("click", "#change-email-btn")
 async def handle_change_email(event):
-    clear_errors(["#new-email"])
+    clear_errors(["#new-email", "#email-change-password"])
     new_email = document.querySelector("#new-email").value.strip()
+    password_input = document.querySelector("#email-change-password")
+    current_password = password_input.value if password_input is not None else ""
     email_ok, email_err = validate_email(new_email)
     if not email_ok:
         show_feedback("#new-email", "#new-email-error", email_err)
         return
-    
-    success, data = await server.request_email_change(new_email)
+    if not current_password:
+        # The server requires it: it is what proves this is the account holder and
+        # not somebody who guessed the id in the URL.
+        show_feedback("#email-change-password", "#email-change-password-error",
+                      "Enter your current password to change your email.")
+        return
+
+    success, data = await server.request_email_change(new_email, current_password)
     if success:
-        asyncio.ensure_future(show_snackbar("Verification email sent. Check your inbox.", 4))
+        # The server answers 200 once the pending change is stored, but the mail
+        # itself can fail (no mail credentials configured, or Brevo refusing a
+        # send). Saying "sent" then leaves the user waiting for a message that
+        # will never arrive.
+        if isinstance(data, dict) and data.get("email_sent") is False:
+            show_feedback(
+                "#new-email", "#new-email-error",
+                "The change was saved, but the confirmation email could not be sent. "
+                "Please try again in a few minutes."
+            )
+        else:
+            asyncio.ensure_future(show_snackbar("Verification email sent. Check your inbox.", 4))
         document.querySelector("#new-email").value = ""
+        if password_input is not None:
+            password_input.value = ""
         await _load_settings()
     else:
         show_feedback("#new-email", "#new-email-error", data)

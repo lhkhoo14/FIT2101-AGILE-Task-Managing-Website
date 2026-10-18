@@ -14,6 +14,7 @@ import ast
 import builtins
 import json
 import os
+import re
 import sys
 import tempfile
 from datetime import date, timedelta
@@ -272,6 +273,66 @@ check("board save dropping a card refused without manage_tasks (403)",
 check("...and that card survived the refusal",
       any(c["id"] == "task-21" for c in project_board(3)["review"]), project_board(3))
 
+# ---------------------------------------------------------------------------
+# Ending a sprint needs manage_sprints, like deleting one.
+#
+# Ending is irreversible - it freezes the board and settles the figures the
+# burndown is computed from - so plain membership is not enough. Sprint 2 is
+# already ended here, so the permitted calls below leave the fixtures intact.
+# ---------------------------------------------------------------------------
+response = client.patch("/api/projects/1/sprints/1/status",
+                        json={"user_id": 3, "status": "ended"})
+check("an Employee without manage_sprints cannot end a sprint (403)",
+      response.status_code == 403, response.text)
+check("...and the sprint is untouched",
+      next(s for s in db()["projects"]["1"]["sprints"] if s["id"] == "1")["status"] == "active")
+
+response = client.patch("/api/projects/1/sprints/2/status",
+                        json={"user_id": 1, "status": "ended"})
+check("a manage_sprints holder can end a sprint (200)", response.status_code == 200,
+      response.text)
+
+response = client.patch("/api/projects/1/sprints/2/status",
+                        json={"user_id": 1, "status": "active"})
+check("an ended sprint cannot be reopened (409)", response.status_code == 409, response.text)
+
+# A preset's permission list cannot be rewritten through the update route: only
+# the roles the Roles page lets you edit may be edited. Employee is a preset, so
+# emptying it here would silently strip every holder of manage_tasks.
+response = client.put("/api/projects/1/roles/Employee",
+                      json={"user_id": 1, "colour": "#000", "description": "",
+                            "permissions": [], "conflicting_roles": []})
+check("a preset role cannot be modified (400)", response.status_code == 400, response.text)
+check("...and its permissions are intact",
+      "manage_tasks" in (db()["projects"]["1"].get("role_definitions", {})
+                         .get("Employee", {}).get("permissions", [])),
+      db()["projects"]["1"].get("role_definitions", {}).get("Employee"))
+
+# --- editing the project needs edit_project --------------------------------
+# The description and the status are both edits, and both are gated on
+# edit_project: Project Creator, Scrum Master and Product Owner only.
+response = client.put("/api/projects/1/description",
+                      json={"user_id": 2, "description": "Employees cannot edit this."})
+check("an Employee cannot edit the description (403)",
+      response.status_code == 403, response.text)
+
+response = client.put("/api/projects/1/description",
+                      json={"user_id": 1, "description": "Owned by the creator."})
+check("the Project Creator can edit the description (200)",
+      response.status_code == 200, response.text)
+check("the edit is attributed", bool(response.json().get("last_edited_by")), response.text)
+
+response = client.patch("/api/projects/1/status", json={"user_id": 2, "status": "completed"})
+check("an Employee cannot complete the project (403)",
+      response.status_code == 403, response.text)
+
+response = client.patch("/api/projects/1/status", json={"user_id": 1, "status": "completed"})
+check("the Project Creator can complete it (200)",
+      response.status_code == 200, response.text)
+
+response = client.patch("/api/projects/1/status", json={"user_id": 1, "status": "active"})
+check("and can reopen it again (200)", response.status_code == 200, response.text)
+
 # --- sprint deletion ---------------------------------------------------------
 response = delete("/api/projects/1/sprints/1", {"user_id": 3})
 check("Employee without manage_sprints refused (403)", response.status_code == 403, response.text)
@@ -282,6 +343,28 @@ check("Project Creator deletes an active sprint (200)", response.status_code == 
 check("sprint removed", [s["id"] for s in db()["projects"]["1"]["sprints"]] == ["2"])
 check("sprint deletion reached Change History",
       any("deleted sprint Sprint One" in m for m in history()), history())
+
+# --- creating a sprint needs manage_sprints --------------------------------
+# Employee (user 2) is still a member of project 1 but holds only edit_sprints
+# and manage_tasks, so the create endpoint refuses them. Manager and above hold
+# manage_sprints, which is what the Project Creator uses below.
+response = post("/api/projects/1/sprints", {
+    "user_id": 2, "name": "Employee sprint", "details": "", "status": "active",
+    "start_date": "2026-01-01", "end_date": "2099-01-01", "priority": "medium",
+    "members": [2],
+})
+check("an Employee cannot create a sprint (403)", response.status_code == 403, response.text)
+check("...and none was added", len(db()["projects"]["1"]["sprints"]) == 1,
+      db()["projects"]["1"]["sprints"])
+
+response = post("/api/projects/2/sprints", {
+    "user_id": 1, "name": "Leadership sprint", "details": "",
+    "status": "active", "start_date": "2026-01-01", "end_date": "2099-01-01",
+    "priority": "medium", "members": [1],
+})
+check("the Project Creator can create a sprint (201)",
+      response.status_code == 201, response.text)
+
 
 # --- member removal ----------------------------------------------------------
 response = post("/api/projects/1/members/3/remove", {"user_id": 2})
@@ -718,6 +801,26 @@ for dirpath, _dirnames, filenames in os.walk(os.path.join(PROJECT_ROOT, "src", "
 check("every browser-only import is marked '# type: ignore'",
       not browser_imports_without_ignore,
       f"missing ignore: {browser_imports_without_ignore}")
+
+# A password is an opaque string, not a name: the server stores whatever was
+# typed, so a page that strips whitespace off a password field produces a value
+# the account can never match. login.py did exactly that, which made
+# " Password123 " a password that could be registered but never used - and three
+# failed tries now lock the account. Only the trimming is refused; reading a
+# password field with .value is what every page should do.
+PASSWORD_STRIP = re.compile(r"""["'][^"']*password[^"']*["']\s*\]\.value\.strip\(\)""", re.I)
+trimmed_passwords = []
+for dirpath, _dirnames, filenames in os.walk(os.path.join(PROJECT_ROOT, "src", "backend")):
+    for filename in sorted(filenames):
+        if not filename.endswith(".py"):
+            continue
+        with open(os.path.join(dirpath, filename), encoding="utf-8") as handle:
+            for number, line in enumerate(handle, 1):
+                if PASSWORD_STRIP.search(line):
+                    trimmed_passwords.append(f"{filename}:{number}: {line.strip()}")
+
+check("no client module strips whitespace off a password",
+      not trimmed_passwords, f"trimmed: {trimmed_passwords}")
 
 
 # ---------------------------------------------------------------------------

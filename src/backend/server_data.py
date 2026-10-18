@@ -227,6 +227,9 @@ class ServerData:
                     description=data.get("description", "No description provided."),
                     status=data.get("status") or "active",
                     created_at=data.get("created_at"),
+                    # The project page needs these to decide which of its controls
+                    # to draw at all (get_projects() already does the same).
+                    permissions=permissions_for_user(data, user_id),
                     last_edited_by=data.get("last_edited_by"),
                     last_edited_at=data.get("last_edited_at")
                 )
@@ -657,7 +660,7 @@ class ServerData:
         except Exception as e:
             return False, str(e)
 
-    async def request_email_change(self, new_email) -> tuple[bool, Any]:
+    async def request_email_change(self, new_email, current_password: str) -> tuple[bool, Any]:
         user_id = self.get_active_session()
         if not user_id:
             return False, "Session has expired."
@@ -666,7 +669,8 @@ class ServerData:
                 f"{self.api_url}/users/{user_id}/email-change",
                 method="POST",
                 headers={"Content-Type": "application/json"},
-                body=json.dumps({"new_email": new_email})
+                body=json.dumps({"new_email": new_email,
+                                 "current_password": current_password})
             )
             data = await response.json()
             if response.status == 200:

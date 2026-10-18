@@ -179,6 +179,8 @@
         </div>
       </div>
 
+      <p id="sprint-details" class="sprint-details hidden"></p>
+
       <p id="board-search-empty" class="board-search-empty hidden"></p>
 
       <div class="kanban-board" id="kanban-board">
@@ -327,9 +329,9 @@
         <button id="stopwatch-log-btn" class="modal-btn modal-btn-primary">Log Time</button>
       </div>
 
-      <!-- Manager Feedback / Review Chat -->
+      <!-- Review feedback / review chat, gated on review_tasks - not on being a manager. -->
       <div id="review-feedback-section" class="review-feedback-section hidden">
-        <div class="modal-label" style="margin-top: 15px;">Manager Feedback</div>
+        <div class="modal-label" style="margin-top: 15px;">Review Feedback</div>
         <div id="feedback-messages" class="feedback-messages"></div>
         <form id="feedback-add-form" class="checklist-add-form">
           <input type="text" id="feedback-input" class="modal-input" placeholder="Post feedback..." />

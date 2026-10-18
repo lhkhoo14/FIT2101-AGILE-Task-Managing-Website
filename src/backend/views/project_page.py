@@ -29,8 +29,13 @@ def get_project_id_from_url():
     return None
 
 
+def _permissions() -> set[str]:
+    """The signed-in user's permissions in the open project (empty before load)."""
+    return getattr(current_project, "permissions", None) or set()
+
+
 def apply_status(status: str):
-    """Update the project status badge and End Project button."""
+    """Update the project status badge and the End / Reopen Project button."""
     status = str(status).lower()
 
     badge = document.getElementById("project-status-badge")
@@ -40,31 +45,42 @@ def apply_status(status: str):
 
     end_btn = document.getElementById("end-project-btn")
     if end_btn is not None:
-        completed = status == "completed"
-        end_btn.textContent = "Project Ended" if completed else "End Project"
-        end_btn.disabled = completed
+        if "edit_project" not in _permissions():
+            # Changing the status needs edit_project, so the button would only
+            # ever produce a refusal for everyone else.
+            end_btn.classList.add("hidden")
+            return
+        end_btn.classList.remove("hidden")
+        end_btn.textContent = "Reopen Project" if status == "completed" else "End Project"
+        end_btn.disabled = False
 
 
 async def handle_end_project():
-    """Mark the project as completed after confirmation."""
+    """Complete the project, or reopen it, after confirmation."""
     if _db is None or _project_id is None:
         return
 
-    if not window.confirm(
-        "End this project? It will be marked Completed and cannot be reopened."
-    ):
+    completed = str(getattr(current_project, "status", "") or "").lower() == "completed"
+    target = "active" if completed else "completed"
+    question = (
+        "Reopen this project? It will go back to Active."
+        if completed else
+        "End this project? It will be marked Completed. You can reopen it later."
+    )
+    if not window.confirm(question):
         return
 
-    success, err = await _db.update_project_status(
-        _project_id, "completed"
-    )
+    success, err = await _db.update_project_status(_project_id, target)
 
     if not success:
-        await show_snackbar(f"Failed to end project: {err}")
+        await show_snackbar(f"Could not change the project status: {err}")
         return
 
-    apply_status("completed")
-    await show_snackbar("Project ended. It is now marked Completed.")
+    if current_project is not None:
+        current_project.status = target
+    apply_status(target)
+    await show_snackbar("Project reopened. It is now Active." if target == "active"
+                        else "Project ended. It is now marked Completed.")
 
 
 def _on_end_project_click(event):
@@ -99,6 +115,13 @@ def load_default_view(project: Project):
             </p>
         """
 
+    # Editing the description needs edit_project. Without it the server refuses
+    # the request, so the control is left out rather than offered and rejected.
+    edit_html = ""
+    if "edit_project" in (getattr(project, "permissions", None) or set()):
+        edit_html = ('<button type="button" id="edit-description-btn" '
+                     'class="btn-edit-description">Edit Description</button>')
+
     content_el.innerHTML = f"""
         <div class="content-header">
             <div class="project-title-group">
@@ -125,10 +148,7 @@ def load_default_view(project: Project):
 
             {audit_html}
 
-            <button type="button" id="edit-description-btn"
-                    class="btn-edit-description">
-                Edit Description
-            </button>
+            {edit_html}
         </div>
     """
 

@@ -35,6 +35,48 @@ def clean_expired_unverified_users(db):
         if u.get("is_verified", True) or (current_time - u.get("created_at", current_time) < 86400)
     ]
 
+def _find_user_by_email(db, email):
+    """Find an account by email, ignoring case and surrounding spaces.
+
+    EmailStr normalises the domain but not the local part, so "Ann@x.com" and
+    "ann@x.com" arrive as different strings and would otherwise look like two
+    accounts. database_manager.find_user_by_email() is deliberately not used
+    inside a mutator: it reads the database again, while update() is already
+    holding the row this mutation is editing.
+    """
+    target = email.strip().lower()
+    return next(
+        (u for u in db.get("users", [])
+         if str(u.get("email", "")).strip().lower() == target),
+        None
+    )
+
+
+def _is_verified(user) -> bool:
+    """Whether an account has proved it owns its email address.
+
+    Accounts created before email verification was added carry no flag at all.
+    They count as verified - the same default clean_expired_unverified_users()
+    applies - because otherwise every existing user would be locked out on
+    deploy and asked to verify an address that was never in question.
+    """
+    return user.get("is_verified", True)
+
+
+def _raise_saved_failure(result):
+    """Raise a rejection that a mutator returned instead of raising.
+
+    update() throws away everything a mutator changed if it raises, which is
+    what most routes want. A failed login is the exception: the attempt counter
+    and the lockout it triggers are the whole point of the request. That mutator
+    therefore returns the HTTPException, and the route raises it here, after the
+    change has been saved.
+    """
+    if isinstance(result, HTTPException):
+        raise result
+    return result
+
+
 def generate_alphanumeric_code(length: int = 6) -> str:
     """Generates a secure 6-character alphanumeric code (Uppercase letters + Digits)."""
     alphabet = string.ascii_uppercase + string.digits
@@ -44,12 +86,12 @@ def generate_alphanumeric_code(length: int = 6) -> str:
 def login(payload: LoginPayload):
     def mutate(db):
         clean_expired_unverified_users(db)
-        
-        user = next((u for u in db["users"] if u["email"] == payload.email), None)
+
+        user = _find_user_by_email(db, payload.email)
         if not user:
             raise HTTPException(status_code=401, detail="Email is not registered.")
 
-        if not user.get("is_verified", False):
+        if not _is_verified(user):
             raise HTTPException(
                 status_code=403, 
                 detail="Account is unverified. Please input your 6-character code or check your email."
@@ -71,13 +113,16 @@ def login(payload: LoginPayload):
             if failed_attempts % 3 == 0:
                 lockout_time = (failed_attempts // 3) * 30
                 user["lockout_until"] = current_time + lockout_time
+            # Returned rather than raised: update() only saves the counters above
+            # when the mutation finishes, and an attempt that is never saved is
+            # an account with no lockout at all.
             if lockout_time > 0:
-                raise HTTPException(
+                return HTTPException(
                     status_code=429,
                     detail=f"Too many failed attempts. Account locked for {lockout_time} seconds."
                 )
             attempts_left = 3 - (failed_attempts % 3)
-            raise HTTPException(
+            return HTTPException(
                 status_code=401,
                 detail=f"Incorrect password. {attempts_left} attempt(s) remaining before lockout."
             )
@@ -86,7 +131,7 @@ def login(payload: LoginPayload):
         user["lockout_until"] = 0
         return {"status": "success", "user_id": user["user_id"]}
 
-    return db_manager.update(mutate)
+    return _raise_saved_failure(db_manager.update(mutate))
 
 class VerifyCodePayload(BaseModel):
     email: EmailStr
@@ -96,12 +141,12 @@ class VerifyCodePayload(BaseModel):
 def verify_with_code(payload: VerifyCodePayload):
     def mutate(db):
         clean_expired_unverified_users(db)
-        user = next((u for u in db["users"] if u["email"] == payload.email), None)
+        user = _find_user_by_email(db, payload.email)
         if not user:
             raise HTTPException(status_code=404, detail="User not found.")
         
         # Block verified accounts from going through verification again
-        if user.get("is_verified", False):
+        if _is_verified(user):
             raise HTTPException(status_code=400, detail="Account is already verified.")
 
         # Case-insensitive comparison for user convenience
@@ -117,20 +162,24 @@ def verify_with_code(payload: VerifyCodePayload):
 @router.post("/register/check-email")
 def check_email(payload: CheckEmailPayload):
     db = db_manager.read()
-    if any(u["email"] == payload.email for u in db["users"]):
+    if _find_user_by_email(db, payload.email):
         raise HTTPException(status_code=400, detail="Email is already registered.")
     return {"status": "success", "message": "Email is available. Proceed to details."}
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterPayload):
-    def mutate(db):
+    # Stored lower-cased, so the account is the same one whatever case the
+    # browser sends next time it is typed in.
+    email = payload.email.strip().lower()
+
+    def mutate(db) -> dict:
         clean_expired_unverified_users(db)
         
-        existing_user = next((u for u in db["users"] if u["email"] == payload.email), None)
+        existing_user = _find_user_by_email(db, email)
         current_time = time.time()
         
         if existing_user:
-            if existing_user["is_verified"]:
+            if _is_verified(existing_user):
                 raise HTTPException(status_code=400, detail="Email is already registered and verified.")
             else:
                 # Check 1-minute cooldown (60 seconds)
@@ -149,9 +198,18 @@ def register(payload: RegisterPayload):
                 existing_user["password"] = hash_password(payload.password)
                 existing_user["verify_code"] = verify_code
                 existing_user["last_email_sent_at"] = current_time
+                # The purge in clean_expired_unverified_users() counts from this
+                # stamp, so registering again restarts the 24 hours instead of
+                # leaving the account to be deleted minutes after it got a code.
+                existing_user["created_at"] = current_time
                 
-                mailer.send_verification_code(payload.email, verify_code)
-                return {"status": "success", "user_id": existing_user["user_id"], "message": "Verification email resent."}
+                return {
+                    "status": "success",
+                    "user_id": existing_user["user_id"],
+                    "message": "Verification email resent.",
+                    "_email": email,
+                    "_code": verify_code,
+                }
 
         # Create new unverified user
         user_id = db.get("next_user_id", 1)
@@ -162,7 +220,7 @@ def register(payload: RegisterPayload):
         db["users"].append({
             "user_id": user_id,
             "username": payload.username,
-            "email": payload.email,
+            "email": email,
             "password": hash_password(payload.password),
             "is_verified": False,
             "verify_code": verify_code,
@@ -171,20 +229,32 @@ def register(payload: RegisterPayload):
             "projects": []
         })
         
-        mailer.send_verification_code(payload.email, verify_code)
-        return {"status": "success", "user_id": user_id, "message": "Registration successful. Check your email for verification."}
+        return {
+            "status": "success",
+            "user_id": user_id,
+            "message": "Registration successful. Check your email for verification.",
+            "_email": email,
+            "_code": verify_code,
+        }
 
-    return db_manager.update(mutate)
+    result = db_manager.update(mutate)
+    # Sent once the account and its code are saved: a slow Brevo request must not
+    # hold the state row every other write waits on, and a failed send must not
+    # undo a registration that has already been written.
+    email_sent = mailer.send_verification_code(result.pop("_email"), result.pop("_code"))
+    result["email_sent"] = email_sent
+    return result
 
 @router.get("/users/{user_id}")
 def get_user(user_id: int, request: Request):
     user = db_manager.find_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    # No email here either, for the same reason as the list below; the account's
+    # own address comes from /users/{id}/settings.
     return {
         "user_id": user["user_id"],
         "username": user["username"],
-        "email": user["email"],
         "profile_photo": _photo_url(request, user),
     }
 
@@ -195,11 +265,15 @@ def get_users(user_id: int, request: Request):
     db = db_manager.read()
     if not any(u["user_id"] == user_id for u in db.get("users", [])):
         raise HTTPException(status_code=401, detail="Session is invalid.")
+    # Emails are deliberately not returned. This endpoint fills the assignee and
+    # member pickers, which need a name and a picture, and user ids are
+    # sequential - returning every address made the whole account list
+    # enumerable from one guessed id. The signed-in user's own address comes from
+    # /users/{id}/settings instead.
     return [
         {
             "user_id": user["user_id"],
             "username": user["username"],
-            "email": user["email"],
             "profile_photo": _photo_url(request, user),
         }
         for user in db["users"]
@@ -210,15 +284,15 @@ class ResendCodePayload(BaseModel):
 
 @router.post("/resend-code")
 def resend_verification_code(payload: ResendCodePayload):
-    def mutate(db):
+    def mutate(db) -> dict:
         clean_expired_unverified_users(db)
-        user = next((u for u in db["users"] if u["email"] == payload.email), None)
+        user = _find_user_by_email(db, payload.email)
         
         if not user:
             raise HTTPException(status_code=404, detail="Email is not registered.")
             
         # Prevent sending codes to already verified accounts
-        if user.get("is_verified", False):
+        if _is_verified(user):
             raise HTTPException(status_code=400, detail="Account is already verified.")
 
         current_time = time.time()
@@ -237,10 +311,19 @@ def resend_verification_code(payload: ResendCodePayload):
         user["verify_code"] = verify_code
         user["last_email_sent_at"] = current_time
         
-        mailer.send_verification_code(payload.email, verify_code)
-        return {"status": "success", "message": "Verification code resent successfully."}
+        return {
+            "status": "success",
+            "message": "Verification code resent successfully.",
+            "_email": str(user.get("email", "")),
+            "_code": verify_code,
+        }
 
-    return db_manager.update(mutate)
+    result = db_manager.update(mutate)
+    # Outside the write, for the same reason as register(): the code is stored
+    # first, and a slow or failing send cannot hold up or undo the rest.
+    email_sent = mailer.send_verification_code(result.pop("_email"), result.pop("_code"))
+    result["email_sent"] = email_sent
+    return result
 
 # --- SECTION: Account Settings (US-24) & Account Deletion (US-38) ---
 import base64
@@ -254,6 +337,10 @@ class UpdateProfilePayload(BaseModel):
 
 class EmailChangePayload(BaseModel):
     new_email: EmailStr
+    # Proving the password is what stops a guessed user id from repointing an
+    # account: the confirmation link goes to the NEW address, so whoever can
+    # request the change can complete it.
+    current_password: str
 
 class EmailVerifyPayload(BaseModel):
     token: str
@@ -381,9 +468,11 @@ def get_user_avatar(user_id: int, request: Request):
 
 @router.patch("/users/{user_id}/profile")
 def update_user_profile(user_id: int, payload: UpdateProfilePayload, request: Request):
-    # The picture is validated, and its bytes written, before the shared state
-    # document is touched: the image lives in its own table, and a rejected one
-    # must not leave the account pointing at something that is not there.
+    # The picture is validated up front, and its bytes are written before the
+    # shared state document is touched: the image lives in its own table, and an
+    # account must never be left pointing at something that is not stored. If the
+    # document then rejects the change (a display name that is already taken, for
+    # instance) the previous bytes are put back, so nothing is left behind either.
     avatar = None
     remove_avatar = False
     if payload.profile_photo is not None:
@@ -422,7 +511,10 @@ def update_user_profile(user_id: int, payload: UpdateProfilePayload, request: Re
             # The bytes are in user_avatars; this record only remembers that there
             # is a picture and when it changed, which is what the URL carries.
             user["has_avatar"] = True
-            user["avatar_updated_at"] = int(time.time())
+            # Milliseconds, not seconds: the URL is the browser's cache key for
+            # five minutes, so two changes in the same second would both keep
+            # serving the first picture.
+            user["avatar_updated_at"] = int(time.time() * 1000)
             user.pop("profile_photo", None)
         elif remove_avatar:
             user.pop("has_avatar", None)
@@ -435,22 +527,36 @@ def update_user_profile(user_id: int, payload: UpdateProfilePayload, request: Re
             "profile_photo": _photo_url(request, user)
         }
 
+    previous_avatar = db_manager.get_user_avatar(user_id)
     if avatar is not None:
         db_manager.save_user_avatar(user_id, avatar[0], avatar[1])
     elif remove_avatar:
         db_manager.delete_user_avatar(user_id)
 
-    return db_manager.update(mutate)
+    try:
+        return db_manager.update(mutate)
+    except Exception:
+        # The account did not accept the change, so the picture goes back to what
+        # it was: bytes nothing points at after a rejected upload, and a missing
+        # picture the record still claims to have after a rejected removal.
+        if previous_avatar is None:
+            db_manager.delete_user_avatar(user_id)
+        else:
+            db_manager.save_user_avatar(user_id, *previous_avatar)
+        raise
 
 @router.post("/users/{user_id}/email-change")
 def request_email_change(user_id: int, payload: EmailChangePayload):
-    new_email = payload.new_email.strip()
+    # Stored lower-cased, like every other email this API writes.
+    new_email = payload.new_email.strip().lower()
     token = secrets.token_urlsafe(32)
 
     def mutate(db):
         user = _find_user(db, user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
+        if not verify_password(payload.current_password, user["password"]):
+            raise HTTPException(status_code=401, detail="Password is incorrect.")
         if new_email.lower() == str(user.get("email", "")).lower():
             raise HTTPException(status_code=400, detail="That is already your current email address.")
         if any(
@@ -670,16 +776,19 @@ class ResetPasswordPayload(BaseModel):
     code: str
     new_password: str
 
+# A reset code is valid for 15 minutes; this bounds the guesses that fit in it.
+MAX_RESET_ATTEMPTS = 5
+
 @router.post("/forgot-password")
 def forgot_password(payload: ForgotPasswordPayload):
-    def mutate(db):
+    def mutate(db) -> dict:
         clean_expired_unverified_users(db)
-        user = next((u for u in db["users"] if u["email"] == payload.email), None)
+        user = _find_user_by_email(db, payload.email)
         
         # Check if email is registered and verified
         if not user:
             raise HTTPException(status_code=404, detail="Email is not registered.")
-        if not user.get("is_verified", False):
+        if not _is_verified(user):
             raise HTTPException(status_code=400, detail="Account is not verified.")
 
         current_time = time.time()
@@ -697,28 +806,54 @@ def forgot_password(payload: ForgotPasswordPayload):
         user["reset_code"] = reset_code
         user["reset_code_expires_at"] = current_time + 900  # Expires in 15 minutes
         user["last_reset_sent_at"] = current_time
+        # A new code starts with a clean slate of wrong guesses.
+        user.pop("reset_attempts", None)
         
-        mailer.send_password_reset_code(payload.email, reset_code)
-        return {"status": "success", "message": "Password reset code sent successfully."}
+        return {
+            "status": "success",
+            "message": "Password reset code sent successfully.",
+            "_email": str(user.get("email", "")),
+            "_code": reset_code,
+        }
 
-    return db_manager.update(mutate)
+    result = db_manager.update(mutate)
+    # Sent after the code is saved, so a slow or failing send cannot hold up or
+    # undo the write every other request is waiting on.
+    email_sent = mailer.send_password_reset_code(result.pop("_email"), result.pop("_code"))
+    result["email_sent"] = email_sent
+    return result
 
 @router.post("/reset-password")
 def reset_password(payload: ResetPasswordPayload):
     def mutate(db):
         clean_expired_unverified_users(db)
-        user = next((u for u in db["users"] if u["email"] == payload.email), None)
+        user = _find_user_by_email(db, payload.email)
         
         if not user:
             raise HTTPException(status_code=404, detail="Email is not registered.")
-        if not user.get("is_verified", False):
+        if not _is_verified(user):
             raise HTTPException(status_code=400, detail="Account is not verified.")
 
-        if user.get("reset_code") != payload.code.strip().upper():
-            raise HTTPException(status_code=400, detail="Invalid reset code.")
-
-        if time.time() > user.get("reset_code_expires_at", 0):
+        if not user.get("reset_code") or time.time() > user.get("reset_code_expires_at", 0):
             raise HTTPException(status_code=400, detail="Reset code has expired. Please request a new one.")
+
+        if user.get("reset_code") != payload.code.strip().upper():
+            attempts = user.get("reset_attempts", 0) + 1
+            user["reset_attempts"] = attempts
+            # Returned, not raised: a guess that is never counted is a code that
+            # can be tried for its whole 15 minutes without limit.
+            if attempts >= MAX_RESET_ATTEMPTS:
+                user.pop("reset_code", None)
+                user.pop("reset_code_expires_at", None)
+                user.pop("reset_attempts", None)
+                return HTTPException(
+                    status_code=429,
+                    detail="Too many incorrect codes. Please request a new one."
+                )
+            return HTTPException(
+                status_code=400,
+                detail=f"Invalid reset code. {MAX_RESET_ATTEMPTS - attempts} attempt(s) remaining."
+            )
 
         if len(payload.new_password) < 8:
             raise HTTPException(status_code=422, detail="Password must be at least 8 characters long.")
@@ -726,7 +861,12 @@ def reset_password(payload: ResetPasswordPayload):
         user["password"] = hash_password(payload.new_password)
         user.pop("reset_code", None)
         user.pop("reset_code_expires_at", None)
+        user.pop("reset_attempts", None)
+        # The address owns the account again, so a lockout earned by guesses made
+        # before the reset must not outlive it.
+        user.pop("failed_attempts", None)
+        user.pop("lockout_until", None)
         
         return {"status": "success", "message": "Password reset successfully. You can now log in."}
 
-    return db_manager.update(mutate)
+    return _raise_saved_failure(db_manager.update(mutate))

@@ -118,9 +118,14 @@ def render_role_conflicts_view(conflicts):
     if not container:
         return
     if not conflicts:
-        container.innerHTML = '<p style="color: #64748b; font-size: 13px;">No conflicting roles configured.</p>'
+        container.innerHTML = ('<p style="color: #64748b; font-size: 13px;">No conflicts: '
+                               'a member may also hold any other role in this project.</p>')
         return
-    html_content = ""
+    # What a conflict means, said once, because the only other copy is the
+    # "Conflicting Roles (Mutually Exclusive)" heading on the form.
+    html_content = ('<p style="color: #64748b; font-size: 12px; line-height: 1.45; margin: 0 0 8px;">'
+                    'A member cannot hold this role and one of these at the same time - '
+                    'assigning the second one is refused.</p>')
     for c in conflicts:
         html_content += f'<span class="user-role-badge" style="margin-right: 6px; display: inline-block;">{html.escape(c)}</span>'
     container.innerHTML = html_content

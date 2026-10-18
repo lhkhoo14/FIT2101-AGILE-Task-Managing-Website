@@ -28,6 +28,15 @@ pydantic==2.13.5
 pydantic-extra-types==2.11.1
 pydantic-settings==2.15.0
 pydantic_core==2.46.5
+# The PostgreSQL driver. database_manager.py imports psycopg at module scope,
+# so without these three the API dies on boot with "No module named 'psycopg'"
+# - which is what happened on Render when this file was a freeze of the dev
+# venv and they had been dropped. psycopg-binary is the prebuilt libpq wheel
+# (the buildpack has no libpq-dev); psycopg-pool is the pool database_manager
+# borrows its connections from.
+psycopg==3.3.6
+psycopg-binary==3.3.6
+psycopg-pool==3.3.3
 Pygments==2.21.0
 python-dotenv==1.2.3
 python-multipart==0.0.32

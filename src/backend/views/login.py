@@ -48,7 +48,10 @@ async def handle_login(event):
     clear_errors(["email", "password"])
 
     email = web.page["#email"].value.strip()
-    password = web.page["#password"].value.strip()
+    # Not stripped: signup stores the password exactly as typed, so trimming it
+    # here would make a password with a leading or trailing space one that can be
+    # registered but never matched - and three of those tries now lock the account.
+    password = web.page["#password"].value
 
     db = ServerData()
     success, message = await db.validate_login(email, password)

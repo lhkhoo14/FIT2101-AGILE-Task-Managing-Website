@@ -12,7 +12,7 @@ ROLE_PERMISSIONS = {
     "edit_sprints": "Allow members to move tasks forward in sprints.", 
     "manage_tasks": "Allow members to create, edit or delete tasks",
     "review_tasks": "Allow members to move tasks from In Review to Complete and move tasks backwards.",
-    "edit_project": "Allow members to edit project description",
+    "edit_project": "Allow members to edit the project's description and status.",
     "delete_project": "Allow members to delete the project",
 }
 

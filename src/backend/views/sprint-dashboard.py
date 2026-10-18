@@ -19,6 +19,7 @@ from auth import show_snackbar  # type: ignore[reportMissingImports]
 from dialog import confirm_action  # type: ignore[reportMissingImports]
 import js  # type: ignore[reportMissingImports]
 from server_data import ServerData
+from project_role_helpers import permissions_for_user  # type: ignore[reportMissingImports]
 import charts
 
 # ServerData is the client-side gateway for all sprint-dashboard API calls.
@@ -51,6 +52,26 @@ _dragged_backlog_id = None
 # --- CURRENT USER (sprint membership checks) ---
 _session = server_data.get_active_session()
 current_user_id = int(_session) if _session else None
+
+# The caller's permissions in this project, loaded once at start-up. Used to
+# decide which controls this page offers at all; the server re-checks every
+# request, so hiding a button is never what protects the data.
+_permissions: set[str] = set()
+
+
+def _apply_create_sprint_state():
+    """Offer Create Sprint to the roles that hold manage_sprints, and nobody else."""
+    button = web.page["#create-sprint-btn"]
+    if button is not None:
+        button.classList.toggle("hidden", "manage_sprints" not in _permissions)
+
+
+async def _sync_permissions():
+    """Load the caller's project permissions once, then apply them to the page."""
+    global _permissions
+    payload = await server_data.get_project_members(PROJECT_ID) if PROJECT_ID else None
+    _permissions = permissions_for_user(payload, current_user_id)
+    _apply_create_sprint_state()
 
 
 # --- User / member helpers ---
@@ -695,7 +716,13 @@ async def handle_sprint_page_navigation(event):
     """Handle navigation messages from the sprint board iframe."""
     detail = event.detail
     if detail.action == "create-sprint":
+        # Same rule as the button: the empty-state card in the board frame asks
+        # this page to open the dialog on its behalf.
         await _render_member_options()
+        if "manage_sprints" not in _permissions:
+            await show_snackbar("Only a Manager, Scrum Master, Product Owner or the "
+                                "Project Creator can create a sprint.")
+            return
         _prepare_sprint_date_inputs()
         _open_modal("create-sprint-modal")
         return
@@ -741,6 +768,10 @@ async def _render_member_options():
     # each sprint it saves. They are shown ticked and disabled so the dialog says
     # who the sprint really has, matching how the creator's own row works.
     payload = await server_data.get_project_members(PROJECT_ID) if PROJECT_ID else None
+    # Opening this dialog is also the first chance to settle who may create one.
+    global _permissions
+    _permissions = permissions_for_user(payload, current_user_id)
+    _apply_create_sprint_state()
     container = web.page["sprint-members-list"]
     container.innerHTML = ""
 
@@ -806,6 +837,10 @@ def handle_sprint_start_change(event):
 @when("click", "#create-sprint-btn")
 async def handle_open_create_sprint(event):
     await _render_member_options()
+    if "manage_sprints" not in _permissions:
+        await show_snackbar("Only a Manager, Scrum Master, Product Owner or the "
+                            "Project Creator can create a sprint.")
+        return
     _prepare_sprint_date_inputs()
     _open_modal("create-sprint-modal")
 
@@ -984,6 +1019,7 @@ async def handle_sprint_card_click(event):
 async def initialize_dashboard():
     if not PROJECT_ID:
         return
+    await _sync_permissions()
     await render_sprints_grid()
     # US-20: move any history recorded in this browser before the switchover.
     asyncio.ensure_future(_migrate_legacy_history())

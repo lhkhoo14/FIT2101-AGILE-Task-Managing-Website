@@ -17,31 +17,41 @@ EMPTY_KANBAN = {"backlog": [], "active": [], "review": [], "completed": []}
 
 def _load_project(project_id: int, user_id: int):
     """
-    Verify membership, then load the DB with overdue sprints automatically completed.
-    Returns (db, project). The DB is written back only if something in the project
-    had to be repaired (an auto-completed sprint, or a sprint the project's
-    leadership was missing from).
+    Verify membership and load the project for a read-only request.
+
+    Returns (db, project). The repairs below are applied to the returned copy but
+    are deliberately not written: a GET must not take a write, or it can revert
+    whatever a concurrent request committed after this read. The next request
+    that writes the project re-applies them through _project_for_write(), and
+    that write is the one that persists them.
     """
-    # CHANGE: read the database exactly once. This used to call
-    # get_verified_project() (which reads) and then read again, costing two
-    # connections per sprint request.
     db = db_manager.read()
     project = verify_project_access(db.get("projects", {}).get(str(project_id)), user_id)
-    # A project stored before roles existed has no usable role map, and this is the
-    # first place a sprint request touches it. Normalising here means the
-    # verify_project_permission() calls that follow (here and in the board save)
-    # see roles instead of refusing every user. A read-only request only repairs
-    # the copy it returns; the next write to this project persists the repair.
+    # A project stored before roles existed has no usable role map. Normalising
+    # here means the role checks that follow (here and in the board save) see
+    # roles instead of refusing every user.
     ensure_member_fields(project)
-    # CHANGE: a sprint stored before its project's leadership was assigned is
-    # repaired here as well, and this time written back. Otherwise a Project
-    # Creator / Scrum Master / Product Owner opening such a sprint would be
-    # turned away by the "members only" check that every sprint view and every
-    # sprint route applies, with no way to fix it from the UI.
-    stale_leadership = sprint_logic.ensure_leadership_membership(project)
-    if sprint_logic.auto_complete_sprints(project) or stale_leadership:
-        db_manager.write(db)
+    # An overdue sprint counts as ended, and a sprint stored before its project's
+    # leadership was assigned gets them back on its member list.
+    sprint_logic.auto_complete_sprints(project)
+    sprint_logic.ensure_leadership_membership(project)
     return db, project
+
+
+def _project_for_write(db, project_id: int, user_id: int):
+    """Load a project inside a mutation, with the repairs its writers depend on.
+
+    The same three repairs as _load_project(), applied to the copy that is about
+    to be saved. ensure_member_fields() has to run before any permission check,
+    or a project stored before roles existed refuses every user, creator
+    included, with no way to fix it from the UI.
+    """
+    project = verify_project_access(db.get("projects", {}).get(str(project_id)), user_id)
+    ensure_member_fields(project)
+    if sprint_logic.auto_complete_sprints(project):
+        project["status_synced_at"] = contribution_logic.utc_stamp()
+    sprint_logic.ensure_leadership_membership(project)
+    return project
 
 
 def _find_sprint(project, sprint_id):
@@ -95,8 +105,19 @@ def create_sprint(project_id: int, payload: CreateSprintPayload):
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
-    db, project = _load_project(project_id, payload.user_id)
+    def mutate(db):
+        project = _project_for_write(db, project_id, payload.user_id)
+        # Creating a sprint is a manage_sprints action, the same permission that
+        # ending or deleting one needs: Manager, Product Owner, Scrum Master and
+        # the Project Creator hold it, an Employee does not (it holds
+        # edit_sprints and manage_tasks instead).
+        verify_project_permission(project, payload.user_id, "manage_sprints")
+        return _create_sprint(db, project, payload, start, end)
 
+    return db_manager.update(mutate)
+
+
+def _create_sprint(db, project, payload, start, end):
     # US-19: a sprint may only be staffed with members of its parent project, so
     # a client cannot slip an unrelated account in through the API payload.
     try:
@@ -106,10 +127,12 @@ def create_sprint(project_id: int, payload: CreateSprintPayload):
 
     # CHANGE: the project's leadership (Project Creator, Scrum Master, Product
     # Owner) is added to every sprint, whether or not the dialog ticked them.
-    # They are the roles that own the sprint cycle, and sprint access is
-    # members-only, so a leader left out here could not open the board they are
-    # responsible for. Added after validation, so they are still project
-    # members, and in role order so the list reads predictably.
+    # They are the roles that own the sprint cycle, and the operations reserved
+    # for a sprint's own members - editing a task description, returning a task
+    # to the product backlog - would otherwise refuse the people responsible for
+    # them. Reading a board only needs project membership, so this is about who
+    # can act, not who can look. Added after validation, so they are still
+    # project members, and in role order so the list reads predictably.
     for leader in sprint_logic.leadership_member_ids(project):
         if leader not in members:
             members.append(leader)
@@ -139,7 +162,6 @@ def create_sprint(project_id: int, payload: CreateSprintPayload):
     project.setdefault("sprints", []).append(sprint)
     # US-20: keep the stored contribution table present from the start.
     refresh_contributions(db, project)
-    db_manager.write(db)
     return sprint
 
 @router.get("/projects/{project_id}/sprints/{sprint_id}")
@@ -152,17 +174,26 @@ def update_sprint_status(project_id: int, sprint_id: str, payload: UpdateSprintS
     if payload.status not in ("active", "ended"):
         raise HTTPException(status_code=422, detail="Status must be 'active' or 'ended'.")
 
-    db, project = _load_project(project_id, payload.user_id)
-    sprint = _find_sprint(project, sprint_id)
+    def mutate(db):
+        project = _project_for_write(db, project_id, payload.user_id)
+        # Ending a sprint is not an ordinary board edit: it freezes the board and
+        # settles the figures the burndown is computed from, and an ended sprint
+        # cannot be reopened. It therefore needs the permission that owns the
+        # sprint cycle, the same one deleting a sprint requires, rather than
+        # plain project membership.
+        verify_project_permission(project, payload.user_id, "manage_sprints")
 
-    if sprint.get("status") == "ended" and payload.status == "active":
-        raise HTTPException(status_code=409, detail="An ended sprint cannot be reopened.")
+        sprint = _find_sprint(project, sprint_id)
 
-    sprint["status"] = payload.status
-    if payload.status == "ended":
-        sprint.setdefault("ended_at", sprint_logic.today().isoformat())
-    db_manager.write(db)
-    return {"status": "success", "sprint": sprint}
+        if sprint.get("status") == "ended" and payload.status == "active":
+            raise HTTPException(status_code=409, detail="An ended sprint cannot be reopened.")
+
+        sprint["status"] = payload.status
+        if payload.status == "ended":
+            sprint.setdefault("ended_at", sprint_logic.today().isoformat())
+        return {"status": "success", "sprint": sprint}
+
+    return db_manager.update(mutate)
 
 @router.get("/projects/{project_id}/sprints/{sprint_id}/kanban")
 def get_kanban_state(project_id: int, sprint_id: str, user_id: int):
@@ -185,8 +216,15 @@ def get_all_kanban_states(project_id: int, user_id: int):
 
 @router.put("/projects/{project_id}/sprints/{sprint_id}/kanban")
 def save_kanban_state(project_id: int, sprint_id: str, payload: SaveKanbanStatePayload):
-    db, project = _load_project(project_id, payload.user_id)
-    sprint = _find_sprint(project, sprint_id)
+    def mutate(db):
+        project = _project_for_write(db, project_id, payload.user_id)
+        sprint = _find_sprint(project, sprint_id)
+        return _apply_board_save(db, project, sprint, payload)
+
+    return db_manager.update(mutate)
+
+
+def _apply_board_save(db, project, sprint, payload):
 
     if sprint.get("status") == "ended":
         raise HTTPException(status_code=409, detail="This sprint has ended and can no longer be changed.")
@@ -244,7 +282,6 @@ def save_kanban_state(project_id: int, sprint_id: str, payload: SaveKanbanStateP
     # US-20 / US-21: assigned, completed and logged-time counts are recalculated
     # and stored server-side in the same transaction as the board.
     refresh_contributions(db, project)
-    db_manager.write(db)
     return {"status": "success"}
 
 
@@ -265,18 +302,11 @@ def delete_task(project_id: int, sprint_id: str, task_id: str, payload: DeleteTa
     vanishing.
     """
     def mutate(db):
-        # An overdue sprint counts as ended, so settle that before the checks.
-        project = verify_project_access(db.get("projects", {}).get(str(project_id)), payload.user_id)
-        # Repair a project stored before roles existed: without a role map the
-        # permission check below would refuse every user, the creator included.
-        ensure_member_fields(project)
-        if sprint_logic.auto_complete_sprints(project):
-            project["status_synced_at"] = contribution_logic.utc_stamp()
-        # Same repair as _load_project: this route reads the project itself, so
-        # the project's leadership is ensured a place on every sprint here too.
-        sprint_logic.ensure_leadership_membership(project)
-        # Membership is already settled by verify_project_access() above; this adds
-        # the manage_tasks requirement on top of it.
+        # An overdue sprint counts as ended, and the role map is repaired, before
+        # the checks below read them (see _project_for_write).
+        project = _project_for_write(db, project_id, payload.user_id)
+        # Membership is already settled inside that helper; this adds the
+        # manage_tasks requirement on top of it.
         verify_project_permission(project, payload.user_id, "manage_tasks")
 
         sprint = _find_sprint(project, sprint_id)
@@ -334,16 +364,11 @@ def delete_sprint(project_id: int, sprint_id: str, payload: DeleteSprintPayload)
     running, or not started yet, can be deleted by anyone holding manage_sprints.
     """
     def mutate(db):
-        project = verify_project_access(db.get("projects", {}).get(str(project_id)), payload.user_id)
-        # Repair a project stored before roles existed, so the permission check on
-        # the next line is not reading an empty role map (see ensure_member_fields).
-        ensure_member_fields(project)
+        # Role map, overdue sprints and sprint membership are all settled here, so
+        # the permission check below is not reading an empty role map (see
+        # _project_for_write).
+        project = _project_for_write(db, project_id, payload.user_id)
         verify_project_permission(project, payload.user_id, "manage_sprints")
-        if sprint_logic.auto_complete_sprints(project):
-            project["status_synced_at"] = contribution_logic.utc_stamp()
-        # Same repair as _load_project: this route reads the project itself, so
-        # the project's leadership is ensured a place on every sprint here too.
-        sprint_logic.ensure_leadership_membership(project)
 
         sprint = _find_sprint(project, sprint_id)
         if sprint.get("status") == "ended":
@@ -376,7 +401,14 @@ def delete_sprint(project_id: int, sprint_id: str, payload: DeleteSprintPayload)
 
 @router.post("/projects/{project_id}/sprints/{sprint_id}/backlog")
 def move_backlog_to_sprint(project_id: int, sprint_id: str, payload: MoveBacklogPayload):
-    db, project = _load_project(project_id, payload.user_id)
+    def mutate(db):
+        project = _project_for_write(db, project_id, payload.user_id)
+        return _move_backlog_item(db, project, sprint_id, payload)
+
+    return db_manager.update(mutate)
+
+
+def _move_backlog_item(db, project, sprint_id, payload):
 
     backlog = project.get("backlog", [])
     item_idx = next((i for i, item in enumerate(backlog) if str(item["id"]) == str(payload.backlog_id)), None)
@@ -408,7 +440,6 @@ def move_backlog_to_sprint(project_id: int, sprint_id: str, payload: MoveBacklog
     kanban.setdefault("backlog", []).append(task_card)
     
     refresh_contributions(db, project)
-    db_manager.write(db)
     return {"status": "success"}
 
 @router.post("/projects/{project_id}/sprints/{sprint_id}/tasks/{task_id}/return-to-backlog")
@@ -419,7 +450,14 @@ def return_task_to_product_backlog(project_id: int, sprint_id: str, task_id: str
     on can go back: once a task has left the sprint backlog, or has logged work
     time, returning it would discard progress, so it is refused.
     """
-    db, project = _load_project(project_id, payload.user_id)
+    def mutate(db):
+        project = _project_for_write(db, project_id, payload.user_id)
+        return _return_task_to_backlog(db, project, sprint_id, task_id, payload)
+
+    return db_manager.update(mutate)
+
+
+def _return_task_to_backlog(db, project, sprint_id, task_id, payload):
     sprint = _find_sprint(project, sprint_id)
 
     if not sprint_logic.is_sprint_member(sprint, payload.user_id):
@@ -479,7 +517,6 @@ def return_task_to_product_backlog(project_id: int, sprint_id: str, task_id: str
     product_backlog.append(item)
 
     refresh_contributions(db, project)
-    db_manager.write(db)
     return {"status": "success", "backlog_item": item}
 
 @router.get("/projects/{project_id}/sprints/{sprint_id}/backlog")
