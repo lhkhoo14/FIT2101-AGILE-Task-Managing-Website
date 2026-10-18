@@ -49,11 +49,12 @@ async def handle_verify(event):
     else:
         show_feedback("verification-code", "code-error", message)
 
-@when("click", "#resend-btn")
+@when("click", "#send-code-btn")
 async def handle_resend(event):
     if event:
         event.preventDefault()
 
+    clear_errors(["email"])
     email = web.page["#email"].value.strip()
     if not email:
         show_feedback("email", "email-error", "Enter your email first to resend code.")
@@ -65,12 +66,14 @@ async def handle_resend(event):
     if success:
         await show_snackbar(message)
         # Start 60-second cooldown UI
-        resend_btn = web.page["#resend-btn"]
-        resend_btn.disabled = True
+        send_btn = web.page["#send-code-btn"]
+        send_btn.disabled = True
         for remaining in range(60, 0, -1):
-            resend_btn.innerText = f"Resend Code in {remaining}s"
+            send_btn.innerText = f"Resend ({remaining}s)"
             await asyncio.sleep(1)
-        resend_btn.disabled = False
-        resend_btn.innerText = "Resend Code"
+        send_btn.disabled = False
+        send_btn.innerText = "Send Code"
     else:
+        # Display the server error inline and via snackbar (e.g. "Account is already verified.")
+        show_feedback("email", "email-error", message)
         await show_snackbar(message)

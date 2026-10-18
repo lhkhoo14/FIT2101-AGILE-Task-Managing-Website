@@ -100,8 +100,9 @@ def verify_with_code(payload: VerifyCodePayload):
         if not user:
             raise HTTPException(status_code=404, detail="User not found.")
         
-        if user["is_verified"]:
-            return {"status": "success", "message": "Account is already verified."}
+        # Block verified accounts from going through verification again
+        if user.get("is_verified", False):
+            raise HTTPException(status_code=400, detail="Account is already verified.")
 
         # Case-insensitive comparison for user convenience
         if user.get("verify_code") != payload.code.strip().upper():
@@ -215,7 +216,9 @@ def resend_verification_code(payload: ResendCodePayload):
         
         if not user:
             raise HTTPException(status_code=404, detail="Email is not registered.")
-        if user["is_verified"]:
+            
+        # Prevent sending codes to already verified accounts
+        if user.get("is_verified", False):
             raise HTTPException(status_code=400, detail="Account is already verified.")
 
         current_time = time.time()
@@ -236,6 +239,9 @@ def resend_verification_code(payload: ResendCodePayload):
         
         send_verification_email(payload.email, verify_code)
         return {"status": "success", "message": "Verification code resent successfully."}
+
+    return db_manager.update(mutate)
+
 # --- SECTION: Account Settings (US-24) & Account Deletion (US-38) ---
 import base64
 import secrets
@@ -436,9 +442,6 @@ def update_user_profile(user_id: int, payload: UpdateProfilePayload, request: Re
         db_manager.delete_user_avatar(user_id)
 
     return db_manager.update(mutate)
-
-
-
 
 @router.post("/users/{user_id}/email-change")
 def request_email_change(user_id: int, payload: EmailChangePayload):

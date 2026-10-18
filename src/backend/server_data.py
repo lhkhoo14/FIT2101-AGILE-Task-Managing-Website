@@ -982,7 +982,7 @@ class ServerData:
                 headers={"Content-Type": "application/json"},
                 body=json.dumps({"email": email})
             )
-            data = await response.json()
+            data = await response.json() or {}
             if response.status == 200:
                 return True, data.get("message", "Verification code resent successfully.")
             return False, data.get("detail", "Failed to resend code.")
