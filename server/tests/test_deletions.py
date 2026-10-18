@@ -19,6 +19,9 @@ import tempfile
 from datetime import date, timedelta
 
 os.environ.pop("DATABASE_URL", None)
+# Keep the mailer offline: a real key in the environment would otherwise make
+# registration and password-reset checks send genuine email.
+os.environ.pop("BREVO_API_KEY", None)
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 # Repository root, for the static checks on the browser's own modules.

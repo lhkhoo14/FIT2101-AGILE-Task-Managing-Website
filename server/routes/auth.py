@@ -8,7 +8,7 @@ from random import randint
 
 from database_manager import db_manager
 from security import hash_password, verify_password
-from email_service import send_verification_email, send_password_reset_email # type: ignore
+import mailer
 
 router = APIRouter()
 
@@ -150,7 +150,7 @@ def register(payload: RegisterPayload):
                 existing_user["verify_code"] = verify_code
                 existing_user["last_email_sent_at"] = current_time
                 
-                send_verification_email(payload.email, verify_code)
+                mailer.send_verification_code(payload.email, verify_code)
                 return {"status": "success", "user_id": existing_user["user_id"], "message": "Verification email resent."}
 
         # Create new unverified user
@@ -171,7 +171,7 @@ def register(payload: RegisterPayload):
             "projects": []
         })
         
-        send_verification_email(payload.email, verify_code)
+        mailer.send_verification_code(payload.email, verify_code)
         return {"status": "success", "user_id": user_id, "message": "Registration successful. Check your email for verification."}
 
     return db_manager.update(mutate)
@@ -237,7 +237,7 @@ def resend_verification_code(payload: ResendCodePayload):
         user["verify_code"] = verify_code
         user["last_email_sent_at"] = current_time
         
-        send_verification_email(payload.email, verify_code)
+        mailer.send_verification_code(payload.email, verify_code)
         return {"status": "success", "message": "Verification code resent successfully."}
 
     return db_manager.update(mutate)
@@ -247,7 +247,6 @@ import base64
 import secrets
 import hashlib
 import hmac
-import mailer
 
 class UpdateProfilePayload(BaseModel):
     username: str | None = None
@@ -699,7 +698,7 @@ def forgot_password(payload: ForgotPasswordPayload):
         user["reset_code_expires_at"] = current_time + 900  # Expires in 15 minutes
         user["last_reset_sent_at"] = current_time
         
-        send_password_reset_email(payload.email, reset_code)
+        mailer.send_password_reset_code(payload.email, reset_code)
         return {"status": "success", "message": "Password reset code sent successfully."}
 
     return db_manager.update(mutate)
