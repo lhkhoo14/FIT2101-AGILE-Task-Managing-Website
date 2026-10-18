@@ -8,7 +8,7 @@ from random import randint
 
 from database_manager import db_manager
 from security import hash_password, verify_password
-from email_service import send_verification_email # type: ignore
+from email_service import send_verification_email, send_password_reset_email # type: ignore
 
 router = APIRouter()
 
@@ -657,5 +657,74 @@ def delete_account(user_id: int, payload: DeleteAccountPayload):
         # Remove the user. next_user_id is deliberately left alone so ids are never reused.
         db["users"] = [u for u in db["users"] if str(u.get("user_id")) != str(user_id)]
         return {"status": "success"}
+
+    return db_manager.update(mutate)
+
+class ForgotPasswordPayload(BaseModel):
+    email: EmailStr
+
+class ResetPasswordPayload(BaseModel):
+    email: EmailStr
+    code: str
+    new_password: str
+
+@router.post("/forgot-password")
+def forgot_password(payload: ForgotPasswordPayload):
+    def mutate(db):
+        clean_expired_unverified_users(db)
+        user = next((u for u in db["users"] if u["email"] == payload.email), None)
+        
+        # Check if email is registered and verified
+        if not user:
+            raise HTTPException(status_code=404, detail="Email is not registered.")
+        if not user.get("is_verified", False):
+            raise HTTPException(status_code=400, detail="Account is not verified.")
+
+        current_time = time.time()
+        last_sent = user.get("last_reset_sent_at", 0)
+        
+        # Enforce 1-minute (60 seconds) cooldown
+        if current_time - last_sent < 60:
+            remaining_cooldown = int(60 - (current_time - last_sent))
+            raise HTTPException(
+                status_code=429, 
+                detail=f"Please wait {remaining_cooldown} seconds before requesting a new code."
+            )
+
+        reset_code = generate_alphanumeric_code()
+        user["reset_code"] = reset_code
+        user["reset_code_expires_at"] = current_time + 900  # Expires in 15 minutes
+        user["last_reset_sent_at"] = current_time
+        
+        send_password_reset_email(payload.email, reset_code)
+        return {"status": "success", "message": "Password reset code sent successfully."}
+
+    return db_manager.update(mutate)
+
+@router.post("/reset-password")
+def reset_password(payload: ResetPasswordPayload):
+    def mutate(db):
+        clean_expired_unverified_users(db)
+        user = next((u for u in db["users"] if u["email"] == payload.email), None)
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="Email is not registered.")
+        if not user.get("is_verified", False):
+            raise HTTPException(status_code=400, detail="Account is not verified.")
+
+        if user.get("reset_code") != payload.code.strip().upper():
+            raise HTTPException(status_code=400, detail="Invalid reset code.")
+
+        if time.time() > user.get("reset_code_expires_at", 0):
+            raise HTTPException(status_code=400, detail="Reset code has expired. Please request a new one.")
+
+        if len(payload.new_password) < 8:
+            raise HTTPException(status_code=422, detail="Password must be at least 8 characters long.")
+
+        user["password"] = hash_password(payload.new_password)
+        user.pop("reset_code", None)
+        user.pop("reset_code_expires_at", None)
+        
+        return {"status": "success", "message": "Password reset successfully. You can now log in."}
 
     return db_manager.update(mutate)
