@@ -25,9 +25,8 @@ Two guides accompany the application:
   API reference, authorisation rules, testing, deployment and a maintenance
   playbook, plus the known limitations of the current design.
 
-The technical guide describes the codebase as it is now; the *Repository
-Structure* outline further down this file predates several features and is kept
-only as a rough orientation.
+Each directory is described in more depth in the technical guide's
+*Repository layout* and *Backend modules* sections.
 
 ## Getting Started
 
@@ -120,56 +119,53 @@ the legacy JSON database if that table is empty.
 
 ## Repository Structure
 
-Update this section as your project grows.
+The application has three parts: a FastAPI backend under `server/`, a browser
+frontend written in Python under `src/`, and the small scripts that build and
+configure them.
 
 ```
+server/                        the FastAPI backend
+├── main.py                    app, CORS, /health, router mounting
+├── database_manager.py        PostgreSQL + JSON fallback, read/update/write, avatars
+├── dependencies.py            membership and permission checks
+├── security.py                password hashing (bcrypt)
+├── mailer.py                  Brevo (HTTPS) mail sender
+├── routes/                    auth.py, projects.py, sprints.py, activity.py
+├── logic/                     sprint_logic.py, contribution_logic.py, membership_logic.py
+├── data/server_database.json  the JSON fallback database
+├── tests/                     test_auth.py, test_live_api.py, test_deletions.py,
+│                              test_mailer.py, test_frontend.py
+└── requirements.txt
+
 src/
+├── views/                     one HTML page per screen (13 files)
 ├── backend/
-│   ├── auth.py
-│   ├── constants.py
-│   ├── create_project.py
-│   ├── dashboard.py
-│   ├── layout.py
-│   ├── login.py
-│   ├── project_layout.py
-│   ├── server_data.py
-│   ├── signup.py
-│   ├── sprint-dashboard.py
-│   ├── sprint-page.py
-│   └── topbar.py
-|
-├── components/
-│   ├── avatar.html
-│   ├── project-sidebar.html
-│   ├── sidebar.html
-│   └── topbar.html
-|
-├── styles/
-│   ├── auth.css
-│   ├── base.css
-│   ├── create-project.css
-│   ├── dashboard.css
-│   ├── layout.css
-│   ├── project-layout.css
-│   ├── snackbar.css
-│   ├── sprint-dashboard.css
-│   ├── sprint-page.css
-│   └── topbar.css
-|
-├── views/
-│   ├── create-project.html
-│   ├── dashboard.html
-│   ├── login.html
-│   ├── project-page.html
-│   ├── signup.html
-│   ├── sprint-dashboard.html
-│   └── sprint-page.html
-│
-├── index.html
-├── PYSCRIPT_TUTORIAL.md
-├── README.md
-└── settings.json
+│   ├── server_data.py         the only module that calls the API
+│   ├── settings.py            the account-settings page
+│   ├── constants.py           API base URL, session storage key
+│   ├── charts.py              small SVG chart helpers
+│   ├── utils/                 auth, layout, topbar, dialog, sidebar_state,
+│   │                          project_helpers, project_layout,
+│   │                          project_role_helpers, sprint_access
+│   └── views/                 one module per page (login, dashboard,
+│                              project_page, sprint-page, ...)
+├── components/                avatar, sidebar, project-sidebar and topbar partials
+├── styles/                    one stylesheet per page plus the shared ones
+└── assets/                    default avatar, logo
+
+docs/                          user-guide.md, technical-guide.md
+scripts/build_frontend.py      builds dist/ for the static site
+settings.json                  PyScript module map (file path -> module name)
+render.yaml                    Render blueprint: API web service + static site
+index.html                     landing page that forwards to the login page
+pyrightconfig.json             type-checker paths for the browser modules
+.env.example                   every environment variable, documented
 ```
+
+Nothing under `server/` is published to the browser: `scripts/build_frontend.py`
+copies only `index.html`, `settings.json` and `src/` into `dist/`. The browser
+modules import each other by bare name (`from auth import ...`), which is why
+every one of them is registered in `settings.json`.
 
 ## Notes
 
