@@ -1,6 +1,7 @@
 import copy
 
 import time
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, status
@@ -105,6 +106,10 @@ class CreateBacklogPayload(BaseModel):
 class UpdateProjectStatusPayload(BaseModel):
     user_id: int
     status: str
+
+class UpdateProjectDescriptionPayload(BaseModel):
+    user_id: int
+    description: str
 
 class AddMemberPayload(BaseModel):
     user_id: int
@@ -374,6 +379,66 @@ def get_user_projects(user_id: int):
 @router.get("/projects/{project_id}")
 def get_project(project_id: int, user_id: int):
     return with_project_defaults(get_verified_project(project_id, user_id))
+
+@router.put("/projects/{project_id}/description")
+def update_project_description(
+    project_id: int,
+    payload: UpdateProjectDescriptionPayload
+):
+    """Updates a project's description and records who edited it and when."""
+    db = db_manager.read()
+    project = db.get("projects", {}).get(str(project_id))
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    ensure_member_fields(project)
+
+    # US-30: only users assigned the Manager role can edit the description.
+# US-30: only users with the Manager role or Project Creator
+# role can edit the description.
+    verify_project_access(project, payload.user_id)
+
+    roles = project.get("roles", {})
+    manager_ids = roles.get("Manager", [])
+    creator_ids = roles.get("Project Creator", [])
+
+    if (
+        payload.user_id not in manager_ids
+        and payload.user_id not in creator_ids
+        and payload.user_id not in project.get("creator", [])
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Only project Managers or the Project Creator can edit the description."
+        )
+
+    description = payload.description.strip()
+    if not description:
+        raise HTTPException(
+            status_code=422,
+            detail="Description cannot be empty."
+        )
+
+    user = next(
+        (u for u in db.get("users", []) if u.get("user_id") == payload.user_id),
+        None
+    )
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    project["description"] = description
+    project["last_edited_by"] = user.get("username", "Unknown User")
+    project["last_edited_at"] = datetime.now(timezone.utc).isoformat()
+
+    db_manager.write(db)
+
+    return {
+        "status": "success",
+        "description": project["description"],
+        "last_edited_by": project["last_edited_by"],
+        "last_edited_at": project["last_edited_at"]
+    }
+
 
 @router.patch("/projects/{project_id}/status")
 def update_project_status(project_id: int, payload: UpdateProjectStatusPayload):
