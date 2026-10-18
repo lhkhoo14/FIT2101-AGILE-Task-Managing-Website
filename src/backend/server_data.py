@@ -12,13 +12,23 @@ from project_role_helpers import permissions_for_user  # type: ignore
 class Project:
     """A project record returned by the FastAPI projects endpoints."""
 
-    def __init__(self, id: int, name: str, description: str, status: str,
-                 created_at: int | None = None,
-                 permissions: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        id: int,
+        name: str,
+        description: str,
+        status: str,
+        created_at: int | None = None,
+        permissions: set[str] | None = None,
+        last_edited_by: str | None = None,
+        last_edited_at: str | None = None,
+    ) -> None:
         self.id = id
         self.name = name
         self.description = description
         self.status = status
+        self.last_edited_by = last_edited_by
+        self.last_edited_at = last_edited_at
         # Epoch milliseconds, exactly as the server stores it, and None for a
         # project that predates the field - the dashboard renders that as
         # "Unknown". Both call sites in this module pass it, so it has to be
@@ -186,7 +196,9 @@ class ServerData:
                         description=p.get("description", "No description provided."),
                         status=p.get("status") or "active",
                         created_at=p.get("created_at"),
-                        permissions=permissions_for_user(p, user_id)
+                        permissions=permissions_for_user(p, user_id),
+                        last_edited_by=p.get("last_edited_by"),
+                        last_edited_at=p.get("last_edited_at")
                     )
                     for p in data
                 ]
@@ -214,7 +226,9 @@ class ServerData:
                     name=data.get("name", "Untitled Project"),
                     description=data.get("description", "No description provided."),
                     status=data.get("status") or "active",
-                    created_at=data.get("created_at")
+                    created_at=data.get("created_at"),
+                    last_edited_by=data.get("last_edited_by"),
+                    last_edited_at=data.get("last_edited_at")
                 )
             elif response.status in (403, 404):
                 print(f"[API Security] Project access denied or missing (Status {response.status}).")
@@ -225,6 +239,39 @@ class ServerData:
             print(f"[API Error] Failed to fetch project: {e}")
             return None
     
+    async def update_project_description(
+        self, project_id: int, description: str
+    ) -> tuple[bool, str, dict | None]:
+        """Updates a project's description and returns its audit metadata."""
+        user_id = self.get_active_session()
+        if user_id is None:
+            return False, "Session expired.", None
+
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/projects/{project_id}/description",
+                method="PUT",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({
+                    "user_id": user_id,
+                    "description": description
+                })
+            )
+            data = await response.json()
+
+            if response.status == 200:
+                return True, "", data
+
+            detail = data.get("detail", "Failed to update project description.")
+            if isinstance(detail, list):
+                detail = "; ".join(
+                    str(error.get("msg", "Invalid input")) for error in detail
+                )
+            return False, str(detail), None
+        except Exception as e:
+            print(f"[API Error] Failed to update project description: {e}")
+            return False, "Unable to connect to the server.", None
+
     async def update_project_status(self, project_id: int, status: str) -> tuple[bool, str]:
         """Changes a project's status (active / completed)."""
         user_id = self.get_active_session()
