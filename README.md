@@ -13,6 +13,22 @@ Add your team members and roles here.
 - Izaan (36784478) - Secretary, Developer
 - Khoo Lip Hong (36391948) - Developer
 
+## Documentation
+
+Two guides accompany the application:
+
+- **[User guide](docs/user-guide.md)** - for the people who use the product:
+  creating an account, running a project, roles and permissions, sprints and the
+  Kanban board, day-to-day tasks, account settings and troubleshooting.
+- **[Technical guide](docs/technical-guide.md)** - for whoever has to run, deploy,
+  maintain or continue developing it: architecture, configuration, data model,
+  API reference, authorisation rules, testing, deployment and a maintenance
+  playbook, plus the known limitations of the current design.
+
+The technical guide describes the codebase as it is now; the *Repository
+Structure* outline further down this file predates several features and is kept
+only as a rough orientation.
+
 ## Getting Started
 
 1. Clone this repository.
