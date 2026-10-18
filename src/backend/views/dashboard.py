@@ -49,6 +49,9 @@ MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
 # so changing the dropdown never needs another network request or page reload.
 loaded_projects: list = []
 
+# Sidebar status filter: None shows every project, otherwise "active" or "completed".
+status_filter: str | None = None
+
 
 def _created_key(project) -> tuple:
     """Sort key for creation time. Legacy projects have no created_at; they
@@ -153,8 +156,15 @@ def render_projects():
 
     query = current_search_query()
     visible = filter_projects(loaded_projects, query)
+    if status_filter:
+        visible = [p for p in visible if str(p.status).lower() == status_filter]
     if not visible:
-        grid.innerHTML = f"<p class='no-projects'>No projects match \"{escape(query)}\".</p>"
+        if query:
+            grid.innerHTML = f"<p class='no-projects'>No projects match \"{escape(query)}\".</p>"
+        elif status_filter:
+            grid.innerHTML = f"<p class='no-projects'>No {status_filter} projects.</p>"
+        else:
+            grid.innerHTML = "<p class='no-projects'>No projects found.</p>"
         return
 
     for project in sort_projects(visible, current_sort_key()):
@@ -167,6 +177,35 @@ async def list_projects():
     db = ServerData()
     loaded_projects = await db.get_projects() or []
     render_projects()
+
+
+def set_status_filter(new_filter: str | None):
+    """Applies a sidebar status filter, highlights its button and redraws the grid."""
+    global status_filter
+    status_filter = new_filter
+    active_id = f"filter-{new_filter}" if new_filter else "nav-all-projects"
+    for item in document.querySelectorAll("#sidebar .nav-item"):
+        if item.id == active_id:
+            item.classList.add("active")
+        else:
+            item.classList.remove("active")
+    render_projects()
+
+
+@when("click", "#nav-all-projects")
+def handle_filter_all(event):
+    set_status_filter(None)
+
+
+@when("click", "#filter-active")
+def handle_filter_active(event):
+    # Clicking the selected filter again goes back to showing everything.
+    set_status_filter(None if status_filter == "active" else "active")
+
+
+@when("click", "#filter-completed")
+def handle_filter_completed(event):
+    set_status_filter(None if status_filter == "completed" else "completed")
 
 
 @when("input", "#global-search")
