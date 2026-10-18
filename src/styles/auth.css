@@ -19,7 +19,7 @@ body {
     border-radius: 12px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     width: 100%;
-    max-width: 380px;
+    max-width: 450px;
     text-align: center;
 }
 
@@ -178,6 +178,18 @@ body {
     margin-top: 20px;
     font-size: 14px;
     color: #666666;
+}
+
+/* Group container for multiple bottom auth links with a larger top gap and tight internal spacing */
+.auth-links-group {
+    margin-top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.auth-links-group .auth-link {
+    margin-top: 0;
 }
 
 .auth-link a {

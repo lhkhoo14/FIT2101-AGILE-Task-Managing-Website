@@ -2,8 +2,13 @@ import os
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr
 import time
+import secrets
+import string
+from random import randint
+
 from database_manager import db_manager
 from security import hash_password, verify_password
+import mailer
 
 router = APIRouter()
 
@@ -14,17 +19,41 @@ class LoginPayload(BaseModel):
     email: EmailStr
     password: str
 
+class CheckEmailPayload(BaseModel):
+    email: EmailStr
+
 class RegisterPayload(BaseModel):
     email: EmailStr
     username: str
     password: str
 
+def clean_expired_unverified_users(db):
+    current_time = time.time()
+    # 24 hours = 86400 seconds
+    db["users"] = [
+        u for u in db.get("users", []) 
+        if u.get("is_verified", True) or (current_time - u.get("created_at", current_time) < 86400)
+    ]
+
+def generate_alphanumeric_code(length: int = 6) -> str:
+    """Generates a secure 6-character alphanumeric code (Uppercase letters + Digits)."""
+    alphabet = string.ascii_uppercase + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
 @router.post("/login")
 def login(payload: LoginPayload):
     def mutate(db):
+        clean_expired_unverified_users(db)
+        
         user = next((u for u in db["users"] if u["email"] == payload.email), None)
         if not user:
             raise HTTPException(status_code=401, detail="Email is not registered.")
+
+        if not user.get("is_verified", False):
+            raise HTTPException(
+                status_code=403, 
+                detail="Account is unverified. Please input your 6-character code or check your email."
+            )
 
         current_time = time.time()
         lockout_until = user.get("lockout_until", 0)
@@ -59,21 +88,91 @@ def login(payload: LoginPayload):
 
     return db_manager.update(mutate)
 
+class VerifyCodePayload(BaseModel):
+    email: EmailStr
+    code: str
+
+@router.post("/verify-code")
+def verify_with_code(payload: VerifyCodePayload):
+    def mutate(db):
+        clean_expired_unverified_users(db)
+        user = next((u for u in db["users"] if u["email"] == payload.email), None)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found.")
+        
+        # Block verified accounts from going through verification again
+        if user.get("is_verified", False):
+            raise HTTPException(status_code=400, detail="Account is already verified.")
+
+        # Case-insensitive comparison for user convenience
+        if user.get("verify_code") != payload.code.strip().upper():
+            raise HTTPException(status_code=400, detail="Invalid verification code.")
+
+        user["is_verified"] = True
+        user.pop("verify_code", None)
+        return {"status": "success", "message": "Email verified successfully!"}
+
+    return db_manager.update(mutate)
+
+@router.post("/register/check-email")
+def check_email(payload: CheckEmailPayload):
+    db = db_manager.read()
+    if any(u["email"] == payload.email for u in db["users"]):
+        raise HTTPException(status_code=400, detail="Email is already registered.")
+    return {"status": "success", "message": "Email is available. Proceed to details."}
+
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterPayload):
     def mutate(db):
-        if any(u["email"] == payload.email for u in db["users"]):
-            raise HTTPException(status_code=400, detail="Email is already registered.")
+        clean_expired_unverified_users(db)
+        
+        existing_user = next((u for u in db["users"] if u["email"] == payload.email), None)
+        current_time = time.time()
+        
+        if existing_user:
+            if existing_user["is_verified"]:
+                raise HTTPException(status_code=400, detail="Email is already registered and verified.")
+            else:
+                # Check 1-minute cooldown (60 seconds)
+                last_sent = existing_user.get("last_email_sent_at", 0)
+                if current_time - last_sent < 60:
+                    remaining_cooldown = int(60 - (current_time - last_sent))
+                    raise HTTPException(
+                        status_code=429, 
+                        detail=f"Please wait {remaining_cooldown} seconds before requesting a new email."
+                    )
+                
+                # Resend new 6-character alphanumeric code
+                verify_code = generate_alphanumeric_code()
+                
+                existing_user["username"] = payload.username
+                existing_user["password"] = hash_password(payload.password)
+                existing_user["verify_code"] = verify_code
+                existing_user["last_email_sent_at"] = current_time
+                
+                mailer.send_verification_code(payload.email, verify_code)
+                return {"status": "success", "user_id": existing_user["user_id"], "message": "Verification email resent."}
+
+        # Create new unverified user
         user_id = db.get("next_user_id", 1)
         db["next_user_id"] = user_id + 1
+        
+        verify_code = generate_alphanumeric_code()
+        
         db["users"].append({
             "user_id": user_id,
             "username": payload.username,
             "email": payload.email,
             "password": hash_password(payload.password),
+            "is_verified": False,
+            "verify_code": verify_code,
+            "created_at": current_time,
+            "last_email_sent_at": current_time,
             "projects": []
         })
-        return {"status": "success", "user_id": user_id}
+        
+        mailer.send_verification_code(payload.email, verify_code)
+        return {"status": "success", "user_id": user_id, "message": "Registration successful. Check your email for verification."}
 
     return db_manager.update(mutate)
 
@@ -106,12 +205,48 @@ def get_users(user_id: int, request: Request):
         for user in db["users"]
     ]
 
+class ResendCodePayload(BaseModel):
+    email: EmailStr
+
+@router.post("/resend-code")
+def resend_verification_code(payload: ResendCodePayload):
+    def mutate(db):
+        clean_expired_unverified_users(db)
+        user = next((u for u in db["users"] if u["email"] == payload.email), None)
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="Email is not registered.")
+            
+        # Prevent sending codes to already verified accounts
+        if user.get("is_verified", False):
+            raise HTTPException(status_code=400, detail="Account is already verified.")
+
+        current_time = time.time()
+        last_sent = user.get("last_email_sent_at", 0)
+        
+        # Check 1-minute cooldown (60 seconds)
+        if current_time - last_sent < 60:
+            remaining_cooldown = int(60 - (current_time - last_sent))
+            raise HTTPException(
+                status_code=429, 
+                detail=f"Please wait {remaining_cooldown} seconds before requesting a new code."
+            )
+
+        # Generate new 6-character alphanumeric code
+        verify_code = generate_alphanumeric_code()
+        user["verify_code"] = verify_code
+        user["last_email_sent_at"] = current_time
+        
+        mailer.send_verification_code(payload.email, verify_code)
+        return {"status": "success", "message": "Verification code resent successfully."}
+
+    return db_manager.update(mutate)
+
 # --- SECTION: Account Settings (US-24) & Account Deletion (US-38) ---
 import base64
 import secrets
 import hashlib
 import hmac
-import mailer
 
 class UpdateProfilePayload(BaseModel):
     username: str | None = None
@@ -306,9 +441,6 @@ def update_user_profile(user_id: int, payload: UpdateProfilePayload, request: Re
         db_manager.delete_user_avatar(user_id)
 
     return db_manager.update(mutate)
-
-
-
 
 @router.post("/users/{user_id}/email-change")
 def request_email_change(user_id: int, payload: EmailChangePayload):
@@ -527,5 +659,74 @@ def delete_account(user_id: int, payload: DeleteAccountPayload):
         # Remove the user. next_user_id is deliberately left alone so ids are never reused.
         db["users"] = [u for u in db["users"] if str(u.get("user_id")) != str(user_id)]
         return {"status": "success"}
+
+    return db_manager.update(mutate)
+
+class ForgotPasswordPayload(BaseModel):
+    email: EmailStr
+
+class ResetPasswordPayload(BaseModel):
+    email: EmailStr
+    code: str
+    new_password: str
+
+@router.post("/forgot-password")
+def forgot_password(payload: ForgotPasswordPayload):
+    def mutate(db):
+        clean_expired_unverified_users(db)
+        user = next((u for u in db["users"] if u["email"] == payload.email), None)
+        
+        # Check if email is registered and verified
+        if not user:
+            raise HTTPException(status_code=404, detail="Email is not registered.")
+        if not user.get("is_verified", False):
+            raise HTTPException(status_code=400, detail="Account is not verified.")
+
+        current_time = time.time()
+        last_sent = user.get("last_reset_sent_at", 0)
+        
+        # Enforce 1-minute (60 seconds) cooldown
+        if current_time - last_sent < 60:
+            remaining_cooldown = int(60 - (current_time - last_sent))
+            raise HTTPException(
+                status_code=429, 
+                detail=f"Please wait {remaining_cooldown} seconds before requesting a new code."
+            )
+
+        reset_code = generate_alphanumeric_code()
+        user["reset_code"] = reset_code
+        user["reset_code_expires_at"] = current_time + 900  # Expires in 15 minutes
+        user["last_reset_sent_at"] = current_time
+        
+        mailer.send_password_reset_code(payload.email, reset_code)
+        return {"status": "success", "message": "Password reset code sent successfully."}
+
+    return db_manager.update(mutate)
+
+@router.post("/reset-password")
+def reset_password(payload: ResetPasswordPayload):
+    def mutate(db):
+        clean_expired_unverified_users(db)
+        user = next((u for u in db["users"] if u["email"] == payload.email), None)
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="Email is not registered.")
+        if not user.get("is_verified", False):
+            raise HTTPException(status_code=400, detail="Account is not verified.")
+
+        if user.get("reset_code") != payload.code.strip().upper():
+            raise HTTPException(status_code=400, detail="Invalid reset code.")
+
+        if time.time() > user.get("reset_code_expires_at", 0):
+            raise HTTPException(status_code=400, detail="Reset code has expired. Please request a new one.")
+
+        if len(payload.new_password) < 8:
+            raise HTTPException(status_code=422, detail="Password must be at least 8 characters long.")
+
+        user["password"] = hash_password(payload.new_password)
+        user.pop("reset_code", None)
+        user.pop("reset_code_expires_at", None)
+        
+        return {"status": "success", "message": "Password reset successfully. You can now log in."}
 
     return db_manager.update(mutate)

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verify Account - John Monash</title>
+  <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
+  <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
+  <link rel="stylesheet" href="../styles/auth.css?v=20261012">
+  <link rel="stylesheet" href="../styles/snackbar.css">
+</head>
+<body>
+  <div class="auth-container">
+    <div class="brand-name brand">
+      <img class="brand-logo" src="../assets/logo.png" alt="John Monash" onerror="this.parentNode.classList.add('brand-text-only'); this.remove();">
+      <span class="brand-wordmark">John Monash</span>
+    </div>
+
+    <h2>Verify Your Account</h2>
+    <p style="color: #64748b; font-size: 14px; margin-bottom: 20px;">Enter the 6-character code sent to your email.</p>
+
+    <form id="verify-form" onsubmit="event.preventDefault();">
+      <div class="input-group">
+        <label for="email">Email</label>
+        <div style="display: flex; gap: 8px;">
+          <input id="email" name="email" placeholder="Enter your email" required style="flex: 1;">
+          <button type="button" id="send-code-btn" class="submit-btn" style="margin-top: 0; width: auto; padding: 12px 16px; font-size: 14px; white-space: nowrap;">Send Code</button>
+        </div>
+        <span id="email-error" class="error-message"></span>
+      </div>
+
+      <div class="input-group">
+        <label for="verification-code">Verification Code</label>
+        <input id="verification-code" name="code" placeholder="e.g. A9B2C3" maxlength="6" style="text-transform: uppercase; letter-spacing: 2px; font-family: monospace;" required>
+        <span id="code-error" class="error-message"></span>
+      </div>
+
+      <button type="submit" id="verify-btn" class="submit-btn">Verify Account</button>
+
+      <div id="snackbar"></div>
+    </form>
+
+    <div class="auth-link" style="margin-top: 20px;">
+      Already verified? <a href="login.html">Log In</a>
+    </div>
+  </div>
+
+  <script type="py" config="../../settings.json" src="../backend/views/verify.py"></script>
+</body>
+</html>

@@ -1003,6 +1003,40 @@ class ServerData:
             print(f"[API Error] Failed to fetch users: {e}")
             return []
 
+    async def verify_user_code(self, email: str, code: str) -> tuple[bool, str]:
+        """Sends 6-character alphanumeric verification code to the backend."""
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/verify-code",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"email": email, "code": code})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data.get("message", "Email verified successfully!")
+            return False, data.get("detail", "Invalid verification code.")
+        except Exception as e:
+            print(f"[API Error] {e}")
+            return False, "Unable to connect to the server."
+
+    async def resend_verification_code(self, email: str) -> tuple[bool, str]:
+        """Requests a new 6-character alphanumeric verification code from the server."""
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/resend-code",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"email": email})
+            )
+            data = await response.json() or {}
+            if response.status == 200:
+                return True, data.get("message", "Verification code resent successfully.")
+            return False, data.get("detail", "Failed to resend code.")
+        except Exception as e:
+            print(f"[API Error] {e}")
+            return False, "Unable to connect to the server."
+
     async def delete_project(self, project_id: int) -> tuple[bool, str]:
         """Deletes a project and everything stored inside it (delete_project)."""
         user_id = self.get_active_session()
@@ -1123,4 +1157,38 @@ class ServerData:
             return False, data.get("detail", "Failed to delete account.")
         except Exception as e:
             print(f"[API Error] Failed to delete account: {e}")
+            return False, "Unable to connect to the server."
+
+    async def request_password_reset(self, email: str) -> tuple[bool, str]:
+        """Requests a password reset code from the server."""
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/forgot-password",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"email": email})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data.get("message", "Password reset code sent successfully.")
+            return False, data.get("detail", "Failed to send reset code.")
+        except Exception as e:
+            print(f"[API Error] {e}")
+            return False, "Unable to connect to the server."
+
+    async def reset_password(self, email: str, code: str, new_password: str) -> tuple[bool, str]:
+        """Submits the reset code and new password to the server."""
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/reset-password",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"email": email, "code": code, "new_password": new_password})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data.get("message", "Password reset successfully.")
+            return False, data.get("detail", "Failed to reset password.")
+        except Exception as e:
+            print(f"[API Error] {e}")
             return False, "Unable to connect to the server."
