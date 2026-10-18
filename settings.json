@@ -21,6 +21,7 @@
     "./src/backend/utils/project_role_helpers.py": "./project_role_helpers.py",
     "./src/backend/views/verify.py": "./verify.py",
     "./src/backend/utils/dialog.py": "./dialog.py",
-    "./src/backend/settings.py": "./settings.py"
+    "./src/backend/settings.py": "./settings.py",
+    "./src/backend/views/forgot_password.py": "./forgot_password.py"
   }
 }

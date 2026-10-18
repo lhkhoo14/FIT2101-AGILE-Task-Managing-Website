@@ -1111,3 +1111,37 @@ class ServerData:
         except Exception as e:
             print(f"[API Error] Failed to delete account: {e}")
             return False, "Unable to connect to the server."
+
+    async def request_password_reset(self, email: str) -> tuple[bool, str]:
+        """Requests a password reset code from the server."""
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/forgot-password",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"email": email})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data.get("message", "Password reset code sent successfully.")
+            return False, data.get("detail", "Failed to send reset code.")
+        except Exception as e:
+            print(f"[API Error] {e}")
+            return False, "Unable to connect to the server."
+
+    async def reset_password(self, email: str, code: str, new_password: str) -> tuple[bool, str]:
+        """Submits the reset code and new password to the server."""
+        try:
+            response = await pyfetch(
+                f"{self.api_url}/reset-password",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"email": email, "code": code, "new_password": new_password})
+            )
+            data = await response.json()
+            if response.status == 200:
+                return True, data.get("message", "Password reset successfully.")
+            return False, data.get("detail", "Failed to reset password.")
+        except Exception as e:
+            print(f"[API Error] {e}")
+            return False, "Unable to connect to the server."
