@@ -10,6 +10,14 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: MAIL_FROM_NAME
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
 
   - type: web
     name: fit2101-frontend

@@ -6,4 +6,3 @@ API_URL = (
     if window.location.hostname in ("localhost", "127.0.0.1")
     else "https://fit2101-api.onrender.com/api"
 )
-RESEND_API_KEY= "re_V4aDdiUB_CkQXcF4wdYk3QA6CCSXDLaow"

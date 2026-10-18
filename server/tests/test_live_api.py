@@ -54,11 +54,13 @@ SEED = {
     "next_project_id": 1,
     "next_backlog_id": 1,
     "next_sprint_id": 1,
+    # Seeded accounts are established users. Login rejects accounts that have
+    # not completed the 6-character email verification, so they are verified here.
     "users": [
         {"user_id": 1, "username": "Alice", "email": "alice@example.com",
-         "password": hash_password("Password123"), "projects": []},
+         "password": hash_password("Password123"), "is_verified": True, "projects": []},
         {"user_id": 2, "username": "Bob", "email": "bob@example.com",
-         "password": hash_password("Password123"), "projects": []},
+         "password": hash_password("Password123"), "is_verified": True, "projects": []},
     ],
     "projects": {},
 }
@@ -74,6 +76,9 @@ WRAPPER.write_text(
     "import database_manager\n"
     f"database_manager.DB_PATH = {str(DB)!r}\n"
     f"database_manager.db_manager.db_path = {str(DB)!r}\n"
+    # Never let a developer's real Brevo key make the test run send mail.
+    "import os\n"
+    "os.environ.pop('BREVO_API_KEY', None)\n"
     "from main import app  # noqa: F401\n",
     encoding="utf-8",
 )
