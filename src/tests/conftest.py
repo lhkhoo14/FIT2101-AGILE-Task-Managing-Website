@@ -1,4 +1,5 @@
 import os
+import os
 import tempfile
 import pytest
 from fastapi.testclient import TestClient
@@ -10,7 +11,7 @@ _temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
 _temp_db.close()
 
 from server import database_manager
-database_manager.db_manager.db_path = _temp_db.name
+database_manager.db_manager.db_path = _temp_db.name  # type: ignore[attr-defined]
 
 @pytest.fixture(autouse=True)
 def reset_database():
@@ -24,12 +25,11 @@ def reset_database():
         "time_logs": [],
         "history": []
     }
-    if hasattr(mgr, "data"):
-        mgr.data = initial_data
-    if hasattr(mgr, "save_db"):
-        mgr.save_db()
-    elif hasattr(mgr, "save"):
-        mgr.save()
+    # Use the actual methods available on DatabaseManager (e.g., read/write)
+    if hasattr(mgr, "write"):
+        mgr.write(initial_data)  # type: ignore[attr-defined]
+    elif hasattr(mgr, "save_db"):
+        mgr.save_db()  # type: ignore[attr-defined]
     yield
 
 @pytest.fixture
@@ -43,7 +43,7 @@ def seed_factory():
     """Factory fixture to seed realistic test data into the database."""
     def _seed(users=None, projects=None, sprints=None, tasks=None):
         mgr = database_manager.db_manager
-        data = mgr.load_db() if hasattr(mgr, "load_db") else getattr(mgr, "data", {})
+        data = mgr.read() if hasattr(mgr, "read") else {}  # type: ignore[attr-defined]
         if users:
             data.setdefault("users", []).extend(users)
         if projects:
@@ -52,7 +52,7 @@ def seed_factory():
             data.setdefault("sprints", []).extend(sprints)
         if tasks:
             data.setdefault("tasks", []).extend(tasks)
-        if hasattr(mgr, "save_db"):
-            mgr.save_db()
+        if hasattr(mgr, "write"):
+            mgr.write(data)  # type: ignore[attr-defined]
         return data
     return _seed
