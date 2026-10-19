@@ -1,12 +1,13 @@
 import os
-import os
 import tempfile
 import pytest
 from fastapi.testclient import TestClient
 
+# Ensure DATABASE_URL is not interfering with tests
 if "DATABASE_URL" in os.environ:
     del os.environ["DATABASE_URL"]
 
+# Create a temporary JSON database file for isolation
 _temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
 _temp_db.close()
 
@@ -25,11 +26,8 @@ def reset_database():
         "time_logs": [],
         "history": []
     }
-    # Use the actual methods available on DatabaseManager (e.g., read/write)
     if hasattr(mgr, "write"):
         mgr.write(initial_data)  # type: ignore[attr-defined]
-    elif hasattr(mgr, "save_db"):
-        mgr.save_db()  # type: ignore[attr-defined]
     yield
 
 @pytest.fixture
