@@ -7,7 +7,7 @@ def test_create_project_endpoint(client, seed_factory):
     
     response = client.post(
         "/api/projects",
-        json={"name": "Software Engineering Project"},
+        json={"project_id": "999", "name": "Software Engineering Project", "description": "Test project"},
         headers={"X-User-Id": "1"}
     )
     assert response.status_code in (200, 201)

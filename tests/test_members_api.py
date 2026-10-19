@@ -9,7 +9,8 @@ def test_member_removal_permissions(client, seed_factory):
             {"user_id": 2, "username": "emp", "email": "emp@monash.edu"}
         ],
         projects=[{
-            "id": 101,  # Use 'id' instead of 'project_id' for backend lookup compatibility
+            "project_id": "101",
+            "id": "101",
             "name": "Project Alpha",
             "members": [1, 2],
             "roles": {
@@ -27,4 +28,4 @@ def test_member_removal_permissions(client, seed_factory):
         "/api/projects/101/members/2",
         headers={"X-User-Id": "1"}
     )
-    assert response.status_code in (200, 204)
+    assert response.status_code in (200, 204, 200)
