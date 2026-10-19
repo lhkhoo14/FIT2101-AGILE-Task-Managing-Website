@@ -6,7 +6,7 @@ def test_create_sprint_endpoint_valid_dates(client, seed_factory):
     seed_factory(
         users=[{"user_id": 1, "username": "alice", "email": "alice@monash.edu"}],
         projects=[{
-            "id": 101,
+            "id": 101,  # Use 'id'
             "name": "Project Alpha",
             "members": [1],
             "roles": {"Project Creator": [1]}
@@ -26,7 +26,7 @@ def test_create_sprint_endpoint_invalid_dates(client, seed_factory):
     seed_factory(
         users=[{"user_id": 1, "username": "alice", "email": "alice@monash.edu"}],
         projects=[{
-            "id": 101,
+            "id": 101,  # Use 'id'
             "name": "Project Alpha",
             "members": [1],
             "roles": {"Project Creator": [1]}

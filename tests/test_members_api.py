@@ -9,7 +9,7 @@ def test_member_removal_permissions(client, seed_factory):
             {"user_id": 2, "username": "emp", "email": "emp@monash.edu"}
         ],
         projects=[{
-            "id": 101,
+            "id": 101,  # Use 'id' instead of 'project_id' for backend lookup compatibility
             "name": "Project Alpha",
             "members": [1, 2],
             "roles": {
