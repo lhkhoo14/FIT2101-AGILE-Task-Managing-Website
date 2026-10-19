@@ -1,8 +1,8 @@
 {
     "next_user_id": 5,
-    "next_project_id": 14,
+    "next_project_id": 27,
     "next_backlog_id": 15,
-    "next_sprint_id": 8,
+    "next_sprint_id": 10,
     "users": [
         {
             "user_id": 1,
@@ -18,7 +18,20 @@
                 10,
                 11,
                 12,
-                13
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19,
+                20,
+                21,
+                22,
+                23,
+                24,
+                25,
+                26
             ],
             "failed_attempts": 0,
             "lockout_until": 0
@@ -1404,6 +1417,1311 @@
             "description": "Test project",
             "status": "active",
             "created_at": 1792416549974,
+            "creator": [
+                1
+            ],
+            "members": [
+                1
+            ],
+            "contribute": [
+                1
+            ],
+            "roles": {
+                "Project Creator": [
+                    1
+                ],
+                "Scrum Master": [],
+                "Product Owner": [],
+                "Manager": [],
+                "Employee": []
+            },
+            "role_definitions": {
+                "Project Creator": {
+                    "colour": "#44E",
+                    "description": "Highest ranking role with full project permissions.",
+                    "permissions": [
+                        "edit_project",
+                        "delete_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Scrum Master": {
+                    "colour": "#E44",
+                    "description": "Manages sprints, team membership, tasks, and reviews.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Product Owner": {
+                    "colour": "#4E4",
+                    "description": "Manages product backlog, sprints, and team collaboration.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Manager": {
+                    "colour": "#E4E",
+                    "description": "Manages sprint cycles and tasks.",
+                    "permissions": [
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Employee": {
+                    "colour": "#4EE",
+                    "description": "Standard contributor handling tasks and forwarding sprint items.",
+                    "permissions": [
+                        "edit_sprints",
+                        "manage_tasks"
+                    ],
+                    "conflicting_roles": []
+                }
+            },
+            "backlog": [],
+            "sprints": []
+        },
+        "14": {
+            "project_id": 14,
+            "name": "Software Engineering Project",
+            "description": "Test project",
+            "status": "active",
+            "created_at": 1792416618098,
+            "creator": [
+                1
+            ],
+            "members": [
+                1
+            ],
+            "contribute": [
+                1
+            ],
+            "roles": {
+                "Project Creator": [
+                    1
+                ],
+                "Scrum Master": [],
+                "Product Owner": [],
+                "Manager": [],
+                "Employee": []
+            },
+            "role_definitions": {
+                "Project Creator": {
+                    "colour": "#44E",
+                    "description": "Highest ranking role with full project permissions.",
+                    "permissions": [
+                        "edit_project",
+                        "delete_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Scrum Master": {
+                    "colour": "#E44",
+                    "description": "Manages sprints, team membership, tasks, and reviews.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Product Owner": {
+                    "colour": "#4E4",
+                    "description": "Manages product backlog, sprints, and team collaboration.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Manager": {
+                    "colour": "#E4E",
+                    "description": "Manages sprint cycles and tasks.",
+                    "permissions": [
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Employee": {
+                    "colour": "#4EE",
+                    "description": "Standard contributor handling tasks and forwarding sprint items.",
+                    "permissions": [
+                        "edit_sprints",
+                        "manage_tasks"
+                    ],
+                    "conflicting_roles": []
+                }
+            },
+            "backlog": [],
+            "sprints": []
+        },
+        "15": {
+            "project_id": 15,
+            "name": "Software Engineering Project",
+            "description": "Test project",
+            "status": "active",
+            "created_at": 1792416668078,
+            "creator": [
+                1
+            ],
+            "members": [
+                1
+            ],
+            "contribute": [
+                1
+            ],
+            "roles": {
+                "Project Creator": [
+                    1
+                ],
+                "Scrum Master": [],
+                "Product Owner": [],
+                "Manager": [],
+                "Employee": []
+            },
+            "role_definitions": {
+                "Project Creator": {
+                    "colour": "#44E",
+                    "description": "Highest ranking role with full project permissions.",
+                    "permissions": [
+                        "edit_project",
+                        "delete_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Scrum Master": {
+                    "colour": "#E44",
+                    "description": "Manages sprints, team membership, tasks, and reviews.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Product Owner": {
+                    "colour": "#4E4",
+                    "description": "Manages product backlog, sprints, and team collaboration.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Manager": {
+                    "colour": "#E4E",
+                    "description": "Manages sprint cycles and tasks.",
+                    "permissions": [
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Employee": {
+                    "colour": "#4EE",
+                    "description": "Standard contributor handling tasks and forwarding sprint items.",
+                    "permissions": [
+                        "edit_sprints",
+                        "manage_tasks"
+                    ],
+                    "conflicting_roles": []
+                }
+            },
+            "backlog": [],
+            "sprints": []
+        },
+        "16": {
+            "project_id": 16,
+            "name": "Software Engineering Project",
+            "description": "Test project",
+            "status": "active",
+            "created_at": 1792416721464,
+            "creator": [
+                1
+            ],
+            "members": [
+                1
+            ],
+            "contribute": [
+                1
+            ],
+            "roles": {
+                "Project Creator": [
+                    1
+                ],
+                "Scrum Master": [],
+                "Product Owner": [],
+                "Manager": [],
+                "Employee": []
+            },
+            "role_definitions": {
+                "Project Creator": {
+                    "colour": "#44E",
+                    "description": "Highest ranking role with full project permissions.",
+                    "permissions": [
+                        "edit_project",
+                        "delete_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Scrum Master": {
+                    "colour": "#E44",
+                    "description": "Manages sprints, team membership, tasks, and reviews.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Product Owner": {
+                    "colour": "#4E4",
+                    "description": "Manages product backlog, sprints, and team collaboration.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Manager": {
+                    "colour": "#E4E",
+                    "description": "Manages sprint cycles and tasks.",
+                    "permissions": [
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Employee": {
+                    "colour": "#4EE",
+                    "description": "Standard contributor handling tasks and forwarding sprint items.",
+                    "permissions": [
+                        "edit_sprints",
+                        "manage_tasks"
+                    ],
+                    "conflicting_roles": []
+                }
+            },
+            "backlog": [],
+            "sprints": []
+        },
+        "17": {
+            "project_id": 17,
+            "name": "Software Engineering Project",
+            "description": "Test project",
+            "status": "active",
+            "created_at": 1792416791862,
+            "creator": [
+                1
+            ],
+            "members": [
+                1
+            ],
+            "contribute": [
+                1
+            ],
+            "roles": {
+                "Project Creator": [
+                    1
+                ],
+                "Scrum Master": [],
+                "Product Owner": [],
+                "Manager": [],
+                "Employee": []
+            },
+            "role_definitions": {
+                "Project Creator": {
+                    "colour": "#44E",
+                    "description": "Highest ranking role with full project permissions.",
+                    "permissions": [
+                        "edit_project",
+                        "delete_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Scrum Master": {
+                    "colour": "#E44",
+                    "description": "Manages sprints, team membership, tasks, and reviews.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Product Owner": {
+                    "colour": "#4E4",
+                    "description": "Manages product backlog, sprints, and team collaboration.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Manager": {
+                    "colour": "#E4E",
+                    "description": "Manages sprint cycles and tasks.",
+                    "permissions": [
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Employee": {
+                    "colour": "#4EE",
+                    "description": "Standard contributor handling tasks and forwarding sprint items.",
+                    "permissions": [
+                        "edit_sprints",
+                        "manage_tasks"
+                    ],
+                    "conflicting_roles": []
+                }
+            },
+            "backlog": [],
+            "sprints": []
+        },
+        "18": {
+            "project_id": 18,
+            "name": "Software Engineering Project",
+            "description": "Test project",
+            "status": "active",
+            "created_at": 1792416985342,
+            "creator": [
+                1
+            ],
+            "members": [
+                1
+            ],
+            "contribute": [
+                1
+            ],
+            "roles": {
+                "Project Creator": [
+                    1
+                ],
+                "Scrum Master": [],
+                "Product Owner": [],
+                "Manager": [],
+                "Employee": []
+            },
+            "role_definitions": {
+                "Project Creator": {
+                    "colour": "#44E",
+                    "description": "Highest ranking role with full project permissions.",
+                    "permissions": [
+                        "edit_project",
+                        "delete_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Scrum Master": {
+                    "colour": "#E44",
+                    "description": "Manages sprints, team membership, tasks, and reviews.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Product Owner": {
+                    "colour": "#4E4",
+                    "description": "Manages product backlog, sprints, and team collaboration.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Manager": {
+                    "colour": "#E4E",
+                    "description": "Manages sprint cycles and tasks.",
+                    "permissions": [
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Employee": {
+                    "colour": "#4EE",
+                    "description": "Standard contributor handling tasks and forwarding sprint items.",
+                    "permissions": [
+                        "edit_sprints",
+                        "manage_tasks"
+                    ],
+                    "conflicting_roles": []
+                }
+            },
+            "backlog": [],
+            "sprints": []
+        },
+        "19": {
+            "project_id": 19,
+            "name": "Project Alpha",
+            "description": "Test project",
+            "status": "active",
+            "created_at": 1792417086199,
+            "creator": [
+                1
+            ],
+            "members": [
+                1
+            ],
+            "contribute": [
+                1
+            ],
+            "roles": {
+                "Project Creator": [
+                    1
+                ],
+                "Scrum Master": [],
+                "Product Owner": [],
+                "Manager": [],
+                "Employee": []
+            },
+            "role_definitions": {
+                "Project Creator": {
+                    "colour": "#44E",
+                    "description": "Highest ranking role with full project permissions.",
+                    "permissions": [
+                        "edit_project",
+                        "delete_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Scrum Master": {
+                    "colour": "#E44",
+                    "description": "Manages sprints, team membership, tasks, and reviews.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Product Owner": {
+                    "colour": "#4E4",
+                    "description": "Manages product backlog, sprints, and team collaboration.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Manager": {
+                    "colour": "#E4E",
+                    "description": "Manages sprint cycles and tasks.",
+                    "permissions": [
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Employee": {
+                    "colour": "#4EE",
+                    "description": "Standard contributor handling tasks and forwarding sprint items.",
+                    "permissions": [
+                        "edit_sprints",
+                        "manage_tasks"
+                    ],
+                    "conflicting_roles": []
+                }
+            },
+            "backlog": [],
+            "sprints": []
+        },
+        "20": {
+            "project_id": 20,
+            "name": "Project Alpha",
+            "description": "Test project",
+            "status": "active",
+            "created_at": 1792417086325,
+            "creator": [
+                1
+            ],
+            "members": [
+                1
+            ],
+            "contribute": [
+                1
+            ],
+            "roles": {
+                "Project Creator": [
+                    1
+                ],
+                "Scrum Master": [],
+                "Product Owner": [],
+                "Manager": [],
+                "Employee": []
+            },
+            "role_definitions": {
+                "Project Creator": {
+                    "colour": "#44E",
+                    "description": "Highest ranking role with full project permissions.",
+                    "permissions": [
+                        "edit_project",
+                        "delete_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Scrum Master": {
+                    "colour": "#E44",
+                    "description": "Manages sprints, team membership, tasks, and reviews.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Product Owner": {
+                    "colour": "#4E4",
+                    "description": "Manages product backlog, sprints, and team collaboration.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Manager": {
+                    "colour": "#E4E",
+                    "description": "Manages sprint cycles and tasks.",
+                    "permissions": [
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Employee": {
+                    "colour": "#4EE",
+                    "description": "Standard contributor handling tasks and forwarding sprint items.",
+                    "permissions": [
+                        "edit_sprints",
+                        "manage_tasks"
+                    ],
+                    "conflicting_roles": []
+                }
+            },
+            "backlog": [],
+            "sprints": []
+        },
+        "21": {
+            "project_id": 21,
+            "name": "Software Engineering Project",
+            "description": "Test project",
+            "status": "active",
+            "created_at": 1792417086359,
+            "creator": [
+                1
+            ],
+            "members": [
+                1
+            ],
+            "contribute": [
+                1
+            ],
+            "roles": {
+                "Project Creator": [
+                    1
+                ],
+                "Scrum Master": [],
+                "Product Owner": [],
+                "Manager": [],
+                "Employee": []
+            },
+            "role_definitions": {
+                "Project Creator": {
+                    "colour": "#44E",
+                    "description": "Highest ranking role with full project permissions.",
+                    "permissions": [
+                        "edit_project",
+                        "delete_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Scrum Master": {
+                    "colour": "#E44",
+                    "description": "Manages sprints, team membership, tasks, and reviews.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Product Owner": {
+                    "colour": "#4E4",
+                    "description": "Manages product backlog, sprints, and team collaboration.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Manager": {
+                    "colour": "#E4E",
+                    "description": "Manages sprint cycles and tasks.",
+                    "permissions": [
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Employee": {
+                    "colour": "#4EE",
+                    "description": "Standard contributor handling tasks and forwarding sprint items.",
+                    "permissions": [
+                        "edit_sprints",
+                        "manage_tasks"
+                    ],
+                    "conflicting_roles": []
+                }
+            },
+            "backlog": [],
+            "sprints": []
+        },
+        "22": {
+            "project_id": 22,
+            "name": "Project Alpha",
+            "description": "Test project",
+            "status": "active",
+            "created_at": 1792417087947,
+            "creator": [
+                1
+            ],
+            "members": [
+                1
+            ],
+            "contribute": [
+                1
+            ],
+            "roles": {
+                "Project Creator": [
+                    1
+                ],
+                "Scrum Master": [],
+                "Product Owner": [],
+                "Manager": [],
+                "Employee": []
+            },
+            "role_definitions": {
+                "Project Creator": {
+                    "colour": "#44E",
+                    "description": "Highest ranking role with full project permissions.",
+                    "permissions": [
+                        "edit_project",
+                        "delete_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Scrum Master": {
+                    "colour": "#E44",
+                    "description": "Manages sprints, team membership, tasks, and reviews.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Product Owner": {
+                    "colour": "#4E4",
+                    "description": "Manages product backlog, sprints, and team collaboration.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Manager": {
+                    "colour": "#E4E",
+                    "description": "Manages sprint cycles and tasks.",
+                    "permissions": [
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Employee": {
+                    "colour": "#4EE",
+                    "description": "Standard contributor handling tasks and forwarding sprint items.",
+                    "permissions": [
+                        "edit_sprints",
+                        "manage_tasks"
+                    ],
+                    "conflicting_roles": []
+                }
+            },
+            "backlog": [],
+            "sprints": [
+                {
+                    "id": "8",
+                    "name": "Sprint 1",
+                    "details": "First sprint",
+                    "status": "active",
+                    "start_date": "2026-10-20",
+                    "end_date": "2026-11-02",
+                    "priority": "medium",
+                    "tags": [],
+                    "members": [
+                        1
+                    ],
+                    "created_by": 1,
+                    "created_at": null,
+                    "kanban_state": {
+                        "backlog": [],
+                        "active": [],
+                        "review": [],
+                        "completed": []
+                    }
+                }
+            ],
+            "contributions": {
+                "1": {
+                    "user_id": 1,
+                    "name": "wa",
+                    "assigned": 0,
+                    "completed": 0,
+                    "logged_seconds": 0,
+                    "logged_hours": 0.0,
+                    "tasks": [],
+                    "work_logs": []
+                }
+            },
+            "contributions_updated_at": "2026-10-19 13:38 UTC"
+        },
+        "23": {
+            "project_id": 23,
+            "name": "Project Alpha",
+            "description": "Test project",
+            "status": "active",
+            "created_at": 1792417088002,
+            "creator": [
+                1
+            ],
+            "members": [
+                1
+            ],
+            "contribute": [
+                1
+            ],
+            "roles": {
+                "Project Creator": [
+                    1
+                ],
+                "Scrum Master": [],
+                "Product Owner": [],
+                "Manager": [],
+                "Employee": []
+            },
+            "role_definitions": {
+                "Project Creator": {
+                    "colour": "#44E",
+                    "description": "Highest ranking role with full project permissions.",
+                    "permissions": [
+                        "edit_project",
+                        "delete_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Scrum Master": {
+                    "colour": "#E44",
+                    "description": "Manages sprints, team membership, tasks, and reviews.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Product Owner": {
+                    "colour": "#4E4",
+                    "description": "Manages product backlog, sprints, and team collaboration.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Manager": {
+                    "colour": "#E4E",
+                    "description": "Manages sprint cycles and tasks.",
+                    "permissions": [
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Employee": {
+                    "colour": "#4EE",
+                    "description": "Standard contributor handling tasks and forwarding sprint items.",
+                    "permissions": [
+                        "edit_sprints",
+                        "manage_tasks"
+                    ],
+                    "conflicting_roles": []
+                }
+            },
+            "backlog": [],
+            "sprints": []
+        },
+        "24": {
+            "project_id": 24,
+            "name": "Software Engineering Project",
+            "description": "Test project",
+            "status": "active",
+            "created_at": 1792417163682,
+            "creator": [
+                1
+            ],
+            "members": [
+                1
+            ],
+            "contribute": [
+                1
+            ],
+            "roles": {
+                "Project Creator": [
+                    1
+                ],
+                "Scrum Master": [],
+                "Product Owner": [],
+                "Manager": [],
+                "Employee": []
+            },
+            "role_definitions": {
+                "Project Creator": {
+                    "colour": "#44E",
+                    "description": "Highest ranking role with full project permissions.",
+                    "permissions": [
+                        "edit_project",
+                        "delete_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Scrum Master": {
+                    "colour": "#E44",
+                    "description": "Manages sprints, team membership, tasks, and reviews.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Product Owner": {
+                    "colour": "#4E4",
+                    "description": "Manages product backlog, sprints, and team collaboration.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Manager": {
+                    "colour": "#E4E",
+                    "description": "Manages sprint cycles and tasks.",
+                    "permissions": [
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Employee": {
+                    "colour": "#4EE",
+                    "description": "Standard contributor handling tasks and forwarding sprint items.",
+                    "permissions": [
+                        "edit_sprints",
+                        "manage_tasks"
+                    ],
+                    "conflicting_roles": []
+                }
+            },
+            "backlog": [],
+            "sprints": []
+        },
+        "25": {
+            "project_id": 25,
+            "name": "Project Alpha",
+            "description": "Test project",
+            "status": "active",
+            "created_at": 1792417165278,
+            "creator": [
+                1
+            ],
+            "members": [
+                1
+            ],
+            "contribute": [
+                1
+            ],
+            "roles": {
+                "Project Creator": [
+                    1
+                ],
+                "Scrum Master": [],
+                "Product Owner": [],
+                "Manager": [],
+                "Employee": []
+            },
+            "role_definitions": {
+                "Project Creator": {
+                    "colour": "#44E",
+                    "description": "Highest ranking role with full project permissions.",
+                    "permissions": [
+                        "edit_project",
+                        "delete_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Scrum Master": {
+                    "colour": "#E44",
+                    "description": "Manages sprints, team membership, tasks, and reviews.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Product Owner": {
+                    "colour": "#4E4",
+                    "description": "Manages product backlog, sprints, and team collaboration.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Manager": {
+                    "colour": "#E4E",
+                    "description": "Manages sprint cycles and tasks.",
+                    "permissions": [
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Employee": {
+                    "colour": "#4EE",
+                    "description": "Standard contributor handling tasks and forwarding sprint items.",
+                    "permissions": [
+                        "edit_sprints",
+                        "manage_tasks"
+                    ],
+                    "conflicting_roles": []
+                }
+            },
+            "backlog": [],
+            "sprints": [
+                {
+                    "id": "9",
+                    "name": "Sprint 1",
+                    "details": "First sprint",
+                    "status": "active",
+                    "start_date": "2026-10-20",
+                    "end_date": "2026-11-02",
+                    "priority": "medium",
+                    "tags": [],
+                    "members": [
+                        1
+                    ],
+                    "created_by": 1,
+                    "created_at": null,
+                    "kanban_state": {
+                        "backlog": [],
+                        "active": [],
+                        "review": [],
+                        "completed": []
+                    }
+                }
+            ],
+            "contributions": {
+                "1": {
+                    "user_id": 1,
+                    "name": "wa",
+                    "assigned": 0,
+                    "completed": 0,
+                    "logged_seconds": 0,
+                    "logged_hours": 0.0,
+                    "tasks": [],
+                    "work_logs": []
+                }
+            },
+            "contributions_updated_at": "2026-10-19 13:39 UTC"
+        },
+        "26": {
+            "project_id": 26,
+            "name": "Project Alpha",
+            "description": "Test project",
+            "status": "active",
+            "created_at": 1792417165348,
             "creator": [
                 1
             ],
