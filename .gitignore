@@ -16,5 +16,5 @@ dist/
 .DS_Store
 Thumbs.db
 
-#Coverage report
-.Coverage
+#coverage report
+.coverage

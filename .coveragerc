@@ -1,0 +1,28 @@
+[run]
+source =
+    server
+    src/backend
+omit =
+    # Scripts, not part of the pytest suite.
+    server/tests/*
+    # Browser-only UI code. These modules build and wire DOM elements through
+    # PyScript (document, window, event handlers, drag and drop, modals) and cannot
+    # run outside a browser. Their decision logic is extracted into the tested
+    # modules (sprint_access, project_role_helpers, charts, server_data) and the
+    # rest is covered by the manual regression checklist in docs/TECHNICAL_GUIDE.md.
+    src/backend/views/*
+    src/backend/settings.py
+    src/backend/utils/auth.py
+    src/backend/utils/dialog.py
+    src/backend/utils/layout.py
+    src/backend/utils/project_helpers.py
+    src/backend/utils/project_layout.py
+    src/backend/utils/sidebar_state.py
+    src/backend/utils/topbar.py
+
+[report]
+show_missing = True
+skip_covered = False
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
