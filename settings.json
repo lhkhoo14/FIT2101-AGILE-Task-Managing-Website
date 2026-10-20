@@ -24,14 +24,4 @@
     "./src/backend/settings.py": "./settings.py",
     "./src/backend/views/forgot_password.py": "./forgot_password.py"
   }
-  {
-  "python.analysis.extraPaths": [
-    "./server",
-    "./src/backend",
-    "./src/backend/utils",
-    "./tests"
-  ],
-  "python.testing.pytestEnabled": true,
-  "python.testing.pytestArgs": ["tests"]
-}
 }
