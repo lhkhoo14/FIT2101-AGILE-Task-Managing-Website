@@ -48,7 +48,10 @@ async def handle_login(event):
     clear_errors(["email", "password"])
 
     email = web.page["#email"].value.strip()
-    password = web.page["#password"].value.strip()
+    # Not stripped: signup stores the password exactly as typed, so trimming it
+    # here would make a password with a leading or trailing space one that can be
+    # registered but never matched - and three of those tries now lock the account.
+    password = web.page["#password"].value
 
     db = ServerData()
     success, message = await db.validate_login(email, password)
@@ -60,8 +63,12 @@ async def handle_login(event):
         msg_str = str(message) if not isinstance(message, str) else message
         msg_lower = msg_str.lower()
 
-        # 1. Unregistered Email
-        if "not registered" in msg_lower or "email" in msg_lower:
+        # Handle unverified account prompt
+        # Handle unverified account prompt -> Redirect to dedicated verification page
+        if "unverified" in msg_lower or "6-character" in msg_lower or "code" in msg_lower:
+            encoded_email = window.encodeURIComponent(email)
+            window.location.replace(f"verify.html?email={encoded_email}")
+        elif "not registered" in msg_lower or "email" in msg_lower:
             show_feedback("email", "email-error", msg_str)
 
         # 2. Lockout Triggered or Currently Locked Out

@@ -16,27 +16,17 @@
         <span>All Projects</span>
         </button>
 
-        <div class="nav-section-title">Schedule & Tasks</div>
-        
-        <button type="button" class="nav-item filter-item">
-        <span class="status-dot dot-todo"></span>
-        <span>To-Do</span>
-        </button>
-        
-        <button type="button" class="nav-item filter-item">
-        <span class="status-dot dot-wip"></span>
-        <span>WIP</span>
-        </button>
-        
-        <button type="button" class="nav-item filter-item">
-        <span class="status-dot dot-review"></span>
-        <span>Review</span>
-        </button>
-        
-        <button type="button" class="nav-item filter-item">
-        <span class="status-dot dot-completed"></span>
-        <span>Completed</span>
-        </button>
+      <div class="nav-section-title">Project Status</div>
+
+      <button type="button" id="filter-active" class="nav-item filter-item" data-status="active">
+    <span class="status-dot dot-active"></span>
+    <span>Active</span>
+      </button>
+
+      <button type="button" id="filter-completed" class="nav-item filter-item" data-status="completed">
+    <span class="status-dot dot-completed"></span>
+    <span>Completed</span>
+      </button>
     </nav>
 
     <!-- Settings at Bottom -->

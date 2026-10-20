@@ -54,11 +54,13 @@ SEED = {
     "next_project_id": 1,
     "next_backlog_id": 1,
     "next_sprint_id": 1,
+    # Seeded accounts are established users. Login rejects accounts that have
+    # not completed the 6-character email verification, so they are verified here.
     "users": [
         {"user_id": 1, "username": "Alice", "email": "alice@example.com",
-         "password": hash_password("Password123"), "projects": []},
+         "password": hash_password("Password123"), "is_verified": True, "projects": []},
         {"user_id": 2, "username": "Bob", "email": "bob@example.com",
-         "password": hash_password("Password123"), "projects": []},
+         "password": hash_password("Password123"), "is_verified": True, "projects": []},
     ],
     "projects": {},
 }
@@ -74,6 +76,9 @@ WRAPPER.write_text(
     "import database_manager\n"
     f"database_manager.DB_PATH = {str(DB)!r}\n"
     f"database_manager.db_manager.db_path = {str(DB)!r}\n"
+    # Never let a developer's real Brevo key make the test run send mail.
+    "import os\n"
+    "os.environ.pop('BREVO_API_KEY', None)\n"
     "from main import app  # noqa: F401\n",
     encoding="utf-8",
 )
@@ -222,6 +227,16 @@ try:
                           "members": [alice_id, 2]})
     check("POST /projects/{id}/sprints (create) -> 201", r.status_code == 201, r.text[:200])
     sprint_id = r.json().get("id")
+
+    # The dashboard list must stay a summary: the endpoint is reachable with any
+    # user id, so it should not also hand out the project's boards and tasks.
+    r = client.get(f"/api/users/{alice_id}/projects")
+    listed = [p for p in r.json() if str(p.get("project_id")) == str(project_id)]
+    check("the project list is a summary, not the whole project",
+          bool(listed) and "sprints" not in listed[0], listed[:1])
+    check("...but keeps the role map the dashboard needs",
+          bool(listed) and "roles" in listed[0], listed[:1])
+
 
     r = client.get(f"/api/projects/{project_id}/sprints", params={"user_id": alice_id})
     sprints = r.json() if r.status_code == 200 else []
@@ -392,8 +407,25 @@ try:
     r = client.post("/api/login", json={"email": "alice@example.com", "password": "Password456"})
     check("the new password works for login", r.status_code == 200, r.text[:200])
 
-    r = client.post(f"/api/users/{alice_id}/email-change", json={"new_email": "alice.b@example.com"})
+    r = client.post(f"/api/users/{alice_id}/email-change",
+                    json={"new_email": "alice.b@example.com",
+                          "current_password": "Password456"})
     check("POST /users/{id}/email-change -> 200", r.status_code == 200, r.text[:200])
+
+    # The confirmation link goes to the NEW address, so the password is what
+    # stops a guessed user id from completing a takeover.
+    r = client.post(f"/api/users/{alice_id}/email-change",
+                    json={"new_email": "alice.c@example.com"})
+    check("the request is refused without the password", r.status_code == 422, r.text[:200])
+    r = client.post(f"/api/users/{alice_id}/email-change",
+                    json={"new_email": "alice.c@example.com",
+                          "current_password": "NotThePassword1"})
+    check("the request is refused with the wrong password", r.status_code == 401, r.text[:200])
+
+    # The list the pickers use must not double as a directory of addresses.
+    r = client.get("/api/users", params={"user_id": alice_id})
+    check("GET /users no longer exposes email addresses",
+          r.status_code == 200 and all("email" not in u for u in r.json()), r.text[:200])
 
     # --- removals ---------------------------------------------------------
     r = client.post(f"/api/projects/{project_id}/members/2/remove", json={"user_id": alice_id})

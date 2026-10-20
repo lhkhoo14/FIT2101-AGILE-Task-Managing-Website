@@ -43,8 +43,7 @@ _current_user_id = server_data.get_active_session()
 # The board's direction rules follow the signed-in user's real project
 # permissions (_permissions, loaded in _init_page): edit_sprints covers the
 # forward moves, and review_tasks adds the In Review -> Completed step and the
-# backwards moves. The demo "view as manager/employee" switch that used to stand
-# in for those roles has been removed.
+# backwards moves.
 
 # ==========================================
 # CONSTANTS & GLOBAL STATE
@@ -333,6 +332,12 @@ def _apply_header_and_lock_state(sprint):
         )
         range_el.classList.toggle("hidden", not (start and end))
 
+    details_el = web.page["sprint-details"]
+    if details_el:
+        details = str(sprint.get("details") or "").strip()
+        details_el.textContent = details
+        details_el.classList.toggle("hidden", not details)
+
     if _sprint_ended:
         board = web.page["kanban-board"]
         if board is not None:
@@ -349,6 +354,10 @@ def _apply_header_and_lock_state(sprint):
         if end_btn is not None:
             end_btn.textContent = "End Sprint"
             end_btn.disabled = False
+            # Ending a sprint is a manage_sprints action - the PATCH route refuses
+            # everyone else - so roles without it are not offered the button at
+            # all, the same way Delete Sprint is handled just above.
+            end_btn.classList.toggle("hidden", "manage_sprints" not in _permissions)
             _start_end_watcher()
 
 

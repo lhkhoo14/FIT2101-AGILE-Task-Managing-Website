@@ -12,7 +12,7 @@ from server_data import ServerData
 from project_layout import get_project_id_from_url  # type: ignore
 from auth import show_snackbar  # type: ignore
 
-from project_role_helpers import ROLE_PERMISSIONS # type: ignore
+from project_role_helpers import ROLE_PERMISSIONS, PRESET_ROLES, PRESET_RANK, UNRANKED # type: ignore
 
 # Manager can edit project, add members, 
 # Employees can create tasks, drag sprint tasks, 
@@ -47,11 +47,10 @@ async def load_project_roles():
     render_user_roles_banner(user_roles, role_defs)
 
     if not role_defs:
-        role_defs = {
-            "Project Creator": {"colour": "#4747D4", "description": "Full administrative access to the project."},
-            "Project Manager": {"colour": "#f59e0b", "description": "Manages sprints, tasks, and team coordination."},
-            "Project Member": {"colour": "#10b981", "description": "Standard contributing member access."}
-        }
+        # The real presets, not a hand-written sample: two of the three names
+        # that used to sit here ("Project Manager", "Project Member") no longer
+        # exist, so this fallback offered roles the server would reject.
+        role_defs = PRESET_ROLES
 
     _all_roles = []
     for role_name, meta in role_defs.items():
@@ -71,6 +70,12 @@ async def load_project_roles():
                 "permissions": [],
                 "conflicting_roles": []
             })
+
+    # Seniority order, the same ranking the Members tab and the server use, so
+    # the page does not reshuffle itself when a custom role is added.
+    _all_roles.sort(
+        key=lambda role: (-PRESET_RANK.get(role["name"], UNRANKED), role["name"].casefold())
+    )
 
     render_roles_view(_all_roles)
     populate_permission_checkboxes() # Populate dynamic permissions list

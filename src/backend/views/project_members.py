@@ -8,7 +8,10 @@ from pyscript import web, window, when # type: ignore
 # from this folder; the ignores keep those runtime-correct imports quiet.
 from auth import show_snackbar  # type: ignore
 from dialog import confirm_action  # type: ignore
-from project_role_helpers import permissions_for_user, can_remove_member, member_permission_sets # type: ignore
+from project_role_helpers import (  # type: ignore
+    permissions_for_user, can_remove_member, member_permission_sets,
+    PRESET_RANK, UNRANKED,
+)
 from server_data import ServerData
 from project_layout import get_project_id_from_url # type: ignore
 
@@ -70,23 +73,32 @@ def _removable_member_ids() -> set:
 
 
 def get_role_for_member(member_id, roles):
-    """Finds the assigned role for a member."""
-    for role_name, member_ids in roles.items():
-        if member_id in member_ids:
-            return role_name
+    """The member's most senior role, or None when they hold none.
 
-    return "Member"
+    A member may hold several roles at once, so this picks the highest-ranked
+    one rather than whichever entry the role map happens to list first - an
+    account that holds both Project Creator and Employee is a creator.
+    """
+    wanted = str(member_id)
+    held = [
+        role_name for role_name, holders in roles.items()
+        if isinstance(holders, list) and wanted in {str(holder) for holder in holders}
+    ]
+    if not held:
+        return None
+    return max(held, key=lambda name: (PRESET_RANK.get(name, UNRANKED), name))
 
 
-def get_role_priority(role):
-    """Members with assigned roles appear first."""
-    if role in ["Product Owner", "Scrum Master"]:
-        return 0
+def role_sort_key(role_name):
+    """Seniority, most senior first: the shared rank, negated for this sort.
 
-    if role == "Member":
-        return 1
-
-    return 2
+    PRESET_RANK is the one table the rest of the client uses (Project Creator 5,
+    Scrum Master / Product Owner 4, Manager 3, Employee 2, custom roles 1), so
+    the Members tab lists people in the same order the Roles tab does. The old
+    helper ranked only Product Owner and Scrum Master, and a "Member" role that
+    does not exist, which left the Project Creator last.
+    """
+    return (-PRESET_RANK.get(role_name or "", UNRANKED), str(role_name or "").casefold())
 
 
 def render_members(members, contribute_ids, roles, removable_ids=None):
@@ -129,7 +141,7 @@ def render_members(members, contribute_ids, roles, removable_ids=None):
 
     member_data.sort(
         key=lambda member: (
-            get_role_priority(member["role"]),
+            *role_sort_key(member["role"]),
             member["username"].lower()
         )
     )
@@ -147,7 +159,7 @@ def render_members(members, contribute_ids, roles, removable_ids=None):
     for member in member_data:
         # Escape user-controlled values before they are placed into innerHTML.
         username = html.escape(member["username"])
-        role = html.escape(member["role"])
+        role = html.escape(member["role"] or "No role")
         profile_photo = html.escape(member["profile_photo"], quote=True)
 
         # Removing a member needs manage_members and is switched on deliberately;

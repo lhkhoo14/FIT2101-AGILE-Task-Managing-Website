@@ -234,3 +234,111 @@
   border-color: #dddddd;
   cursor: not-allowed;
 }
+
+/* --- US-30: Editable Project Description --- */
+
+.project-details-card {
+  margin-top: 24px;
+  padding: 24px;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.project-details-card h2 {
+  margin: 0 0 16px;
+  font-size: 20px;
+  color: #333333;
+}
+
+.project-description-text {
+  color: #555555;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.project-audit-footer {
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid #eeeeee;
+  color: #777777;
+  font-size: 13px;
+}
+
+.btn-edit-description,
+.btn-save-description,
+.btn-cancel-description {
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.btn-edit-description,
+.btn-save-description {
+  background: #4747D4;
+  color: #ffffff;
+  border: 1px solid #4747D4;
+}
+
+.btn-edit-description {
+  margin-top: 18px;
+}
+
+.btn-edit-description:hover,
+.btn-save-description:hover {
+  background: #3636b5;
+}
+
+.btn-cancel-description {
+  background: #ffffff;
+  color: #444444;
+  border: 1px solid #d1d5db;
+  margin-left: 8px;
+}
+
+.btn-cancel-description:hover {
+  background: #f3f4f6;
+}
+
+.project-description-input {
+  width: 100%;
+  min-height: 150px;
+  padding: 12px;
+  box-sizing: border-box;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font: inherit;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.project-description-input:focus {
+  outline: 2px solid #4747D4;
+  outline-offset: 1px;
+  border-color: #4747D4;
+}
+
+.project-description-error {
+  color: #dc2626;
+  font-size: 13px;
+  margin-top: 10px;
+}
+
+@media (max-width: 600px) {
+  .main-content {
+    padding: 16px;
+  }
+
+  .project-details-card {
+    padding: 16px;
+  }
+
+  .project-title-group {
+    flex-wrap: wrap;
+  }
+}

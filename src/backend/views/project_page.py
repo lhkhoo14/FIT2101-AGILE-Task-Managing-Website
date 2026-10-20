@@ -1,6 +1,7 @@
+
 import sys
 import asyncio
-from html import escape
+import html
 
 import js  # type: ignore
 from pyodide.ffi import create_proxy  # type: ignore
@@ -9,33 +10,34 @@ from pyscript import window, web, when, document  # type: ignore
 if "." not in sys.path:
     sys.path.append(".")
 
-# PyScript loads these by their flat names through settings.json's file map
-# (src/backend/utils/auth.py -> ./auth.py), which is also why pyrightconfig.json
-# lists these two folders under extraPaths: it lets the editor resolve the same
-# names. The ignores stay because they are what the browser actually does.
 from auth import show_snackbar  # type: ignore
 from server_data import ServerData, Project  # type: ignore
 
-# get_project_id_from_url() is defined in this module below: it reads the id out
-# of window.location.search, which project_helpers' copy does not. The import of
-# that copy was shadowed by the local definition and has been dropped.
 
-# Set once the project has loaded; used by the End Project button.
 _db = None
 _project_id = None
+current_project = None
 
 
 def get_project_id_from_url():
     params = js.URLSearchParams.new(window.location.search)
     project_id = params.get("project_id")
+
     if project_id and project_id.isdigit():
         return int(project_id)
+
     return None
 
 
+def _permissions() -> set[str]:
+    """The signed-in user's permissions in the open project (empty before load)."""
+    return getattr(current_project, "permissions", None) or set()
+
+
 def apply_status(status: str):
-    """Updates the status badge and End Project button to match the status."""
+    """Update the project status badge and the End / Reopen Project button."""
     status = str(status).lower()
+
     badge = document.getElementById("project-status-badge")
     if badge is not None:
         badge.textContent = status.capitalize()
@@ -43,27 +45,42 @@ def apply_status(status: str):
 
     end_btn = document.getElementById("end-project-btn")
     if end_btn is not None:
-        completed = status == "completed"
-        end_btn.textContent = "Project Ended" if completed else "End Project"
-        end_btn.disabled = completed
+        if "edit_project" not in _permissions():
+            # Changing the status needs edit_project, so the button would only
+            # ever produce a refusal for everyone else.
+            end_btn.classList.add("hidden")
+            return
+        end_btn.classList.remove("hidden")
+        end_btn.textContent = "Reopen Project" if status == "completed" else "End Project"
+        end_btn.disabled = False
 
 
 async def handle_end_project():
-    """Marks the project Completed after confirmation. This cannot be undone."""
+    """Complete the project, or reopen it, after confirmation."""
     if _db is None or _project_id is None:
         return
-    if not window.confirm(
-        "End this project? It will be marked Completed and cannot be reopened."
-    ):
+
+    completed = str(getattr(current_project, "status", "") or "").lower() == "completed"
+    target = "active" if completed else "completed"
+    question = (
+        "Reopen this project? It will go back to Active."
+        if completed else
+        "End this project? It will be marked Completed. You can reopen it later."
+    )
+    if not window.confirm(question):
         return
 
-    success, err = await _db.update_project_status(_project_id, "completed")
+    success, err = await _db.update_project_status(_project_id, target)
+
     if not success:
-        await show_snackbar(f"Failed to end project: {err}")
+        await show_snackbar(f"Could not change the project status: {err}")
         return
 
-    apply_status("completed")
-    await show_snackbar("Project ended. It is now marked Completed.")
+    if current_project is not None:
+        current_project.status = target
+    apply_status(target)
+    await show_snackbar("Project reopened. It is now Active." if target == "active"
+                        else "Project ended. It is now marked Completed.")
 
 
 def _on_end_project_click(event):
@@ -73,37 +90,155 @@ def _on_end_project_click(event):
 end_project_proxy = create_proxy(_on_end_project_click)
 
 
-# Delete Project is handled by project_layout.py, which every project view loads.
-
-
 def load_default_view(project: Project):
-    content_el = web.page["#project-view-content"]
-    # Both values are project input, so they are escaped before they are placed
-    # into innerHTML, the same as every other value a page renders.
-    name = escape(project.name or "")
-    description = escape(project.description or "There is no description for this project.")
+    """Display project details, audit metadata, and available actions."""
+    global current_project
+    current_project = project
 
-    if content_el:
-        content_el.innerHTML = f"""
-            <div class="content-header">
-                <div class="project-title-group">
-                    <h1 class="page-title">{escape(str(project.name))}</h1>
-                    <span id="project-status-badge" class="status-badge status-active">Active</span>
-                </div>
-                <button type="button" id="end-project-btn" class="btn-end-project">End Project</button>
-            </div>
-            <div class="project-details-card" style="background:#fff; padding:24px; border-radius:8px; border:1px solid #e0e0e0;">
-                <h2 style="margin-bottom:12px; font-size:18px;">Project Description</h2>
-                <p style="color:#555; line-height:1.6;">{escape(str(description))}</p>
-            </div>
+    content_el = web.page["#project-view-content"]
+    if not content_el:
+        return
+
+    name = html.escape(str(project.name or "Untitled Project"))
+    description = html.escape(
+        str(project.description or "There is no description for this project.")
+    )
+    last_edited_by = html.escape(str(project.last_edited_by or ""))
+    last_edited_at = html.escape(str(project.last_edited_at or ""))
+
+    audit_html = ""
+
+    if last_edited_by and last_edited_at:
+        audit_html = f"""
+            <p class="project-audit-footer">
+                Last edited by {last_edited_by} on {last_edited_at}
+            </p>
         """
-        # The button is created dynamically, so attach the listener directly.
-        document.getElementById("end-project-btn").addEventListener("click", end_project_proxy)
-        apply_status(project.status)
+
+    # Editing the description needs edit_project. Without it the server refuses
+    # the request, so the control is left out rather than offered and rejected.
+    edit_html = ""
+    if "edit_project" in (getattr(project, "permissions", None) or set()):
+        edit_html = ('<button type="button" id="edit-description-btn" '
+                     'class="btn-edit-description">Edit Description</button>')
+
+    content_el.innerHTML = f"""
+        <div class="content-header">
+            <div class="project-title-group">
+                <h1 class="page-title">{name}</h1>
+                <span id="project-status-badge"
+                      class="status-badge status-active">Active</span>
+            </div>
+            <button type="button" id="end-project-btn"
+                    class="btn-end-project">End Project</button>
+        </div>
+
+        <div id="project-description-card"
+             class="project-details-card"
+             style="background:#fff; padding:24px;
+                    border-radius:8px; border:1px solid #e0e0e0;">
+
+            <h2 style="margin-bottom:12px; font-size:18px;">
+                Project Description
+            </h2>
+
+            <p class="project-description-text">
+                {description}
+            </p>
+
+            {audit_html}
+
+            {edit_html}
+        </div>
+    """
+
+    end_btn = document.getElementById("end-project-btn")
+    if end_btn is not None:
+        end_btn.addEventListener("click", end_project_proxy)
+
+    apply_status(project.status)
+
+
+@when("click", "#project-view-content")
+async def handle_project_view_click(event):
+    """Handle editing, saving, and cancelling the description."""
+    button = event.target.closest("button")
+
+    if not button:
+        return
+
+    if button.id == "edit-description-btn":
+        if current_project is None:
+            return
+
+        description = html.escape(
+            str(current_project.description or "")
+        )
+
+        content_el = web.page["#project-description-card"]
+        if not content_el:
+            return
+
+        content_el.innerHTML = f"""
+            <h2 style="margin-bottom:12px; font-size:18px;">
+                Edit Project Description
+            </h2>
+
+            <textarea id="description-input"
+                    class="project-description-input"
+                    rows="6">{description}</textarea>
+
+            <div style="margin-top:12px;">
+                <button type="button" id="save-description-btn"
+                        class="btn-save-description">Save</button>
+
+            <button type="button" id="cancel-description-btn"
+                        class="btn-cancel-description">Cancel</button>
+        </div>
+
+            <p id="description-error" class="project-description-error"></p>
+        """
+
+    elif button.id == "cancel-description-btn":
+        if current_project is not None:
+            load_default_view(current_project)
+
+    elif button.id == "save-description-btn":
+        project_id = get_project_id_from_url()
+        description_input = web.page["#description-input"]
+        error_element = web.page["#description-error"]
+
+        if not project_id or not description_input:
+            return
+
+        new_description = description_input.value.strip()
+
+        if not new_description:
+            if error_element:
+                error_element.textContent = "Description cannot be empty."
+            return
+
+        db = ServerData()
+
+        success, message, data = await db.update_project_description(
+            project_id,
+            new_description
+        )
+
+        if not success:
+            if error_element:
+                error_element.textContent = message
+            return
+
+        updated_project = await db.get_project_by_id(project_id)
+
+        if updated_project:
+            load_default_view(updated_project)
+            await show_snackbar("Project description updated successfully.")
 
 
 async def init_project_page():
-    global _project_id
+    global _db, _project_id
 
     project_id = get_project_id_from_url()
     _project_id = project_id
@@ -112,27 +247,22 @@ async def init_project_page():
         window.location.href = "dashboard.html"
         return
 
-    global _db
     db = ServerData()
     project = await db.get_project_by_id(project_id)
 
-    # CHANGE: removed the simple member roster that used to render here
-    # (load_members_view, _initials and the ?view=members branch). Members now have
-    # their own page, project-members.html, which the sidebar Members button opens.
-    # This page only ever renders the description.
     if project:
         _db = db
-        _project_id = project_id
         load_default_view(project)
     else:
         content_el = web.page["#project-view-content"]
         if content_el:
             content_el.innerHTML = """
                 <div class="content-header">
-                    <h1 class="page-title">Access Denied or Project Not Found</h1>
+                    <h1 class="page-title">
+                        Access Denied or Project Not Found
+                    </h1>
                 </div>
             """
 
 
-# Launch the async initialization process
 asyncio.ensure_future(init_project_page())

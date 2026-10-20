@@ -1,13 +1,15 @@
 {
-    "next_user_id": 5,
-    "next_project_id": 5,
-    "next_backlog_id": 15,
+    "next_user_id": 6,
+    "next_project_id": 6,
+    "next_backlog_id": 16,
     "next_sprint_id": 8,
     "users": [
         {
             "user_id": 1,
             "username": "wa",
             "email": "wa@gmail.com",
+            "is_verified": true,
+            "created_at": 1767225600,
             "password": "$2b$12$SV.Re86eHEZ1kJND/kfE8e4HAm5BJtJxjxTrhmut6wrb/Jk6d/nXC",
             "projects": [],
             "failed_attempts": 0,
@@ -17,6 +19,8 @@
             "user_id": 2,
             "username": "test",
             "email": "test@gmail.com",
+            "is_verified": true,
+            "created_at": 1767225600,
             "password": "$2b$12$wFDsiyqVXfyWlBGJBIVJke/TrZLPVRPf2XjHQZu4H1Fn0y1Lzpici",
             "projects": [],
             "failed_attempts": 0,
@@ -26,6 +30,8 @@
             "user_id": 3,
             "username": "Bob The",
             "email": "idk@gmail.com",
+            "is_verified": true,
+            "created_at": 1767225600,
             "password": "$2b$12$u7X/34Y7x0r26DCnZMybwOikNQHivR48iaxNhdGx4Wycre9Kgk3kC",
             "projects": [],
             "failed_attempts": 0,
@@ -35,9 +41,24 @@
             "user_id": 4,
             "username": "Wei Ho",
             "email": "weiholye@gmail.com",
+            "is_verified": true,
+            "created_at": 1767225600,
             "password": "$2b$12$kYzorpYr0EIw0Yxy1ymWaOwRZZZcEOQYWaryhNy703V8cQK184CNK",
             "projects": [
                 4
+            ],
+            "failed_attempts": 0,
+            "lockout_until": 0
+        },
+        {
+            "user_id": 5,
+            "username": "izaan",
+            "email": "izaan@gmail.com",
+            "is_verified": true,
+            "created_at": 1767225600,
+            "password": "$2b$12$SLmABYxhWpDw5e1IqLXM7epYzu.3tMB9kJPA2c0yyztaz4PObjiH6",
+            "projects": [
+                5
             ],
             "failed_attempts": 0,
             "lockout_until": 0
@@ -627,6 +648,196 @@
                 }
             },
             "contributions_updated_at": "2026-10-17 10:21 UTC"
+        },
+        "5": {
+            "project_id": 5,
+            "name": "testingb for integrating",
+            "description": "giggg",
+            "status": "active",
+            "created_at": 1792311550399,
+            "creator": [
+                5
+            ],
+            "members": [
+                5,
+                2,
+                4,
+                3,
+                1
+            ],
+            "contribute": [
+                5,
+                2,
+                4,
+                3,
+                1
+            ],
+            "roles": {
+                "Project Creator": [
+                    5
+                ],
+                "Scrum Master": [],
+                "Product Owner": [],
+                "Manager": [
+                    4
+                ],
+                "Employee": [
+                    2,
+                    4,
+                    3,
+                    1
+                ]
+            },
+            "role_definitions": {
+                "Project Creator": {
+                    "colour": "#44E",
+                    "description": "Highest ranking role with full project permissions.",
+                    "permissions": [
+                        "edit_project",
+                        "delete_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Scrum Master": {
+                    "colour": "#E44",
+                    "description": "Manages sprints, team membership, tasks, and reviews.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Product Owner": {
+                    "colour": "#4E4",
+                    "description": "Manages product backlog, sprints, and team collaboration.",
+                    "permissions": [
+                        "edit_project",
+                        "manage_members",
+                        "manage_roles",
+                        "assign_roles",
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Manager": {
+                    "colour": "#E4E",
+                    "description": "Manages sprint cycles and tasks.",
+                    "permissions": [
+                        "manage_sprints",
+                        "edit_sprints",
+                        "manage_tasks",
+                        "review_tasks"
+                    ],
+                    "conflicting_roles": []
+                },
+                "Employee": {
+                    "colour": "#4EE",
+                    "description": "Standard contributor handling tasks and forwarding sprint items.",
+                    "permissions": [
+                        "edit_sprints",
+                        "manage_tasks"
+                    ],
+                    "conflicting_roles": []
+                }
+            },
+            "backlog": [
+                {
+                    "id": 15,
+                    "title": "r",
+                    "tags": [
+                        "r"
+                    ],
+                    "priority": "medium",
+                    "description": "rr"
+                }
+            ],
+            "sprints": [],
+            "history": [
+                {
+                    "action": "removed_member",
+                    "message": "izaan removed Bob The from the project",
+                    "actor": "izaan",
+                    "actor_id": 5,
+                    "timestamp": "2026-10-18 08:19 UTC",
+                    "recorded_at": "2026-10-18T08:19:28.070662+00:00",
+                    "id": 1
+                },
+                {
+                    "action": "removed_member",
+                    "message": "izaan removed wa from the project",
+                    "actor": "izaan",
+                    "actor_id": 5,
+                    "timestamp": "2026-10-18 08:19 UTC",
+                    "recorded_at": "2026-10-18T08:19:57.453771+00:00",
+                    "id": 2
+                },
+                {
+                    "action": "project_change",
+                    "message": "izaan created backlog task r",
+                    "actor": "izaan",
+                    "actor_id": 5,
+                    "sprint_id": null,
+                    "sprint_name": null,
+                    "task_id": "15",
+                    "task_title": "r",
+                    "from_status": null,
+                    "to_status": null,
+                    "timestamp": "2026-10-18 08:23 UTC",
+                    "recorded_at": "2026-10-18T08:23:25.692958+00:00",
+                    "id": 3
+                }
+            ],
+            "contributions": {
+                "5": {
+                    "user_id": 5,
+                    "name": "izaan",
+                    "assigned": 0,
+                    "completed": 0,
+                    "logged_seconds": 0,
+                    "logged_hours": 0.0,
+                    "tasks": [],
+                    "work_logs": []
+                },
+                "2": {
+                    "user_id": 2,
+                    "name": "test",
+                    "assigned": 0,
+                    "completed": 0,
+                    "logged_seconds": 0,
+                    "logged_hours": 0.0,
+                    "tasks": [],
+                    "work_logs": []
+                },
+                "4": {
+                    "user_id": 4,
+                    "name": "Wei Ho",
+                    "assigned": 0,
+                    "completed": 0,
+                    "logged_seconds": 0,
+                    "logged_hours": 0.0,
+                    "tasks": [],
+                    "work_logs": []
+                }
+            },
+            "contributions_updated_at": "2026-10-18 08:23 UTC",
+            "last_edited_by": "izaan",
+            "last_edited_at": "2026-10-18T08:29:09.716011+00:00"
         }
     }
 }

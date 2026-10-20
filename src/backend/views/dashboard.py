@@ -8,6 +8,7 @@ if "." not in sys.path:
     sys.path.append(".")
 
 from server_data import ServerData
+from auth import show_snackbar  # type: ignore
 
 
 @when("click", "#create-project-btn")
@@ -16,6 +17,11 @@ def handle_create_project_click(event):
 
 def handle_project_click(event):
     """Navigates to project-page.html using the selected project ID."""
+    # A click that starts on the status button is a request to change the status,
+    # not to open the project - the delegated handler below deals with it.
+    if event.target.closest("[data-status-action]"):
+        return
+
     card = event.currentTarget
     project_id = card.getAttribute("data-project-id")
     if project_id:
@@ -48,6 +54,9 @@ MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
 # Projects as last fetched from the server. Sorting re-renders from this list,
 # so changing the dropdown never needs another network request or page reload.
 loaded_projects: list = []
+
+# Sidebar status filter: None shows every project, otherwise "active" or "completed".
+status_filter: str | None = None
 
 
 def _created_key(project) -> tuple:
@@ -135,6 +144,23 @@ def create_project_card(project) -> web.Element:
         </div>
     """
     
+    # The status is editable from the card by whoever may edit the project, and
+    # the click is handled by the delegated listener on the grid: one listener
+    # for every card, instead of a proxy per card.
+    if "edit_project" in (getattr(project, "permissions", None) or set()):
+        footer = card.querySelector(".card-footer")
+        if footer is not None:
+            action = document.createElement("button")
+            action.type = "button"
+            action.className = "card-status-btn"
+            action.setAttribute(
+                "data-status-action", "reopen" if status == "completed" else "complete"
+            )
+            action.textContent = (
+                "Reopen project" if status == "completed" else "Mark completed"
+            )
+            footer.appendChild(action)
+
     # Pass the persistent proxy to addEventListener
     card.addEventListener("click", click_proxy)
     return card
@@ -153,8 +179,15 @@ def render_projects():
 
     query = current_search_query()
     visible = filter_projects(loaded_projects, query)
+    if status_filter:
+        visible = [p for p in visible if str(p.status).lower() == status_filter]
     if not visible:
-        grid.innerHTML = f"<p class='no-projects'>No projects match \"{escape(query)}\".</p>"
+        if query:
+            grid.innerHTML = f"<p class='no-projects'>No projects match \"{escape(query)}\".</p>"
+        elif status_filter:
+            grid.innerHTML = f"<p class='no-projects'>No {status_filter} projects.</p>"
+        else:
+            grid.innerHTML = "<p class='no-projects'>No projects found.</p>"
         return
 
     for project in sort_projects(visible, current_sort_key()):
@@ -169,6 +202,35 @@ async def list_projects():
     render_projects()
 
 
+def set_status_filter(new_filter: str | None):
+    """Applies a sidebar status filter, highlights its button and redraws the grid."""
+    global status_filter
+    status_filter = new_filter
+    active_id = f"filter-{new_filter}" if new_filter else "nav-all-projects"
+    for item in document.querySelectorAll("#sidebar .nav-item"):
+        if item.id == active_id:
+            item.classList.add("active")
+        else:
+            item.classList.remove("active")
+    render_projects()
+
+
+@when("click", "#nav-all-projects")
+def handle_filter_all(event):
+    set_status_filter(None)
+
+
+@when("click", "#filter-active")
+def handle_filter_active(event):
+    # Clicking the selected filter again goes back to showing everything.
+    set_status_filter(None if status_filter == "active" else "active")
+
+
+@when("click", "#filter-completed")
+def handle_filter_completed(event):
+    set_status_filter(None if status_filter == "completed" else "completed")
+
+
 @when("input", "#global-search")
 def handle_search_input(event):
     """Filters the cards as the user types; no page reload or refetch."""
@@ -179,6 +241,31 @@ def handle_search_input(event):
 def handle_sort_change(event):
     """Reorders the cards in place; no page reload or refetch."""
     render_projects()
+
+@when("click", "#projects-grid")
+async def handle_status_change(event):
+    """Complete or reopen a project from its card."""
+    button = event.target.closest("[data-status-action]")
+    if not button:
+        return
+
+    card = button.closest(".project-card")
+    project_id = card.getAttribute("data-project-id") if card else None
+    if not project_id:
+        return
+
+    target = "active" if button.getAttribute("data-status-action") == "reopen" else "completed"
+    db = ServerData()
+    success, message = await db.update_project_status(int(project_id), target)
+    if not success:
+        await show_snackbar(f"Could not change the project status: {message}")
+        return
+
+    await show_snackbar("Project reopened. It is now Active." if target == "active"
+                        else "Project marked completed.")
+    # Re-read rather than patching the badge, so the card matches the server.
+    await list_projects()
+
 
 # Execute project listing on page load
 asyncio.ensure_future(list_projects())

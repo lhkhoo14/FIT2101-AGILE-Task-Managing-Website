@@ -57,18 +57,6 @@ def validate_role_assignment(project: dict, user_id: int, target_role: str) -> N
                 detail=f"Conflict: User cannot hold both '{current_role}' and '{target_role}' simultaneously."
             )
 
-def verify_project_creator(project: Any, user_id: int) -> Dict[str, Any]:
-    """Ensures the user is the Project Creator."""
-    verify_project_access(project, user_id)
-    roles = project.get("roles", {})
-    creators = roles.get("Project Creator", project.get("creator", [])) # Updated key
-    if user_id not in creators:
-        raise HTTPException(
-            status_code=403,
-            detail="Access forbidden: Only the Project Creator can perform this action"
-        )
-    return project
-
 def verify_project_permission(project: Any, user_id: int, required_permission: str) -> Dict[str, Any]:
     """Enforces that the user has a specific permission based on their assigned role in role_definitions."""
     verify_project_access(project, user_id)

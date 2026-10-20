@@ -175,11 +175,32 @@
 }
 
 .task-card-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #222222;
+  font-size: 15px;
+  font-weight: 650;
+  color: #1e293b;
   margin-bottom: 12px;
-  line-height: 1.4;
+  line-height: 1.35;
+}
+
+/* Tag chips. sprint-page.py and sprint-dashboard.py emit these classes, but no
+   rule was ever written for them, so the chips fell back to the 16px body font
+   and read larger than the task title beside them. */
+.task-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.task-tag-chip {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #4338ca;
 }
 
 .task-card-footer {
@@ -555,16 +576,6 @@
   margin: 4px 0;
 }
 
-.demo-role-select {
-  margin-left: 12px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid #d9d9e3;
-  background-color: #fff;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-
 .feedback-messages {
   display: flex;
   flex-direction: column;
@@ -750,4 +761,12 @@
 .modal-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+/* The sprint's own description, under the header (see _apply_header_and_lock_state). */
+.sprint-details {
+  margin: 0 0 18px;
+  max-width: 70ch;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.5;
 }

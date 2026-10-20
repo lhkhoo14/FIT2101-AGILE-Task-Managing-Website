@@ -94,12 +94,6 @@
       <input type="text" id="global-search" class="search-input" placeholder="Search tasks or tags...">
     </div>
 
-    <!-- TEMP demo-only role switch — remove once real User.role exists -->
-    <select id="demo-role-select" class="demo-role-select" title="Demo: view board as this role">
-      <option value="employee">View as: Employee</option>
-      <option value="manager">View as: Manager</option>
-    </select>
-
     <!-- Profile Picture & Dropdown Menu -->
     <div class="profile-menu-container">
       <button type="button" id="profile-menu-btn" class="profile-btn" aria-label="User Profile">
@@ -184,6 +178,8 @@
           <button type="button" id="end-sprint-btn" class="btn-end-sprint">End Sprint</button>
         </div>
       </div>
+
+      <p id="sprint-details" class="sprint-details hidden"></p>
 
       <p id="board-search-empty" class="board-search-empty hidden"></p>
 
@@ -333,9 +329,9 @@
         <button id="stopwatch-log-btn" class="modal-btn modal-btn-primary">Log Time</button>
       </div>
 
-      <!-- Manager Feedback / Review Chat -->
+      <!-- Review feedback / review chat, gated on review_tasks - not on being a manager. -->
       <div id="review-feedback-section" class="review-feedback-section hidden">
-        <div class="modal-label" style="margin-top: 15px;">Manager Feedback</div>
+        <div class="modal-label" style="margin-top: 15px;">Review Feedback</div>
         <div id="feedback-messages" class="feedback-messages"></div>
         <form id="feedback-add-form" class="checklist-add-form">
           <input type="text" id="feedback-input" class="modal-input" placeholder="Post feedback..." />

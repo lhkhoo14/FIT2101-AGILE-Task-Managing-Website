@@ -1,6 +1,7 @@
 import copy
 
 import time
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, status
@@ -88,6 +89,25 @@ def with_project_defaults(project: dict) -> dict:
     result.setdefault("created_at", None)
     return result
 
+# What the project list returns. Sprints, boards, tasks, history and the
+# contribution table are what /projects/{id} is for: the list is fetched for
+# every project the caller belongs to and is reachable with any user id, so it
+# should not hand out another team's task list as well. roles and
+# role_definitions stay, because the dashboard uses them to decide which
+# controls to offer.
+SUMMARY_FIELDS = (
+    "project_id", "name", "description", "status", "created_at",
+    "last_edited_by", "last_edited_at", "roles", "role_definitions",
+)
+
+
+def project_summary(project: dict) -> dict:
+    """A project reduced to what the dashboard list renders."""
+    summary = {key: project[key] for key in SUMMARY_FIELDS if key in project}
+    summary.setdefault("status", DEFAULT_PROJECT_STATUS)
+    summary.setdefault("created_at", None)
+    return summary
+
 class CreateProjectPayload(BaseModel):
     user_id: int
     name: str
@@ -106,6 +126,10 @@ class UpdateProjectStatusPayload(BaseModel):
     user_id: int
     status: str
 
+class UpdateProjectDescriptionPayload(BaseModel):
+    user_id: int
+    description: str
+
 class AddMemberPayload(BaseModel):
     user_id: int
     username: str
@@ -117,11 +141,16 @@ class AssignRolePayload(BaseModel):
 
 @router.post("/projects/{project_id}/roles/assign")
 def assign_role_to_member(project_id: int, payload: AssignRolePayload):
-    db = db_manager.read()
-    project = db.get("projects", {}).get(str(project_id))
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
+    def mutate(db):
+        project = db.get("projects", {}).get(str(project_id))
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return _assign_role(project, payload)
 
+    return db_manager.update(mutate)
+
+
+def _assign_role(project, payload):
     ensure_member_fields(project)
 
     # Verify acting user has permission to manage roles
@@ -149,7 +178,6 @@ def assign_role_to_member(project_id: int, payload: AssignRolePayload):
     if payload.target_user_id not in role_list:
         role_list.append(payload.target_user_id)
 
-    db_manager.write(db)
     return {"status": "success", "message": f"Assigned role '{payload.role_name}' successfully."}
 
 def ensure_member_fields(project: dict) -> None:
@@ -213,12 +241,16 @@ def ensure_member_fields(project: dict) -> None:
 
 @router.post("/projects", status_code=status.HTTP_201_CREATED)
 def create_project(payload: CreateProjectPayload):
-    db = db_manager.read()
-    user = next((u for u in db["users"] if u["user_id"] == payload.user_id), None)
+    def mutate(db):
+        user = next((u for u in db.get("users", []) if u.get("user_id") == payload.user_id), None)
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        return _new_project(db, user, payload)
 
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+    return db_manager.update(mutate)
 
+
+def _new_project(db, user, payload):
     project_id = db.get("next_project_id", 1)
     db["next_project_id"] = project_id + 1
 
@@ -315,7 +347,6 @@ def create_project(payload: CreateProjectPayload):
 
     db["projects"][str(project_id)] = new_project
     user.setdefault("projects", []).append(project_id)
-    db_manager.write(db)
 
     return {"status": "success", "project": new_project}
 
@@ -366,7 +397,7 @@ def get_user_projects(user_id: int):
 
     all_projects = db.get("projects", {})
     return [
-        with_project_defaults(p)
+        project_summary(p)
         for p in all_projects.values()
         if user_id in p.get("members", [])
     ]
@@ -375,6 +406,57 @@ def get_user_projects(user_id: int):
 def get_project(project_id: int, user_id: int):
     return with_project_defaults(get_verified_project(project_id, user_id))
 
+@router.put("/projects/{project_id}/description")
+def update_project_description(
+    project_id: int,
+    payload: UpdateProjectDescriptionPayload
+):
+    """Updates a project's description and records who edited it and when."""
+    def mutate(db):
+        project = db.get("projects", {}).get(str(project_id))
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return _apply_description(db, project, payload)
+
+    return db_manager.update(mutate)
+
+
+def _apply_description(db, project, payload):
+    ensure_member_fields(project)
+
+    # US-30: the description belongs to the project's leadership. edit_project
+    # is held by Project Creator, Scrum Master and Product Owner and by no other
+    # preset, so the permission states the rule instead of a hardcoded list -
+    # which used to let a Manager in while shutting a Scrum Master out - and a
+    # custom role can be granted it deliberately.
+    verify_project_permission(project, payload.user_id, "edit_project")
+
+    description = payload.description.strip()
+    if not description:
+        raise HTTPException(
+            status_code=422,
+            detail="Description cannot be empty."
+        )
+
+    user = next(
+        (u for u in db.get("users", []) if u.get("user_id") == payload.user_id),
+        None
+    )
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    project["description"] = description
+    project["last_edited_by"] = user.get("username", "Unknown User")
+    project["last_edited_at"] = datetime.now(timezone.utc).isoformat()
+
+    return {
+        "status": "success",
+        "description": project["description"],
+        "last_edited_by": project["last_edited_by"],
+        "last_edited_at": project["last_edited_at"]
+    }
+
+
 @router.patch("/projects/{project_id}/status")
 def update_project_status(project_id: int, payload: UpdateProjectStatusPayload):
     if payload.status not in VALID_PROJECT_STATUSES:
@@ -382,19 +464,24 @@ def update_project_status(project_id: int, payload: UpdateProjectStatusPayload):
             status_code=422,
             detail="Status must be one of: " + ", ".join(VALID_PROJECT_STATUSES) + ".",
         )
-    get_verified_project(project_id, payload.user_id)
 
-    db = db_manager.read()
-    project = db["projects"][str(project_id)]
+    def mutate(db):
+        project = verify_project_access(db.get("projects", {}).get(str(project_id)), payload.user_id)
+        # Changing the status is part of editing the project, so it takes the same
+        # permission the description does (Project Creator, Scrum Master or
+        # Product Owner). ensure_member_fields() first, or a project stored before
+        # roles existed has no role map for the check to read.
+        ensure_member_fields(project)
+        verify_project_permission(project, payload.user_id, "edit_project")
 
-    # Same rule as sprints: once ended, a project cannot be reopened.
-    if project.get("status") == "completed" and payload.status == "active":
-        raise HTTPException(status_code=409, detail="A completed project cannot be reopened.")
+        # Completing a project can be undone: it is an ordinary edit the team may
+        # need to take back, and refusing it (409) made a mistaken "End Project"
+        # permanent, with no way back from the interface.
+        project["status"] = payload.status
+        project.setdefault("created_at", None)
+        return {"status": "success", "project": with_project_defaults(project)}
 
-    project["status"] = payload.status
-    project.setdefault("created_at", None)
-    db_manager.write(db)
-    return {"status": "success", "project": with_project_defaults(project)}
+    return db_manager.update(mutate)
 
 @router.get("/projects/{project_id}/members")
 def get_project_members(project_id: int, user_id: int):
@@ -415,12 +502,16 @@ def get_project_backlog(project_id: int, user_id: int):
 
 @router.post("/projects/{project_id}/backlog", status_code=status.HTTP_201_CREATED)
 def create_backlog_item(project_id: int, payload: CreateBacklogPayload):
-    # CHANGE: single read. get_verified_project() read the database, and the read
-    # below opened a second one for the same project.
-    db = db_manager.read()
-    project = verify_project_access(
-        db.get("projects", {}).get(str(project_id)), payload.user_id
-    )
+    def mutate(db):
+        project = verify_project_access(
+            db.get("projects", {}).get(str(project_id)), payload.user_id
+        )
+        return _new_backlog_item(db, project, payload)
+
+    return db_manager.update(mutate)
+
+
+def _new_backlog_item(db, project, payload):
 
     backlog_id = db.get("next_backlog_id", 1)
     db["next_backlog_id"] = backlog_id + 1
@@ -440,50 +531,48 @@ def create_backlog_item(project_id: int, payload: CreateBacklogPayload):
         "description": description
     }
     project.setdefault("backlog", []).append(item)
-    db_manager.write(db)
     return item
 
 @router.post("/projects/{project_id}/members")
 def add_project_member(project_id: int, payload: AddMemberPayload):
-    db = db_manager.read()
-    project = db.get("projects", {}).get(str(project_id))
+    def mutate(db):
+        project = db.get("projects", {}).get(str(project_id))
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
 
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
+        ensure_member_fields(project)
 
-    ensure_member_fields(project)
-    
-    # Check if the user has the 'manage_members' permission, regardless of their role name
-    verify_project_permission(project, payload.user_id, "manage_members")
+        # Check if the user has the 'manage_members' permission, regardless of their role name
+        verify_project_permission(project, payload.user_id, "manage_members")
 
-    member = next(
-        (user for user in db.get("users", []) if user.get("username") == payload.username),
-        None
-    )
-    if member is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        member = next(
+            (user for user in db.get("users", []) if user.get("username") == payload.username),
+            None
+        )
+        if member is None:
+            raise HTTPException(status_code=404, detail="User not found")
 
-    member_id = member["user_id"]
-    if member_id in project.get("members", []):
-        raise HTTPException(status_code=409, detail="User is already a project member")
+        member_id = member["user_id"]
+        if member_id in project.get("members", []):
+            raise HTTPException(status_code=409, detail="User is already a project member")
 
-    project["members"].append(member_id)
-    project["contribute"].append(member_id)
-    # CHANGE: the newcomer joins the Employee preset, the "standard contributor"
-    # role that holds edit_sprints and manage_tasks. The previous default,
-    # "Project Member", has no entry in role_definitions, so a member added here
-    # held no permissions at all: no delete controls, and a 403 from every gated
-    # route, until somebody assigned them a role by hand.
-    project["roles"].setdefault("Employee", []).append(member_id)
+        project["members"].append(member_id)
+        project["contribute"].append(member_id)
+        # CHANGE: the newcomer joins the Employee preset, the "standard contributor"
+        # role that holds edit_sprints and manage_tasks. The previous default,
+        # "Project Member", has no entry in role_definitions, so a member added here
+        # held no permissions at all: no delete controls, and a 403 from every gated
+        # route, until somebody assigned them a role by hand.
+        project["roles"].setdefault("Employee", []).append(member_id)
 
-    db_manager.write(db)
+        return {
+            "status": "success",
+            "member_id": member_id,
+            "username": member["username"],
+            "role": "Employee"
+        }
 
-    return {
-        "status": "success",
-        "member_id": member_id,
-        "username": member["username"],
-        "role": "Employee"
-    }
+    return db_manager.update(mutate)
 
 class RemoveMemberPayload(BaseModel):
     user_id: int        # Acting user
@@ -555,11 +644,16 @@ class CreateRolePayload(BaseModel):
 
 @router.post("/projects/{project_id}/roles", status_code=status.HTTP_201_CREATED)
 def create_project_role(project_id: int, payload: CreateRolePayload):
-    db = db_manager.read()
-    project = db.get("projects", {}).get(str(project_id))
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
+    def mutate(db):
+        project = db.get("projects", {}).get(str(project_id))
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return _new_role(project, payload)
 
+    return db_manager.update(mutate)
+
+
+def _new_role(project, payload):
     ensure_member_fields(project)
     verify_project_permission(project, payload.user_id, "manage_roles")
 
@@ -581,8 +675,6 @@ def create_project_role(project_id: int, payload: CreateRolePayload):
         "conflicting_roles": payload.conflicting_roles or []
     }
 
-    db_manager.write(db)
-
     return {
         "status": "success",
         "role": {
@@ -599,11 +691,16 @@ class DeleteRolePayload(BaseModel):
 
 @router.delete("/projects/{project_id}/roles/{role_name}", status_code=status.HTTP_200_OK)
 def delete_project_role(project_id: int, role_name: str, payload: DeleteRolePayload):
-    db = db_manager.read()
-    project = db.get("projects", {}).get(str(project_id))
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
+    def mutate(db):
+        project = db.get("projects", {}).get(str(project_id))
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return _drop_role(project, role_name, payload)
 
+    return db_manager.update(mutate)
+
+
+def _drop_role(project, role_name, payload):
     ensure_member_fields(project)
     verify_project_permission(project, payload.user_id, "manage_roles")
 
@@ -629,7 +726,6 @@ def delete_project_role(project_id: int, role_name: str, payload: DeleteRolePayl
             if role_name in conflicts:
                 conflicts.remove(role_name)
 
-    db_manager.write(db)
     return {"status": "success", "message": f"Role '{role_name}' deleted successfully."}
 
 class UpdateRolePayload(BaseModel):
@@ -641,16 +737,24 @@ class UpdateRolePayload(BaseModel):
 
 @router.put("/projects/{project_id}/roles/{role_name}", status_code=status.HTTP_200_OK)
 def update_project_role(project_id: int, role_name: str, payload: UpdateRolePayload):
-    db = db_manager.read()
-    project = db.get("projects", {}).get(str(project_id))
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
+    def mutate(db):
+        project = db.get("projects", {}).get(str(project_id))
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return _edit_role(project, role_name, payload)
 
+    return db_manager.update(mutate)
+
+
+def _edit_role(project, role_name, payload):
     ensure_member_fields(project)
     verify_project_permission(project, payload.user_id, "manage_roles")
 
-    protected_roles = {"Project Creator", "Project Manager", "Project Member"}
-    if role_name in protected_roles:
+    # The same protected set the DELETE route uses, and the one the Roles page
+    # blocks in the browser. It used to be a hardcoded three names, two of which
+    # no longer exist, which left Employee and the other presets open to a call
+    # that rewrites (or empties) the permission list every holder depends on.
+    if role_name in PROTECTED_PRESET_NAMES:
         raise HTTPException(status_code=400, detail="Cannot modify default system roles.")
 
     roles_dict = project.get("roles", {})
@@ -666,7 +770,6 @@ def update_project_role(project_id: int, role_name: str, payload: UpdateRolePayl
         "conflicting_roles": payload.conflicting_roles or []
     }
 
-    db_manager.write(db)
     return {
         "status": "success", 
         "message": f"Role '{role_name}' updated successfully.",
@@ -715,11 +818,16 @@ class RemoveRoleMemberPayload(BaseModel):
 
 @router.post("/projects/{project_id}/roles/{role_name}/remove")
 def remove_role_from_member(project_id: int, role_name: str, payload: RemoveRoleMemberPayload):
-    db = db_manager.read()
-    project = db.get("projects", {}).get(str(project_id))
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
+    def mutate(db):
+        project = db.get("projects", {}).get(str(project_id))
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return _drop_role_from_member(project, role_name, payload)
 
+    return db_manager.update(mutate)
+
+
+def _drop_role_from_member(project, role_name, payload):
     ensure_member_fields(project)
     verify_project_permission(project, payload.user_id, "manage_roles")
 
@@ -733,5 +841,4 @@ def remove_role_from_member(project_id: int, role_name: str, payload: RemoveRole
     if role_name in roles_map and payload.target_user_id in roles_map[role_name]:
         roles_map[role_name].remove(payload.target_user_id)
 
-    db_manager.write(db)
     return {"status": "success", "message": f"Successfully removed role '{role_name}' from member."}

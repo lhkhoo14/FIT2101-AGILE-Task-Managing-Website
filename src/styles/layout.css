@@ -166,6 +166,7 @@
   display: inline-block;
 }
 
+.dot-active { background-color: #0369a1; }     /* Blue (matches the Active badge) */
 .dot-todo { background-color: #d9534f; }       /* Red */
 .dot-wip { background-color: #f0ad4e; }        /* Yellow/Orange */
 .dot-review { background-color: #5bc0de; }     /* Light Blue */
