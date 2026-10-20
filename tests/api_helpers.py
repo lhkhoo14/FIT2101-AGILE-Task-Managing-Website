@@ -4,11 +4,31 @@ from datetime import date, timedelta
 PASSWORD = "Password123!"
 
 
-def register(client, username, email=None, password=PASSWORD):
+def verify_account(client, user_id):
+    """Verify a freshly registered account, the way a user would with the emailed code.
+
+    The code is read from the (temporary) test database, because the mailer is
+    offline in tests and nothing is actually sent.
+    """
+    from database_manager import db_manager  # type: ignore # the app's own copy, redirected by conftest
+
+    user = next(u for u in db_manager.read()["users"] if u["user_id"] == user_id)
+    response = client.post(
+        "/api/verify-code", json={"email": user["email"], "code": user["verify_code"]}
+    )
+    assert response.status_code == 200, response.text
+
+
+def register(client, username, email=None, password=PASSWORD, verify=True):
+    """Register a user. Accounts must be verified before they can log in, so by
+    default this verifies too; pass verify=False to keep the account unverified."""
     email = email or f"{username}@monash.edu"
     response = client.post("/api/register", json={"username": username, "email": email, "password": password})
     assert response.status_code == 201, response.text
-    return response.json()["user_id"]
+    user_id = response.json()["user_id"]
+    if verify:
+        verify_account(client, user_id)
+    return user_id
 
 
 def create_project(client, user_id, name="Alpha", description="A project"):

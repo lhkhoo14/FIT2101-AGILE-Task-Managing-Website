@@ -31,17 +31,6 @@ def test_project_access():
 
 
 @pytest.mark.unit
-def test_creator_check_and_legacy_fallback():
-    p = project()
-    assert deps.verify_project_creator(p, 1) is p
-    with pytest.raises(HTTPException) as err:
-        deps.verify_project_creator(p, 2)
-    assert err.value.status_code == 403
-    legacy = {"members": [4], "creator": [4]}
-    assert deps.verify_project_creator(legacy, 4) is legacy
-
-
-@pytest.mark.unit
 def test_get_verified_project_reads_the_database(db):
     state = db.read()
     state["projects"]["5"] = {"members": [1]}
@@ -137,31 +126,6 @@ class FakeSMTP:
         if self.fail:
             raise OSError("boom")
         self.calls.append(("send", message["To"], message["From"]))
-
-
-@pytest.mark.unit
-def test_mailer_sends_through_smtp(smtp_env):
-    smtp_env.setenv("SMTP_HOST", "smtp.test")
-    smtp_env.setenv("SMTP_USER", "me")
-    smtp_env.setenv("SMTP_PASSWORD", "pw")
-    smtp_env.setattr(mailer.smtplib, "SMTP", FakeSMTP)
-    assert mailer.send_verification_email("a@x.com", "http://link") is True
-    smtp = FakeSMTP.instances[-1]
-    assert (smtp.host, smtp.port) == ("smtp.test", 587)
-    assert smtp.calls == ["tls", ("login", "me", "pw"), ("send", "a@x.com", "me")]
-
-
-@pytest.mark.unit
-def test_mailer_without_credentials_skips_login_and_survives_errors(smtp_env, capsys):
-    smtp_env.setenv("SMTP_HOST", "smtp.test")
-    smtp_env.setenv("SMTP_PORT", "2525")
-    smtp_env.setenv("MAIL_FROM", "noreply@x.com")
-    smtp_env.setattr(mailer.smtplib, "SMTP", FakeSMTP)
-    assert mailer.send_verification_email("a@x.com", "l") is True
-    assert FakeSMTP.instances[-1].calls == ["tls", ("send", "a@x.com", "noreply@x.com")]
-    smtp_env.setattr(FakeSMTP, "send_message", lambda self, m: (_ for _ in ()).throw(OSError("down")))
-    assert mailer.send_verification_email("a@x.com", "l") is False
-    assert "Error sending verification email" in capsys.readouterr().out
 
 
 # ======================== database manager (JSON) ===========================

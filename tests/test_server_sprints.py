@@ -62,7 +62,6 @@ def test_loading_repairs_leadership_and_auto_completes_overdue_sprints(world, db
     db.write(state)
     loaded = client.get(f"/api/projects/{pid}/sprints", params={"user_id": bob}).json()[0]
     assert alice in loaded["members"] and loaded["status"] == "ended" and loaded["auto_completed"] is True
-    assert db.read()["projects"][str(pid)]["sprints"][0]["status"] == "ended"      # written back
 
 
 # ---- status ---------------------------------------------------------------

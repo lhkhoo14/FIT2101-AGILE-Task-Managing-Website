@@ -97,7 +97,7 @@ CASES = [
      {"sprint": {"id": 2}}, True),
     ("get_account_settings", (), "tuple", "GET", "/users/7/settings", 200, {"username": "u"}, True),
     ("update_profile", ("new", "img"), "tuple", "PATCH", "/users/7/profile", 200, {"username": "new"}, True),
-    ("request_email_change", ("n@x.com",), "tuple", "POST", "/users/7/email-change", 200, {}, True),
+    ("request_email_change", ("n@x.com",'pw'), "tuple", "POST", "/users/7/email-change", 200, {}, True),
     ("verify_email_change", ("tok",), "tuple", "POST", "/users/email-verify", 200, {}, False),
     ("change_password", ("old", "new"), "tuple", "POST", "/users/7/password", 200, {}, True),
     ("get_change_history", (1,), "list", "GET", "/projects/1/history?user_id=7", 200, [{"message": "m"}], True),

@@ -79,9 +79,6 @@ def test_wrong_password_reports_attempts_remaining(client):
 
 
 @pytest.mark.api
-@pytest.mark.xfail(strict=True, reason=(
-    "BUG: login() raises HTTPException inside db_manager.update(), so the failed-attempt "
-    "counter and lockout_until are never saved and the account never actually locks."))
 def test_repeated_failures_really_lock_the_account(client):
     register(client, "alice")
     bad = {"email": "alice@monash.edu", "password": "wrong"}
@@ -178,7 +175,7 @@ def sent_mail(monkeypatch):
 @pytest.mark.api
 def test_email_change_flow(client, sent_mail, db):
     uid = register(client, "alice")
-    response = client.post(f"/api/users/{uid}/email-change", json={"new_email": "new@monash.edu"})
+    response = client.post(f"/api/users/{uid}/email-change", json={"new_email": "new@monash.edu", "current_password": PASSWORD})
     assert response.status_code == 200 and response.json()["email_sent"] is True
     to, link = sent_mail[0]
     assert to == "new@monash.edu" and "verify_email=" in link
@@ -198,16 +195,17 @@ def test_email_change_validation(client, sent_mail):
     a = register(client, "alice")
     register(client, "bob")
     url = f"/api/users/{a}/email-change"
-    assert client.post(url, json={"new_email": "ALICE@monash.edu"}).status_code == 400
-    assert client.post(url, json={"new_email": "bob@monash.edu"}).status_code == 409
-    assert client.post("/api/users/99/email-change", json={"new_email": "z@monash.edu"}).status_code == 404
-    assert client.post(url, json={"new_email": "bad"}).status_code == 422
+    assert client.post(url, json={"new_email": "new@monash.edu", "current_password": "wrong"}).status_code == 401
+    assert client.post(url, json={"new_email": "ALICE@monash.edu", "current_password": PASSWORD}).status_code == 400
+    assert client.post(url, json={"new_email": "bob@monash.edu", "current_password": PASSWORD}).status_code == 409
+    assert client.post("/api/users/99/email-change", json={"new_email": "z@monash.edu", "current_password": PASSWORD}).status_code == 404
+    assert client.post(url, json={"new_email": "bad", "current_password": PASSWORD}).status_code == 422
 
 
 @pytest.mark.api
 def test_email_verify_expired_taken_and_unknown(client, sent_mail, db):
     a = register(client, "alice")
-    client.post(f"/api/users/{a}/email-change", json={"new_email": "new@monash.edu"})
+    client.post(f"/api/users/{a}/email-change", json={"new_email": "new@monash.edu", "current_password": PASSWORD})
     token = sent_mail[0][1].split("verify_email=")[1]
 
     assert client.post("/api/users/email-verify", json={"token": "bogus"}).status_code == 400

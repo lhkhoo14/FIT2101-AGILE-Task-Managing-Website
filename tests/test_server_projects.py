@@ -41,9 +41,9 @@ def test_update_project_status(client):
     url = f"/api/projects/{pid}/status"
     assert client.patch(url, json={"user_id": alice, "status": "paused"}).status_code == 422
     assert client.patch(url, json={"user_id": 999, "status": "completed"}).status_code == 403
-    done = client.patch(url, json={"user_id": bob, "status": "completed"})
+    done = client.patch(url, json={"user_id": alice, "status": "completed"})
     assert done.status_code == 200 and done.json()["project"]["status"] == "completed"
-    assert client.patch(url, json={"user_id": alice, "status": "active"}).status_code == 409
+    assert client.patch(url, json={"user_id": bob, "status": "active"}).status_code == 403
     assert client.patch(url, json={"user_id": alice, "status": "completed"}).status_code == 200
 
 
