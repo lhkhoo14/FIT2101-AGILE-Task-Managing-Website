@@ -90,7 +90,7 @@ and imports `server/data/server_database.json` if the table is empty.
 
 After Render creates the frontend, optionally add `CORS_ORIGINS` to the API
 service using the actual frontend URL, for example
-`https://fit2101-frontend.onrender.com`. It is intentionally not requested
+`https://fit2101-frontend-fiie.onrender.com`. It is intentionally not requested
 during initial Blueprint setup because that URL does not exist yet. Until it is
 set, the API uses its development-friendly wildcard CORS default.
 
